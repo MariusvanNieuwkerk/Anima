@@ -4,7 +4,7 @@ import { createServerClient } from '@/lib/supabase';
 // GET: Haal alle messages op voor een specifieke chat
 export async function GET(
   request: NextRequest,
-  { params }: { params: { chatId: string } }
+  { params }: { params: any }
 ) {
   try {
     const chatId = params.chatId;
