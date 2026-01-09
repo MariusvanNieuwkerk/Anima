@@ -7,7 +7,6 @@ import ReactMarkdown from 'react-markdown';
 import { getOrCreateUserId } from '@/lib/userId';
 import { supabaseClient, testSupabaseConnection } from '@/lib/supabaseClient';
 
-// Type declarations for SpeechRecognition
 declare global {
   interface Window {
     SpeechRecognition: any;
@@ -1213,33 +1212,33 @@ export default function AnimaPage() {
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Beheerste onderwerpen</h2>
             {stats.total > 0 && Object.keys(stats.topics).length > 0 ? (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {Object.entries(stats.topics)
                   .sort(([, a], [, b]) => b - a) // Sort by count descending
                   .map(([topic, count]) => {
                     const percentage = stats.total > 0 ? (count / stats.total) * 100 : 0;
                     return (
                       <div key={topic}>
-                        <div className="flex justify-between text-sm text-gray-600 mb-2">
+                <div className="flex justify-between text-sm text-gray-600 mb-2">
                           <span className="font-medium text-gray-700">{topic}</span>
                           <span className="text-gray-500">{count}x</span>
-                        </div>
+                </div>
                         <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                           <div 
                             className="bg-gradient-to-r from-blue-500 to-blue-600 h-2.5 rounded-full transition-all duration-500" 
                             style={{ width: `${percentage}%` }}
                           ></div>
-                        </div>
-                      </div>
+                </div>
+              </div>
                     );
                   })}
-              </div>
+                </div>
             ) : (
               <div className="text-center p-8">
                 <div className="text-4xl mb-3">📚</div>
                 <div className="text-lg font-medium text-gray-700 mb-2">Nog geen onderwerpen</div>
                 <div className="text-sm text-gray-500">Begin met chatten om onderwerpen te ontdekken</div>
-              </div>
+                </div>
             )}
           </div>
 
@@ -1247,7 +1246,7 @@ export default function AnimaPage() {
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Stemming</h2>
             {stats.total > 0 && Object.keys(stats.sentiments).length > 0 ? (
-              <div className="space-y-3">
+            <div className="space-y-3">
                 {Object.entries(stats.sentiments)
                   .sort(([, a], [, b]) => b - a) // Sort by count descending
                   .map(([sentiment, count]) => {
@@ -1274,14 +1273,14 @@ export default function AnimaPage() {
                     
                     return (
                       <div key={sentiment} className={`p-4 ${bgColor} rounded-xl border ${borderColor}`}>
-                        <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-700">{sentiment}</span>
                           <span className="text-2xl">{emoji}</span>
-                        </div>
-                        <div className="flex items-center justify-between mb-2">
+                </div>
+                <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-gray-600">{count}x besproken</span>
                           <span className="text-xs text-gray-500">{Math.round(percentage)}%</span>
-                        </div>
+                </div>
                         <div className="w-full bg-white/50 rounded-full h-2 overflow-hidden">
                           <div 
                             className={`h-2 rounded-full transition-all duration-500 ${
@@ -1291,8 +1290,8 @@ export default function AnimaPage() {
                             }`}
                             style={{ width: `${percentage}%` }}
                           ></div>
-                        </div>
-                      </div>
+              </div>
+            </div>
                     );
                   })}
               </div>
