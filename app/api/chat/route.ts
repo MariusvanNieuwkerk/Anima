@@ -22,7 +22,7 @@ interface ChatMessage {
 
 export async function POST(request: NextRequest) {
   try {
-    const { history, userProfile, studentLevel, currentLevel } = await request.json();
+    const { history, userProfile, studentLevel, currentLevel, imageUrl } = await request.json();
 
     if (!history || !Array.isArray(history) || history.length === 0) {
       return NextResponse.json(
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     // Build system instruction based on user profile
     let systemInstruction = '';
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Map history to Google Gemini format
-    const contents = history.map((msg: ChatMessage) => ({
+    let contents: any[] = history.map((msg: ChatMessage, index: number) => ({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [
         {
@@ -72,6 +72,34 @@ export async function POST(request: NextRequest) {
         },
       ],
     }));
+
+    // If there's an image URL and the last message is from the user, add the image to it
+    if (imageUrl && contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      try {
+        // Download the image from the URL
+        const imageResponse = await fetch(imageUrl);
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch image');
+        }
+
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+        
+        // Determine MIME type from response headers or default to jpeg
+        const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+        
+        // Add image to the last user message parts
+        contents[contents.length - 1].parts.push({
+          inline_data: {
+            mime_type: contentType,
+            data: imageBase64,
+          },
+        });
+      } catch (error) {
+        console.error('Error processing image:', error);
+        // Continue without image if there's an error
+      }
+    }
 
     const requestBody: any = {
       contents: contents,

@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     // Generate unique filename
     const fileExt = file.name.split('.').pop();
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const filePath = `photos/${fileName}`;
+    const filePath = `chat-images/${fileName}`;
 
     // Convert File to ArrayBuffer then to Uint8Array
     const arrayBuffer = await file.arrayBuffer();
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // Upload to Supabase Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('photos')
+      .from('chat-images')
       .upload(filePath, uint8Array, {
         contentType: file.type,
         upsert: false,
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('photos')
+      .from('chat-images')
       .getPublicUrl(filePath);
 
     const publicUrl = urlData.publicUrl;

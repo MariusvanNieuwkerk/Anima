@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Home, Settings, Send, Sparkles, ArrowRight, ArrowLeft, Volume2, Square, Mic, MicOff, MessageSquare, Menu, X, Camera, Lightbulb, Trash2, Heart, GraduationCap, Loader2, Pencil, MessageCircle, Presentation } from 'lucide-react';
+import { Home, Settings, Send, Sparkles, ArrowRight, ArrowLeft, Volume2, Square, Mic, MicOff, MessageSquare, Menu, X, Camera, Lightbulb, Trash2, Heart, GraduationCap, Loader2, Pencil, MessageCircle, Presentation, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { getOrCreateUserId } from '@/lib/userId';
@@ -129,7 +129,8 @@ export default function AnimaPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const recognitionRef = useRef<any>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // For gallery upload (Paperclip)
+  const cameraInputRef = useRef<HTMLInputElement>(null); // For camera capture
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -819,10 +820,12 @@ export default function AnimaPage() {
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading || !userId) return;
+    if ((!input.trim() && !selectedImage) || isLoading || !userId) return;
 
-    const userMessage = input.trim();
+    const userMessage = input.trim() || (selectedImage ? 'Wat zie je op deze foto?' : '');
+    const imageUrlToSend = selectedImage;
     setInput('');
+    setSelectedImage(null); // Clear image after sending
     const newUserMessage = { role: 'user' as const, content: userMessage };
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
@@ -867,6 +870,7 @@ export default function AnimaPage() {
           userProfile: userProfile,
           studentLevel: studentLevel,
           currentLevel: currentLevel,
+          imageUrl: imageUrlToSend || undefined,
         }),
       });
 
@@ -1064,15 +1068,14 @@ export default function AnimaPage() {
     }
   };
 
+  const handleGalleryClick = () => {
+    // Open file picker for gallery selection
+    fileInputRef.current?.click();
+  };
+
   const handleCameraClick = () => {
-    // Check if device has touchscreen (Mobile & Tablet/iPad)
-    if (navigator.maxTouchPoints > 0) {
-      // Touchscreen device: Open file picker directly
-      fileInputRef.current?.click();
-    } else {
-      // Non-touchscreen (Laptop/Desktop): Show QR modal
-      setShowVisionModal(true);
-    }
+    // Open camera directly with capture="environment"
+    cameraInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1102,7 +1105,6 @@ export default function AnimaPage() {
       
       // Use the uploaded image URL
       setSelectedImage(uploadData.fileUrl);
-      setShowVisionModal(false);
       setIsImageUploading(false);
       // Auto-switch to stage tab when image is selected
       setActiveMobileTab('stage');
@@ -1113,7 +1115,6 @@ export default function AnimaPage() {
       const reader = new FileReader();
       reader.onload = (event) => {
         setSelectedImage(event.target?.result as string);
-        setShowVisionModal(false);
         setActiveMobileTab('stage');
       };
       reader.readAsDataURL(file);
@@ -1125,6 +1126,9 @@ export default function AnimaPage() {
     setIsImageUploading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
     }
   };
 
@@ -1789,65 +1793,27 @@ export default function AnimaPage() {
   // Render Split-Screen Chat Interface
   return (
     <div className="flex w-full bg-white lg:h-screen lg:overflow-hidden">
-      {/* Hidden File Input for Touch Devices */}
+      {/* Hidden File Input for Gallery Upload (Paperclip) */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        id="galleryInput"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Hidden File Input for Camera Capture */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         id="cameraInput"
         className="hidden"
         onChange={handleFileChange}
       />
 
-      {/* Vision Modal - Desktop (Non-touchscreen only) */}
-      <AnimatePresence>
-        {showVisionModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowVisionModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6 text-center">
-                Huiswerk scannen
-              </h2>
-              <div className="bg-gray-100 rounded-2xl p-8 mb-6 flex items-center justify-center">
-                <div className="w-64 h-64 bg-gray-200 rounded-xl flex items-center justify-center">
-                  <Camera size={64} className="text-gray-400" />
-                </div>
-              </div>
-              <p className="text-gray-600 text-center mb-6">
-                Scan deze code met je telefoon om direct een foto van je boek te maken.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowVisionModal(false)}
-                  className="flex-1 bg-gray-100 text-gray-700 rounded-xl px-6 py-3 font-medium hover:bg-gray-200 transition-colors"
-                >
-                  Annuleren
-                </button>
-                <button
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                    setShowVisionModal(false);
-                  }}
-                  className="flex-1 bg-blue-500 text-white rounded-xl px-6 py-3 font-medium hover:bg-blue-600 transition-colors"
-                >
-                  Bestand kiezen
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Sidebar Overlay - Mobile & iPad */}
       {isSidebarOpen && (
         <div
@@ -2190,7 +2156,7 @@ export default function AnimaPage() {
                         <img
                           src={selectedImage}
                           alt="Selected"
-                          className="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-sm"
+                          className="w-20 h-20 object-cover rounded-xl border-2 border-gray-300 shadow-md bg-white p-1"
                         />
                         {isImageUploading && (
                           <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
@@ -2199,7 +2165,7 @@ export default function AnimaPage() {
                         )}
                         <button
                           onClick={handleRemoveImage}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors shadow-md z-10"
+                          className="absolute -top-2 -right-2 bg-gray-800 text-white rounded-full p-1 hover:bg-gray-700 transition-colors shadow-md z-10"
                         >
                           <X size={14} />
                         </button>
@@ -2213,9 +2179,16 @@ export default function AnimaPage() {
 
                 <div className="bg-white border border-gray-200 shadow-lg rounded-2xl p-3 md:p-4 flex gap-3 items-center">
                   <button
+                    onClick={handleGalleryClick}
+                    className="p-2 rounded-full transition-colors flex items-center justify-center flex-shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    title="Afbeelding uit galerij"
+                  >
+                    <Paperclip size={18} />
+                  </button>
+                  <button
                     onClick={handleCameraClick}
                     className="p-2 rounded-full transition-colors flex items-center justify-center flex-shrink-0 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                    title="Foto toevoegen"
+                    title="Foto maken"
                   >
                     <Camera size={18} />
                   </button>

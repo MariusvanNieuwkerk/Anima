@@ -1,34 +1,57 @@
-# 🐺 ANIMA MASTER BLUEPRINT V2.2 - Visie & Techniek
-
-## 1. De Anima Filosofie (De Visie)
-- **AI als Tutor, niet als Antwoordenmachine:** De AI geeft nooit direct het antwoord, maar begeleidt het kind via de Socratische methode (vragen stellen en hints geven).
-- **Veiligheid & Vertrouwen:** Anima is een veilige vriend met een groei-mindset. Fouten maken mag en wordt aangemoedigd.
-- **Visueel & Interactief:** Het 'Bord' is de plek waar abstracte concepten visueel worden gemaakt. De chat en het bord vormen één vloeiende leerervaring.
-- **Drie-eenheid:** Anima verbindt het Kind (leren), de Ouder (welzijn/groei) en de Leraar (data/inzicht) in één ecosysteem.
-
-## 2. Interface Architectuur (The Unified Layout)
-- **Sidebar (Vast op Desktop, Drawer op Mobiel):**
-    - Enige logo-locatie: Bovenaan de sidebar. Klik = Home/Chat reset.
-    - Navigatie: "Ouder Dashboard", "Leraren Dashboard", "Settings".
-- **Universele Header (Sticky):**
-    - Zichtbaar op alle pagina's. Bevat Hamburger (mobiel), Logo (mobiel) en de knop `← Terug naar de les` op dashboards.
-- **Content Area:** - Achtergrond: `bg-slate-50/50`. Dashboards gecentreerd via `max-w-5xl mx-auto`.
-    - Desktop Home: Exacte 50/50 split tussen Chat en Bord.
-
-## 3. Gebruikersrollen & Privacy
-- **Kind:** Toegang tot Chat/Bord. Geen toegang tot volwassen data.
-- **Ouder:** Inzicht in emoties, leerdoelen en globale groei. Geen letterlijke chat-logs om de privacy van het kind te borgen.
-- **Leraar:** "Leerling Monitor" met stoplicht-systeem (wie heeft nu hulp nodig?). Focus op klasbrede prestaties en knelpunten.
-
-## 4. Technische UX & Development Regels
-- **State Management:** Gebruik `activeView` en `activeTab` voor navigatie. Geen nieuwe routering (urls) introduceren.
-- **Componenten-Structuur:** Voorlopig alles centraal in `app/page.tsx` voor snelle iteratie.
-- **"Geen Rode Balken" Regel:** Gebruik strikte `try-catch` blokken bij API-aanroepen. Technische fouten mogen nooit de UI verstoren.
-- **Scroll-gedrag:** Desktop is `h-screen overflow-hidden` met onafhankelijk scrollbare kolommen. Mobiel/Tablet is volledig scrollbaar (`min-h-screen`).
-- **Taal:** De interface is 100% Nederlands.
-
-## 5. Roadmap naar V3 (De Backend)
-1. **Supabase Setup:** ✅ **VOLTOOID** - Database schema aangemaakt (`supabase/seed.sql`). Auth-schema nog in te richten voor Kind, Ouder en Leraar.
-2. **Database Koppeling:** ✅ **VOLTOOID** - Levels worden opgeslagen in `profiles` tabel. Chatberichten worden real-time opgeslagen in `chats` tabel. Bord-status (excalidraw/canvas) opslaan per sessie nog te implementeren.
-3. **Dashboards Activeren:** ✅ **VOLTOOID** - Ouder Dashboard toont nu real-time data uit de database (Focus-tijd, Sessies, Beheerste onderwerpen). Leraren Dashboard nog te activeren met klasdata.
-4. **Beveiliging:** Toegangsslot (Pincode/Auth) op de dashboard-ingangen.
+🐺 ANIMA MASTER BLUEPRINT V3.4 - The "Consensus" Edition
+1. De Anima Filosofie
+• AI als Tutor: Anima geeft geen antwoorden, maar begeleidt via de Socratische methode.
+• De "Escape Hatch": We bewaken de balans tussen uitdagen en frustreren.
+• Regel: "Als de gebruiker na 2 pogingen het antwoord nog niet weet, stop met vragen stellen en geef een concreet voorbeeld."
+• Instant Responsiviteit: We optimaliseren voor snelheid (Low Latency).
+• Multimodaal Begrip: Anima "ziet" huiswerk via Vision voor gerichte hulp.
+• Prikkelarm Design: Strikt monochroom palet ("Paper Look") om cognitieve belasting te minimaliseren.
+• Fail-Safe: Stil falen bij technische errors met relevante placeholders.
+2. Technische Architectuur & Data
+• State Management: SPA in app/page.tsx via activeView.
+• AI Core Strategy:
+• Model: Google Gemini 1.5 Flash.
+• Optimization: Context Caching voor veelvoorkomende topics (kostenbesparing).
+• Hosting: Vercel (Production).
+• Tech Debt Management:
+• // @ts-nocheck is toegestaan voor de Pilot (snelheid).
+• Type Debt Budget: Maximaal 5 bestanden mogen dit bevatten. Moet opgelost zijn vóór integratie van betalingen/auth.
+• Vision Pipeline: Client -> Supabase Storage -> Gemini Flash -> Antwoord.
+• Database: Supabase (chats tabel).
+3. UI & Design System
+• Container: bg-gray-50, rounded-3xl.
+• Camera Input: Preview thumbnail + Visuele laad-status.
+• Navigatie: Capsule switch & Sticky header.
+• Progressive Delight: Subtiele micro-feedback bij succes (geen dopamine-spam, wel bevestiging).
+4. Gerealiseerde Milestones
+• [x] Vercel Deployment: Live & HTTPS.
+• [x] Hotfix Types: Stabiele builds.
+• [x] Smart Tagging: Topic & Sentiment detectie.
+• [x] Live Dashboard: Real-time data.
+5. Roadmap naar V3
+Fase 1: Vision AI (PRIORITEIT)
+• [ ] Camera Interface: Upload/Maak foto vanaf iPad.
+• [ ] Supabase Storage: Bucket inrichten.
+• [ ] Brain Upgrade: Gemini 1.5 Flash koppelen (API Key naar Vercel).
+Fase 2: Authenticatie & Consent
+• [ ] Login & Onboarding: Ouder account + Expliciete toestemming ("Ik help denken, niet spieken").
+• [ ] Ouder-Tools:
+• Vision Kill Switch: Ouder kan de camera tijdelijk uitzetten (focus op lezen/denken).
+Fase 3: Scaling & Polish
+• [ ] Tech Debt Cleanup.
+• [ ] Long Term Memory.
+6. Groeistrategie
+• Fase 1 (Nu): Pilot (Rens).
+• Fase 2 (3 mnd): Kitchen Table Beta (5-10 vrienden).
+• Fase 3 (Launch): MVP met freemium model.
+• Merkpositionering: Publiceer het "Why Anima doesn't give answers" manifesto. Transparantie bouwt vertrouwen.
+7. Business Model & Retention
+• Conversie: Doel 4% naar betaald.
+• Abonnementen: Basis (Gratis), Tutor (€6,95), Family (€11,95).
+• De "Emotional ROI" Mail (Retention):
+• Wekelijkse mail naar ouders: "Deze week heeft Anima 3 keer geholpen met wiskunde. Rens vroeg zelf om hulp bij breuken."
+• Psychologie: Bevestigt autonomie van het kind = Ouder blijft betalen.
+8. Ethics, Privacy & Compliance 🛡️
+• Privacy (AVG/GDPR): Data opslag in EU. Recht op vergetelheid knop. Data minimalisatie.
+• Veiligheid: Strict Gemini Safety Filters & PII (Persoonsgegevens) filtering in de prompt (geen namen/adressen scannen).
+• Bias Mitigatie: System Prompts voor gender-neutraliteit en anti-hallucinatie.
