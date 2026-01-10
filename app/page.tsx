@@ -92,7 +92,7 @@ export default function AnimaPage() {
   const [hasNewContent, setHasNewContent] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showVisionModal, setShowVisionModal] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [isImageUploading, setIsImageUploading] = useState(false);
   const [boardContent, setBoardContent] = useState<{ url: string; type: 'image'; fallbackUrl?: string } | null>(null);
   const [imageLoading, setImageLoading] = useState<boolean>(false);
@@ -148,10 +148,8 @@ export default function AnimaPage() {
     if (lastMessage && lastMessage.role === 'assistant' && hasVisualContent(lastMessage.content)) {
       setActiveMobileTab('stage');
     }
-    if (selectedImage) {
-      setActiveMobileTab('stage');
-    }
-  }, [messages, selectedImage, activeView]);
+    // Don't auto-switch to stage when image is selected - stay in chat view (WhatsApp style)
+  }, [messages, activeView]);
 
   // Auto-switch to chat when user starts typing
   useEffect(() => {
@@ -820,12 +818,12 @@ export default function AnimaPage() {
   };
 
   const handleSend = async () => {
-    if ((!input.trim() && !selectedImage) || isLoading || !userId) return;
+    if ((!input.trim() && !currentImage) || isLoading || !userId) return;
 
-    const userMessage = input.trim() || (selectedImage ? 'Wat zie je op deze foto?' : '');
-    const imageUrlToSend = selectedImage;
+    const userMessage = input.trim() || (currentImage ? 'Wat zie je op deze foto?' : '');
+    const imageUrlToSend = currentImage;
     setInput('');
-    setSelectedImage(null); // Clear image after sending
+    setCurrentImage(null); // Clear image after sending
     const newUserMessage = { role: 'user' as const, content: userMessage };
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
@@ -1104,25 +1102,24 @@ export default function AnimaPage() {
       const uploadData = await uploadResponse.json();
       
       // Use the uploaded image URL
-      setSelectedImage(uploadData.fileUrl);
+      setCurrentImage(uploadData.fileUrl);
       setIsImageUploading(false);
-      // Auto-switch to stage tab when image is selected
-      setActiveMobileTab('stage');
+      // Stay in chat view - no auto-switch
     } catch (error) {
       console.error('Error uploading file:', error);
       setIsImageUploading(false);
       // Fallback: use local preview
       const reader = new FileReader();
       reader.onload = (event) => {
-        setSelectedImage(event.target?.result as string);
-        setActiveMobileTab('stage');
+        setCurrentImage(event.target?.result as string);
+        // Stay in chat view - no auto-switch
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleRemoveImage = () => {
-    setSelectedImage(null);
+    setCurrentImage(null);
     setIsImageUploading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -2142,9 +2139,9 @@ export default function AnimaPage() {
             {/* Input Area - Inside Chat Panel */}
             <div className="border-t border-gray-200 bg-white px-4 md:px-8 py-4">
               <div className="max-w-2xl mx-auto">
-                {/* Image Preview */}
+                {/* Image Preview - WhatsApp style (small thumbnail above input) */}
                 <AnimatePresence>
-                  {selectedImage && (
+                  {currentImage && (
                     <motion.div
                       initial={{ opacity: 0, y: -10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2154,25 +2151,22 @@ export default function AnimaPage() {
                     >
                       <div className="relative">
                         <img
-                          src={selectedImage}
+                          src={currentImage}
                           alt="Selected"
-                          className="w-20 h-20 object-cover rounded-xl border-2 border-gray-300 shadow-md bg-white p-1"
+                          className="h-[60px] w-auto object-cover rounded-lg border border-gray-200 shadow-sm"
                         />
                         {isImageUploading && (
                           <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
-                            <Loader2 size={20} className="text-white animate-spin" />
+                            <Loader2 size={16} className="text-white animate-spin" />
                           </div>
                         )}
                         <button
                           onClick={handleRemoveImage}
-                          className="absolute -top-2 -right-2 bg-gray-800 text-white rounded-full p-1 hover:bg-gray-700 transition-colors shadow-md z-10"
+                          className="absolute -top-1 -right-1 bg-gray-800 text-white rounded-full p-0.5 hover:bg-gray-700 transition-colors shadow-sm z-10"
                         >
-                          <X size={14} />
+                          <X size={12} />
                         </button>
                       </div>
-                      <span className="text-sm text-gray-600 flex-1">
-                        {isImageUploading ? 'Foto uploaden...' : 'Foto geselecteerd'}
-                      </span>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -2196,7 +2190,7 @@ export default function AnimaPage() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={selectedImage ? "Wat wil je weten over deze foto?" : "Stel een vraag..."}
+                    placeholder={currentImage ? "Wat wil je weten over deze foto?" : "Stel een vraag..."}
                     rows={1}
                     className="flex-1 resize-none border-0 focus:outline-none bg-transparent text-gray-900 placeholder-gray-400 text-[15px] md:text-[15px] leading-relaxed py-2"
                     style={{
@@ -2222,13 +2216,13 @@ export default function AnimaPage() {
                   </button>
                   <button
                     onClick={handleSend}
-                    disabled={(!input.trim() && !selectedImage) || isLoading}
+                    disabled={(!input.trim() && !currentImage) || isLoading}
                     className="bg-gray-900 text-white rounded-xl px-4 py-2 hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2 flex-shrink-0"
                   >
-                    {selectedImage ? (
+                    {currentImage ? (
                       <>
                         <Camera size={18} />
-                        <span className="hidden sm:inline">Vraag over foto</span>
+                        <span className="hidden sm:inline">Verzend</span>
                       </>
                     ) : (
                       <Send size={18} />
@@ -2252,30 +2246,6 @@ export default function AnimaPage() {
                 <ParentDashboard />
               ) : activeView === 'teacher-dashboard' ? (
                 <TeacherDashboard />
-              ) : selectedImage ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="w-full max-w-4xl"
-                >
-                  <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
-                    <img
-                      src={selectedImage}
-                      alt="Uploaded homework"
-                      className="w-full h-auto rounded-xl"
-                    />
-                    {/* Mobile/iPad: Button to go back to chat */}
-                    <div className="lg:hidden mt-4">
-                      <button
-                        onClick={() => setActiveMobileTab('chat')}
-                        className="w-full bg-blue-500 text-white rounded-2xl px-6 py-3 font-medium hover:bg-blue-600 transition-colors shadow-lg"
-                      >
-                        Vraag stellen
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
               ) : boardContent ? (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
