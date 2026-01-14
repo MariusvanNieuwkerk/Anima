@@ -9,6 +9,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
     }
 
+    // VISIBILITY (DEBUG): laat zien wat we binnenkrijgen (finale query wordt gelogd in utils/unsplash.ts)
+    console.log('Unsplash Query:', keyword);
+
     const url = await getUnsplashVisual(
       keyword,
       topic || keyword,
