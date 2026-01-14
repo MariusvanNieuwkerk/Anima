@@ -260,7 +260,9 @@ export default function Workspace() {
   const speakText = (text: string) => {
     if (!isVoiceOn) return;
     window.speechSynthesis.cancel();
-    const cleanText = text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '');
+    // Remove emojis using a simple approach that works in all environments (es5 compatible)
+    // Simple emoji removal: remove common emoji characters
+    const cleanText = text.replace(/[\u2600-\u27BF]/g, '').replace(/[\uD83C][\uDF00-\uDFFF]|[\uD83D][\uDC00-\uDE4F]|[\uD83D][\uDE80-\uDEFF]/g, '');
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = getTTSLangCode(language); 
     utterance.rate = 0.95;    
