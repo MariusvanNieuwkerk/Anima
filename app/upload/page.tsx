@@ -93,7 +93,8 @@ function UploadContent() {
         console.error('[UPLOAD] Storage upload failed:', storageError)
         // ROBUST ERROR HANDLING: Toon specifieke Storage error
         const errorMessage = storageError.message || 'Onbekende Storage error';
-        const errorCode = storageError.statusCode || 'N/A';
+        // EMERGENCY BUILD FIX: Type assertion voor statusCode
+        const errorCode = (storageError as any).statusCode || 'N/A';
         throw new Error(`Storage upload mislukt (${errorCode}): ${errorMessage}. Controleer of de 'uploads' bucket bestaat en anonieme uploads toestaat.`);
       }
       
@@ -139,7 +140,8 @@ function UploadContent() {
       const errorDetails = {
         message: err.message || 'Geen error message',
         name: err.name || 'Unknown',
-        code: err.code || err.statusCode || 'N/A',
+        // EMERGENCY BUILD FIX: Type assertion voor statusCode
+        code: err.code || (err as any).statusCode || 'N/A',
         details: err.details || '',
         stack: err.stack || 'No stack trace',
         fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
