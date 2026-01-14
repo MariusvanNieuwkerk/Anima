@@ -14,6 +14,7 @@ import { supabase } from '../utils/supabase'
 import { getUserProfile, type UserProfile } from '../utils/auth'
 import { compressImage } from '../utils/imageUtils'
 import { unlockAudioContext, unlockSpeechSynthesis } from '../utils/audioUnlock'
+import { getBestVoice, waitForVoices } from '../utils/voiceSelector'
 import QRCodeDisplay from './QRCodeDisplay'
 
 declare global {
@@ -335,24 +336,38 @@ export default function Workspace() {
     // Remove emojis using a simple approach that works in all environments (es5 compatible)
     // Simple emoji removal: remove common emoji characters
     const cleanText = text.replace(/[\u2600-\u27BF]/g, '').replace(/[\uD83C][\uDF00-\uDFFF]|[\uD83D][\uDC00-\uDE4F]|[\uD83D][\uDE80-\uDEFF]/g, '');
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = getTTSLangCode(language); 
-    utterance.rate = 0.95;    
-    utterance.pitch = 1.05;
-    // FORCE SPEAKER: Zet volume expliciet op 1.0 voor iOS
-    utterance.volume = 1.0;
     
-    // iOS AUDIO: Wacht tot speechSynthesis ready is
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-    }
+    const langCode = getTTSLangCode(language);
     
-    // iOS AUDIO AUTOPLAY: Probeer te spreken in een Promise om errors op te vangen
-    try {
-      window.speechSynthesis.speak(utterance);
-    } catch (err) {
-      console.error('[AUDIO] Failed to speak text:', err);
-    }
+    // TUNE AI VOICE: Wacht tot voices beschikbaar zijn en selecteer beste stem
+    waitForVoices(() => {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = langCode;
+      
+      // TUNE AI VOICE: Selecteer beste beschikbare stem (Google/Siri > default)
+      const bestVoice = getBestVoice(langCode);
+      if (bestVoice) {
+        utterance.voice = bestVoice;
+        console.log(`[VOICE] Using voice: ${bestVoice.name} for ${langCode}`);
+      }
+      
+      // TUNE AI VOICE: Natuurlijker spreektempo en pitch
+      utterance.rate = 0.95;    // Rustiger tempo (was al 0.95, blijft hetzelfde)
+      utterance.pitch = 1.0;    // Neutrale pitch (was 1.05, nu 1.0 voor natuurlijker geluid)
+      utterance.volume = 1.0;   // FORCE SPEAKER: Zet volume expliciet op 1.0 voor iOS
+      
+      // iOS AUDIO: Wacht tot speechSynthesis ready is
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      
+      // iOS AUDIO AUTOPLAY: Probeer te spreken in een try-catch om errors op te vangen
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.error('[AUDIO] Failed to speak text:', err);
+      }
+    });
   };
 
   // --- NIEUWE SESSIE HANDLER ---
