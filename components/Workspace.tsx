@@ -323,9 +323,40 @@ export default function Workspace() {
   }
   const handleAttachClick = () => { setIsAttachMenuOpen(!isAttachMenuOpen) }
 
-  const handleMicClick = () => {
-    if (isListening) { setIsListening(false); return; }
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { alert("Browser ondersteunt geen spraak."); return; }
+  const handleMicClick = async () => {
+    if (isListening) { 
+      setIsListening(false); 
+      return; 
+    }
+
+    // IOS MIC FIX: Check browser support
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) { 
+      alert("Browser ondersteunt geen spraakherkenning."); 
+      return; 
+    }
+
+    // PERMISSION HANDLING: Vraag om microfoon toestemming op iOS
+    try {
+      // Op iOS moet je eerst om toestemming vragen via getUserMedia
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Stop de stream direct (we gebruiken alleen SpeechRecognition)
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error: any) {
+      // PERMISSION HANDLING: Toon nette error message
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        alert("Geef toegang tot je microfoon in de iOS instellingen. Ga naar Instellingen > Safari > Microfoon en zet dit aan.");
+        setIsListening(false);
+        return;
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        alert("Geen microfoon gevonden. Controleer je apparaat instellingen.");
+        setIsListening(false);
+        return;
+      } else {
+        console.error("Microfoon error:", error);
+        // Probeer toch door te gaan (misschien werkt SpeechRecognition wel)
+      }
+    }
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = getTTSLangCode(language); 
@@ -337,8 +368,27 @@ export default function Workspace() {
       const transcript = event.results[0][0].transcript;
       if (transcript) setInput(prev => (prev ? prev + " " + transcript : transcript));
     };
-    recognition.onerror = (event: any) => { console.error("Speech error:", event.error); setIsListening(false); };
-    recognition.start();
+    recognition.onerror = (event: any) => { 
+      console.error("Speech error:", event.error);
+      setIsListening(false);
+      
+      // PERMISSION HANDLING: Toon specifieke error messages
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        alert("Microfoon toegang geweigerd. Geef toegang in de iOS instellingen.");
+      } else if (event.error === 'no-speech') {
+        // Stil falen bij geen spraak (geen alert)
+        console.log("Geen spraak gedetecteerd");
+      } else {
+        console.error("Speech recognition error:", event.error);
+      }
+    };
+    
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("Failed to start recognition:", error);
+      setIsListening(false);
+    }
   };
 
   const handleSmartScan = () => {
@@ -349,22 +399,43 @@ export default function Workspace() {
 
   const handleSimulateUpload = () => { console.log('Simulating upload from phone...'); setIsQRModalOpen(false) }
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files && files.length > 0) {
-        const fileReaders: Promise<string>[] = [];
-        Array.from(files).forEach(file => {
-            const reader = new FileReader();
-            const promise = new Promise<string>((resolve) => {
-                reader.onloadend = () => resolve(reader.result as string);
-            });
-            reader.readAsDataURL(file);
-            fileReaders.push(promise);
+    if (!files || files.length === 0) return;
+
+    // PERMISSION HANDLING: Check camera permissions op iOS (voor betere UX)
+    // Op iOS wordt de permission automatisch gevraagd bij file input, maar we kunnen
+    // proactief checken of er een camera beschikbaar is
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const hasCamera = devices.some(device => device.kind === 'videoinput');
+      if (!hasCamera) {
+        alert("Geen camera gevonden. Controleer je apparaat instellingen.");
+        return;
+      }
+    } catch (error) {
+      // Als enumerateDevices faalt, probeer door te gaan (file input vraagt zelf om permission)
+      console.log("Could not enumerate devices, continuing with file input");
+    }
+
+    // Lees de geselecteerde bestanden
+    const fileReaders: Promise<string>[] = [];
+    Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const promise = new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string);
         });
-        Promise.all(fileReaders).then(results => {
-            setSelectedImages(prev => [...prev, ...results]);
-            setIsAttachMenuOpen(false);
-        });
+        reader.readAsDataURL(file);
+        fileReaders.push(promise);
+    });
+    
+    try {
+      const results = await Promise.all(fileReaders);
+      setSelectedImages(prev => [...prev, ...results]);
+      setIsAttachMenuOpen(false);
+    } catch (error) {
+      console.error("Error reading files:", error);
+      alert("Er is een fout opgetreden bij het lezen van de foto's. Probeer het opnieuw.");
     }
   };
 
@@ -787,7 +858,16 @@ export default function Workspace() {
           )}
         </div>
       </div>
-      <input type="file" accept="image/*" multiple className="hidden" ref={cameraInputRef} onChange={handleFileSelect} />
+      {/* IOS CAMERA FIX: capture="environment" voor achtercamera op iOS */}
+      <input 
+        type="file" 
+        accept="image/*" 
+        capture="environment"
+        multiple 
+        className="hidden" 
+        ref={cameraInputRef} 
+        onChange={handleFileSelect} 
+      />
     </div>
   )
 }
