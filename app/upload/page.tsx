@@ -54,8 +54,9 @@ function UploadContent() {
     console.log('[UPLOAD] Starting upload process...', {
       sessionId: sessionId,
       previewLength: preview.length,
-      bucket: 'chat-images' // CHECK BUCKET NAME: We gebruiken 'chat-images'
+      bucket: 'uploads' // STANDARDIZED: We gebruiken 'uploads'
     })
+    console.log('[UPLOAD] Attempting upload to bucket: uploads')
     
     setIsUploading(true)
     setError(null)
@@ -80,9 +81,9 @@ function UploadContent() {
       console.log('[UPLOAD] Step 2: Generated file path:', filePath)
       
       // 3. Upload naar Supabase Storage
-      console.log('[UPLOAD] Step 3: Starting Storage upload to bucket "chat-images"...')
+      console.log('[UPLOAD] Step 3: Starting Storage upload to bucket "uploads"...')
       const { data: uploadData, error: storageError } = await supabase.storage
-        .from('chat-images')
+        .from('uploads')
         .upload(filePath, blob, {
           contentType: 'image/jpeg',
           upsert: false
@@ -93,7 +94,7 @@ function UploadContent() {
         // ROBUST ERROR HANDLING: Toon specifieke Storage error
         const errorMessage = storageError.message || 'Onbekende Storage error';
         const errorCode = storageError.statusCode || 'N/A';
-        throw new Error(`Storage upload mislukt (${errorCode}): ${errorMessage}. Controleer of de 'chat-images' bucket bestaat en anonieme uploads toestaat.`);
+        throw new Error(`Storage upload mislukt (${errorCode}): ${errorMessage}. Controleer of de 'uploads' bucket bestaat en anonieme uploads toestaat.`);
       }
       
       console.log('[UPLOAD] Storage upload successful:', uploadData)
@@ -101,7 +102,7 @@ function UploadContent() {
       // 4. Haal publieke URL op
       console.log('[UPLOAD] Step 4: Getting public URL...')
       const { data: urlData } = supabase.storage
-        .from('chat-images')
+        .from('uploads')
         .getPublicUrl(filePath);
       console.log('[UPLOAD] Public URL:', urlData.publicUrl)
       
