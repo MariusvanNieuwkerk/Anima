@@ -12,6 +12,7 @@ import ParentDashboard from './ParentDashboard'
 import TeacherDashboard from './TeacherDashboard'
 import { supabase } from '../utils/supabase'
 import { getUserProfile, type UserProfile } from '../utils/auth'
+import { compressImage } from '../utils/imageUtils'
 
 declare global {
   interface Window {
@@ -448,24 +449,24 @@ export default function Workspace() {
       }
     }
 
-    // Lees de geselecteerde bestanden
-    const fileReaders: Promise<string>[] = [];
-    Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        const promise = new Promise<string>((resolve) => {
-            reader.onloadend = () => resolve(reader.result as string);
-        });
-        reader.readAsDataURL(file);
-        fileReaders.push(promise);
-    });
-    
+    // IMAGE COMPRESSION: Comprimeer alle afbeeldingen voordat we ze toevoegen
     try {
-      const results = await Promise.all(fileReaders);
-      setSelectedImages(prev => [...prev, ...results]);
+      console.log(`[WORKSPACE] Comprimeren van ${files.length} afbeelding(en)...`);
+      const compressionPromises: Promise<string>[] = [];
+      
+      Array.from(files).forEach((file) => {
+        compressionPromises.push(compressImage(file));
+      });
+      
+      const compressedResults = await Promise.all(compressionPromises);
+      console.log(`[WORKSPACE] ${compressedResults.length} afbeelding(en) gecomprimeerd`);
+      
+      // Voeg de gecomprimeerde afbeeldingen toe aan de state
+      setSelectedImages(prev => [...prev, ...compressedResults]);
       setIsAttachMenuOpen(false);
     } catch (error) {
-      console.error("Error reading files:", error);
-      alert("Er is een fout opgetreden bij het lezen van de foto's. Probeer het opnieuw.");
+      console.error("[WORKSPACE] Error comprimeren van afbeeldingen:", error);
+      alert("Er is een fout opgetreden bij het verwerken van de foto's. Probeer het opnieuw.");
     }
   };
 
