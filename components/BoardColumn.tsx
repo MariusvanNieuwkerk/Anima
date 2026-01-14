@@ -26,7 +26,8 @@ export default function BoardColumn({ imageUrl, topic }: BoardColumnProps) {
 
   return (
     <div className="h-full flex flex-col bg-stone-100 border border-stone-200 rounded-3xl overflow-hidden shadow-sm" style={{ backgroundImage: 'radial-gradient(#ccc 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
-      <div className="flex-1 relative flex items-center justify-center p-6">
+      {/* IOS STICKY FIX: Zorg dat board ook sticky blijft */}
+      <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
         {/* PRIMAIR: Dynamische Unsplash API afbeelding */}
         {currentUrl && !isLoading && (
           <img 

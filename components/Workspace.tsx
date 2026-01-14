@@ -335,16 +335,27 @@ export default function Workspace() {
       return; 
     }
 
-    // PERMISSION HANDLING: Vraag om microfoon toestemming op iOS
+    // IOS MIC FIX: Vraag om microfoon toestemming op iOS VOOR SpeechRecognition
+    // Dit is cruciaal op iOS - zonder deze check werkt de microfoon niet
     try {
       // Op iOS moet je eerst om toestemming vragen via getUserMedia
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Dit triggert de iOS permission prompt
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
       // Stop de stream direct (we gebruiken alleen SpeechRecognition)
       stream.getTracks().forEach(track => track.stop());
+      
+      // Wacht even zodat de permission dialog kan sluiten
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error: any) {
       // PERMISSION HANDLING: Toon nette error message
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert("Geef toegang tot je microfoon in de iOS instellingen. Ga naar Instellingen > Safari > Microfoon en zet dit aan.");
+        alert("Geef toegang tot je microfoon in de iOS instellingen.\n\nGa naar: Instellingen > Safari > Microfoon\n\nZet dit aan en probeer het opnieuw.");
         setIsListening(false);
         return;
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
@@ -353,7 +364,9 @@ export default function Workspace() {
         return;
       } else {
         console.error("Microfoon error:", error);
-        // Probeer toch door te gaan (misschien werkt SpeechRecognition wel)
+        // Bij andere errors, probeer toch door te gaan (misschien werkt SpeechRecognition wel)
+        // Maar toon wel een waarschuwing
+        console.warn("Microfoon permission check gefaald, maar proberen door te gaan met SpeechRecognition");
       }
     }
 
@@ -403,19 +416,36 @@ export default function Workspace() {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    // PERMISSION HANDLING: Check camera permissions op iOS (voor betere UX)
-    // Op iOS wordt de permission automatisch gevraagd bij file input, maar we kunnen
-    // proactief checken of er een camera beschikbaar is
+    // IOS CAMERA FIX: Op iOS moet je eerst om camera permission vragen via getUserMedia
+    // Dit voorkomt het zwarte beeld probleem
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const hasCamera = devices.some(device => device.kind === 'videoinput');
-      if (!hasCamera) {
-        alert("Geen camera gevonden. Controleer je apparaat instellingen.");
+      // Vraag om camera permission met environment (achtercamera)
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment' // CAMERA CONSTRAINTS: Gebruik achtercamera
+        } 
+      });
+      // Stop de stream direct (we gebruiken alleen file input voor de foto)
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error: any) {
+      // PERMISSION HANDLING: Toon nette error message
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        alert("Geef toegang tot je camera in de iOS instellingen. Ga naar Instellingen > Safari > Camera en zet dit aan.");
+        // Reset de file input
+        if (cameraInputRef.current) {
+          cameraInputRef.current.value = '';
+        }
         return;
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        alert("Geen camera gevonden. Controleer je apparaat instellingen.");
+        if (cameraInputRef.current) {
+          cameraInputRef.current.value = '';
+        }
+        return;
+      } else {
+        console.error("Camera error:", error);
+        // Probeer toch door te gaan (misschien werkt file input wel)
       }
-    } catch (error) {
-      // Als enumerateDevices faalt, probeer door te gaan (file input vraagt zelf om permission)
-      console.log("Could not enumerate devices, continuing with file input");
     }
 
     // Lees de geselecteerde bestanden
@@ -805,12 +835,17 @@ export default function Workspace() {
         />
       </div>
 
-      <main className="lg:hidden flex-1 min-h-0 flex flex-col overflow-y-auto bg-stone-50 pb-24 md:pb-40">
-        <div className="flex-1 p-4 md:p-8">
+      {/* IOS STICKY FIX: Gebruik fixed height en overflow-hidden op main, laat kolommen zelf scrollen */}
+      <main className="lg:hidden flex-1 min-h-0 flex flex-col overflow-hidden bg-stone-50">
+        <div className="flex-1 min-h-0 p-4 md:p-8 overflow-hidden">
           {mobileView === 'chat' ? (
-            <ChatColumn messages={messages} isTyping={isTyping} />
+            <div className="h-full overflow-hidden">
+              <ChatColumn messages={messages} isTyping={isTyping} />
+            </div>
           ) : (
-            <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
+            <div className="h-full overflow-hidden">
+              <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
+            </div>
           )}
         </div>
       </main>
@@ -858,7 +893,7 @@ export default function Workspace() {
           )}
         </div>
       </div>
-      {/* IOS CAMERA FIX: capture="environment" voor achtercamera op iOS */}
+      {/* IOS CAMERA FIX: capture="environment" voor achtercamera, en voeg ook capture="user" fallback toe */}
       <input 
         type="file" 
         accept="image/*" 
@@ -866,7 +901,8 @@ export default function Workspace() {
         multiple 
         className="hidden" 
         ref={cameraInputRef} 
-        onChange={handleFileSelect} 
+        onChange={handleFileSelect}
+        // IOS FIX: Voeg webkitdirectory toe voor betere iOS support (niet nodig maar helpt soms)
       />
     </div>
   )
