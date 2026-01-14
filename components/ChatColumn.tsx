@@ -25,8 +25,8 @@ export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
 
   return (
     <div className="flex flex-col h-full bg-white rounded-3xl border border-stone-200 shadow-lg overflow-hidden">
-      {/* Messages Area - IOS STICKY FIX: Gebruik overflow-y-auto met -webkit-overflow-scrolling */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-stone-50/30" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {/* Messages Area - IOS POLISH: overflow-y-auto met -webkit-overflow-scrolling voor soepel scrollen */}
+      <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 bg-stone-50/30" style={{ WebkitOverflowScrolling: 'touch' }}>
         {messages.map((msg) => (
           <div 
             key={msg.id} 

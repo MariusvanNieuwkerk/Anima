@@ -762,7 +762,7 @@ export default function Workspace() {
   // ROLE-BASED RENDERING: Alleen juiste dashboard tonen op basis van role
   if (userRole === 'parent') {
     return (
-      <div className="h-screen w-screen flex flex-col bg-stone-50 overflow-hidden">
+      <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 overflow-hidden">
         <ParentDashboard 
           studentName={userProfile?.student_name || 'Rens'} 
           parentName={userProfile?.parent_name || 'Ouder'}
@@ -774,7 +774,7 @@ export default function Workspace() {
 
   if (userRole === 'teacher') {
     return (
-      <div className="h-screen w-screen flex flex-col bg-stone-50 overflow-hidden">
+      <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 overflow-hidden">
         <TeacherDashboard userProfile={userProfile} />
       </div>
     );
@@ -798,7 +798,7 @@ export default function Workspace() {
   );
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-stone-50" style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 fixed inset-0 overflow-hidden">
       <SideMenu 
         isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} 
         studentName={studentName} tutorMode={tutorMode} onTutorModeChange={setTutorMode}
@@ -824,8 +824,8 @@ export default function Workspace() {
         </div>
       </div></div><p className="text-sm text-stone-600 text-center leading-relaxed">Scan deze code met je telefoon om direct een foto van je huiswerk naar dit scherm te sturen.</p></div><div className="p-6 border-t border-stone-200"><button onClick={handleSimulateUpload} className="w-full py-3 px-4 bg-stone-800 text-white rounded-xl hover:bg-stone-900 transition-colors font-medium text-sm flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" />Simuleer Upload</button></div></div></div></>)}
 
-      {/* IOS STICKY FIX: Fixed header - blijft bovenaan */}
-      <div className="lg:hidden flex-shrink-0" style={{ position: 'sticky', top: 0, zIndex: 40, flexShrink: 0 }}>
+      {/* STICKY ZONES: Header - flex-none z-50 relative (mag niet krimpen) */}
+      <div className="lg:hidden flex-none z-50 relative">
         <MobileHeader 
           activeView={mobileView} 
           onViewChange={handleViewChange} 
@@ -836,17 +836,13 @@ export default function Workspace() {
         />
       </div>
 
-      {/* IOS STICKY FIX: Main content area - alleen deze scrollt, tussen header en input dock */}
-      <main className="lg:hidden flex-1 min-h-0 flex flex-col bg-stone-50" style={{ position: 'relative', overflow: 'hidden', flex: '1 1 0%', minHeight: 0 }}>
-        <div className="h-full p-4 md:p-8" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', padding: '1rem' }}>
+      {/* STICKY ZONES: Chat Area - flex-1 overflow-y-auto overscroll-contain (alleen dit stuk mag scrollen) */}
+      <main className="lg:hidden flex-1 overflow-y-auto overscroll-contain bg-stone-50" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="p-4 md:p-8">
           {mobileView === 'chat' ? (
-            <div className="h-full w-full" style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
-              <ChatColumn messages={messages} isTyping={isTyping} />
-            </div>
+            <ChatColumn messages={messages} isTyping={isTyping} />
           ) : (
-            <div className="h-full w-full" style={{ position: 'relative', height: '100%', overflow: 'hidden' }}>
-              <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
-            </div>
+            <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
           )}
         </div>
       </main>
@@ -881,7 +877,8 @@ export default function Workspace() {
         </div>
       </div>
 
-      <div className="lg:hidden fixed bottom-4 left-0 right-0 z-50 px-4 bg-stone-50">
+      {/* STICKY ZONES: Input Dock - flex-none z-50 pb-[env(safe-area-inset-bottom)] (blijft vast op de bodem) */}
+      <div className="lg:hidden flex-none z-50 px-4 bg-stone-50" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="relative">
            <ImagePreviews />
           <InputDock input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => setIsVoiceOn(!isVoiceOn)} hasAttachment={selectedImages.length > 0} />
