@@ -2,6 +2,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '@/utils/supabase';
 import { getUserProfile } from '@/utils/auth';
 
+// SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
+export const runtime = 'nodejs';
+// INCREASE TIMEOUT: Geef Gemini 60 seconden voor beeldanalyse
+export const maxDuration = 60;
+
 const languageMap: Record<string, string> = {
   nl: 'Nederlands', en: 'English', es: 'Español', de: 'Deutsch', fr: 'Français',
   it: 'Italiano', pt: 'Português', zh: 'Chinese', ar: 'Arabic', hi: 'Hindi'
@@ -133,20 +138,42 @@ export async function POST(req: Request) {
     const lastMessageContent = messages[messages.length - 1].content;
     let userParts: any[] = [{ text: lastMessageContent }];
     
+    // IMAGE PAYLOAD: Controleer en verwerk afbeeldingen correct
     if (images.length > 0) {
-        images.forEach((imgData: string) => {
+        console.log(`[CHAT API] Verwerken van ${images.length} afbeelding(en)...`);
+        images.forEach((imgData: string, index: number) => {
              const matches = imgData.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
              if (matches && matches.length === 3) {
-                 userParts.push({ inlineData: { data: matches[2], mimeType: matches[1] } });
+                 const mimeType = matches[1];
+                 const base64Data = matches[2];
+                 console.log(`[CHAT API] Afbeelding ${index + 1}: mimeType=${mimeType}, dataLength=${base64Data.length}`);
+                 userParts.push({ 
+                   inlineData: { 
+                     data: base64Data, 
+                     mimeType: mimeType 
+                   } 
+                 });
              } else {
+                 // Fallback: probeer base64 data te extraheren
                  const base64Data = imgData.includes(',') ? imgData.split(',')[1] : imgData;
-                 userParts.push({ inlineData: { data: base64Data, mimeType: "image/jpeg" } });
+                 console.log(`[CHAT API] Afbeelding ${index + 1}: Fallback naar JPEG, dataLength=${base64Data.length}`);
+                 userParts.push({ 
+                   inlineData: { 
+                     data: base64Data, 
+                     mimeType: "image/jpeg" 
+                   } 
+                 });
              }
         });
         userParts[0].text += `\n\n[Systeem: De gebruiker heeft ${images.length} afbeelding(en) geüpload. Kijk goed naar de inhoud.]`;
+        console.log(`[CHAT API] ${images.length} afbeelding(en) toegevoegd aan userParts`);
     }
 
+    // ROBUST LOGGING: Log de aanroep naar Gemini
+    console.log(`[CHAT API] Versturen naar Gemini: ${userParts.length} parts (${userParts.filter(p => p.text).length} text, ${userParts.filter(p => p.inlineData).length} images)`);
+    
     const result = await chat.sendMessageStream(userParts);
+    console.log(`[CHAT API] Gemini stream gestart`);
     
     // Test write naar insights tabel na succesvolle AI-respons
     console.log('DEBUG: Poging tot schrijven naar Supabase...');
@@ -184,8 +211,25 @@ export async function POST(req: Request) {
     });
 
     return new Response(stream);
-  } catch (error) {
-    console.error("Backend error:", error);
-    return new Response(JSON.stringify({ error: "Backend error" }), { status: 500 });
+  } catch (error: any) {
+    // ROBUST LOGGING: Log de exacte foutmelding
+    console.error("[CHAT API] Backend error:", {
+      message: error?.message || 'Unknown error',
+      name: error?.name || 'Error',
+      stack: error?.stack || 'No stack trace',
+      cause: error?.cause || 'No cause'
+    });
+    
+    // Stuur een duidelijke error response terug
+    return new Response(
+      JSON.stringify({ 
+        error: "Backend error",
+        details: error?.message || "Er is een fout opgetreden bij het verwerken van je bericht."
+      }), 
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
 }
