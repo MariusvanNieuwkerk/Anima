@@ -13,6 +13,7 @@ import TeacherDashboard from './TeacherDashboard'
 import { supabase } from '../utils/supabase'
 import { getUserProfile, type UserProfile } from '../utils/auth'
 import { compressImage } from '../utils/imageUtils'
+import QRCodeDisplay from './QRCodeDisplay'
 
 declare global {
   interface Window {
@@ -850,16 +851,64 @@ export default function Workspace() {
         onStartNewSession={handleStartNewSession}
         onLogout={handleLogout}
       />
-      {/* UPDATE DE QR MODAL: GEEF DE ECHTE URL MEE */}
-      {isQRModalOpen && (<><div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] transition-opacity" onClick={() => setIsQRModalOpen(false)} /><div className="fixed inset-0 z-[100] flex items-center justify-center p-4"><div className="bg-white rounded-3xl shadow-2xl border border-stone-300 max-w-md w-full max-h-[90vh] overflow-y-auto"><div className="flex items-center justify-between p-6 border-b border-stone-200"><h2 className="text-xl font-semibold text-stone-900">Koppel je telefoon</h2><button onClick={() => setIsQRModalOpen(false)} className="p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-50 rounded-xl transition-all duration-200"><X className="w-5 h-5" strokeWidth={2} /></button></div><div className="p-6 space-y-6"><div className="flex justify-center"><div className="w-64 h-64 bg-stone-100 border-2 border-stone-300 rounded-2xl flex items-center justify-center">
-        {/* WE GENEREREN HIER STRAKS EEN ECHTE QR, VOOR NU EEN URL */}
-        <div className="text-center p-4">
-             <QrCode className="w-20 h-20 text-stone-400 mx-auto mb-4" strokeWidth={1} />
-             <p className="font-mono text-xs text-stone-500 break-all">
-                {typeof window !== 'undefined' ? `${window.location.origin}/upload?s=${sessionId}` : ''}
-             </p>
-        </div>
-      </div></div><p className="text-sm text-stone-600 text-center leading-relaxed">Scan deze code met je telefoon om direct een foto van je huiswerk naar dit scherm te sturen.</p></div><div className="p-6 border-t border-stone-200"><button onClick={handleSimulateUpload} className="w-full py-3 px-4 bg-stone-800 text-white rounded-xl hover:bg-stone-900 transition-colors font-medium text-sm flex items-center justify-center gap-2"><UploadCloud className="w-4 h-4" />Simuleer Upload</button></div></div></div></>)}
+      {/* HIGH CONTRAST QR MODAL: Zwart op wit voor iPhone camera */}
+      {isQRModalOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] transition-opacity" 
+            onClick={() => setIsQRModalOpen(false)} 
+          />
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl shadow-2xl border border-stone-300 max-w-md w-full max-h-[90vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-stone-200">
+                <h2 className="text-xl font-semibold text-stone-900">Koppel je telefoon</h2>
+                <button 
+                  onClick={() => setIsQRModalOpen(false)} 
+                  className="p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-50 rounded-xl transition-all duration-200"
+                >
+                  <X className="w-5 h-5" strokeWidth={2} />
+                </button>
+              </div>
+              
+              {/* QR Code Section */}
+              <div className="p-6 space-y-6">
+                <div className="flex justify-center">
+                  {typeof window !== 'undefined' && sessionId ? (
+                    <QRCodeDisplay 
+                      url={`${window.location.origin}/upload?s=${sessionId}`}
+                      size={256}
+                    />
+                  ) : (
+                    <div className="w-64 h-64 bg-stone-100 border-2 border-stone-300 rounded-2xl flex items-center justify-center">
+                      <div className="text-stone-400 text-sm">Laden...</div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Korte instructie (geen lange URL tekst) */}
+                <p className="text-sm text-stone-600 text-center leading-relaxed font-medium">
+                  Scan mij met je camera
+                </p>
+                <p className="text-xs text-stone-500 text-center leading-relaxed">
+                  Open je camera app en richt op de code om een foto naar dit scherm te sturen.
+                </p>
+              </div>
+              
+              {/* Footer */}
+              <div className="p-6 border-t border-stone-200">
+                <button 
+                  onClick={handleSimulateUpload} 
+                  className="w-full py-3 px-4 bg-stone-800 text-white rounded-xl hover:bg-stone-900 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  Simuleer Upload
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* STICKY ZONES: Header - flex-none z-50 relative (mag niet krimpen) */}
       <div className="lg:hidden flex-none z-50 relative">
