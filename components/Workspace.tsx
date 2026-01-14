@@ -275,6 +275,30 @@ export default function Workspace() {
     };
   }, [sessionId]);
 
+  // --- iOS AUDIO UNLOCK: Unlock audio context bij eerste user interaction ---
+  useEffect(() => {
+    let unlocked = false;
+    
+    const unlockOnInteraction = () => {
+      if (!unlocked) {
+        unlockAudioContext();
+        unlocked = true;
+        // Remove listeners after first unlock
+        document.removeEventListener('touchstart', unlockOnInteraction);
+        document.removeEventListener('click', unlockOnInteraction);
+      }
+    };
+    
+    // Listen for touchstart (iOS) and click (fallback)
+    document.addEventListener('touchstart', unlockOnInteraction, { once: true, passive: true });
+    document.addEventListener('click', unlockOnInteraction, { once: true, passive: true });
+    
+    return () => {
+      document.removeEventListener('touchstart', unlockOnInteraction);
+      document.removeEventListener('click', unlockOnInteraction);
+    };
+  }, []);
+
   // --- HULPFUNCTIE: Opslaan in DB (gebruikt de huidige sessionId) ---
   const saveMessageToDb = async (role: 'user' | 'assistant', content: string, activeSessionId: string) => {
     if (!activeSessionId) return;
@@ -295,8 +319,35 @@ export default function Workspace() {
     }
   };
 
+  // iOS AUDIO CONTEXT UNLOCK: Maak een globale audio context voor iOS
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  const unlockAudioContext = () => {
+    try {
+      // Maak of resume AudioContext om iOS audio te unlocken
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContext();
+        }
+        const audioContext = audioContextRef.current;
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch(err => {
+            console.warn('[AUDIO] Failed to resume audio context:', err);
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[AUDIO] Failed to unlock audio context:', err);
+    }
+  };
+
   const speakText = (text: string) => {
     if (!isVoiceOn) return;
+    
+    // iOS AUDIO UNLOCK: Unlock audio context voordat we spreken
+    unlockAudioContext();
+    
     window.speechSynthesis.cancel();
     // Remove emojis using a simple approach that works in all environments (es5 compatible)
     // Simple emoji removal: remove common emoji characters
@@ -304,7 +355,15 @@ export default function Workspace() {
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = getTTSLangCode(language); 
     utterance.rate = 0.95;    
-    utterance.pitch = 1.05;   
+    utterance.pitch = 1.05;
+    // FORCE SPEAKER: Zet volume expliciet op 1.0 voor iOS
+    utterance.volume = 1.0;
+    
+    // iOS AUDIO: Wacht tot speechSynthesis ready is
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+    
     window.speechSynthesis.speak(utterance);
   };
 
@@ -946,7 +1005,7 @@ export default function Workspace() {
               <div className="max-w-4xl mx-auto w-full relative">
                 <ImagePreviews />
                 <InputDock 
-                    input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => setIsVoiceOn(!isVoiceOn)} 
+                    input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); setIsVoiceOn(!isVoiceOn); }} 
                     hasAttachment={selectedImages.length > 0} 
                 />
                 {isAttachMenuOpen && (
