@@ -510,7 +510,6 @@ export default function Workspace() {
     if (isMobile) { cameraInputRef.current?.click() } else { setIsQRModalOpen(true) }
   }
 
-  const handleSimulateUpload = () => { console.log('Simulating upload from phone...'); setIsQRModalOpen(false) }
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -967,17 +966,6 @@ export default function Workspace() {
                 <p className="text-xs text-stone-500 text-center leading-relaxed">
                   Open je camera app en richt op de code om een foto naar dit scherm te sturen.
                 </p>
-              </div>
-              
-              {/* Footer */}
-              <div className="p-6 border-t border-stone-200">
-                <button 
-                  onClick={handleSimulateUpload} 
-                  className="w-full py-3 px-4 bg-stone-800 text-white rounded-xl hover:bg-stone-900 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  Simuleer Upload
-                </button>
               </div>
             </div>
           </div>
