@@ -13,6 +13,7 @@ import TeacherDashboard from './TeacherDashboard'
 import { supabase } from '../utils/supabase'
 import { getUserProfile, type UserProfile } from '../utils/auth'
 import { compressImage } from '../utils/imageUtils'
+import { unlockAudioContext, unlockSpeechSynthesis } from '../utils/audioUnlock'
 import QRCodeDisplay from './QRCodeDisplay'
 
 declare global {
@@ -282,6 +283,7 @@ export default function Workspace() {
     const unlockOnInteraction = () => {
       if (!unlocked) {
         unlockAudioContext();
+        unlockSpeechSynthesis();
         unlocked = true;
         // Remove listeners after first unlock
         document.removeEventListener('touchstart', unlockOnInteraction);
@@ -319,34 +321,15 @@ export default function Workspace() {
     }
   };
 
-  // iOS AUDIO CONTEXT UNLOCK: Maak een globale audio context voor iOS
-  const audioContextRef = useRef<AudioContext | null>(null);
-  
-  const unlockAudioContext = () => {
-    try {
-      // Maak of resume AudioContext om iOS audio te unlocken
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContext) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-        }
-        const audioContext = audioContextRef.current;
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().catch(err => {
-            console.warn('[AUDIO] Failed to resume audio context:', err);
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('[AUDIO] Failed to unlock audio context:', err);
-    }
-  };
+  // iOS AUDIO UNLOCK: Gebruik de utility functie uit utils/audioUnlock.ts
+  // Deze wordt aangeroepen tijdens user interaction om iOS audio te activeren
 
   const speakText = (text: string) => {
     if (!isVoiceOn) return;
     
-    // iOS AUDIO UNLOCK: Unlock audio context voordat we spreken
+    // iOS AUDIO UNLOCK: Unlock audio context en SpeechSynthesis voordat we spreken
     unlockAudioContext();
+    unlockSpeechSynthesis();
     
     window.speechSynthesis.cancel();
     // Remove emojis using a simple approach that works in all environments (es5 compatible)
@@ -364,7 +347,12 @@ export default function Workspace() {
       window.speechSynthesis.cancel();
     }
     
-    window.speechSynthesis.speak(utterance);
+    // iOS AUDIO AUTOPLAY: Probeer te spreken in een Promise om errors op te vangen
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error('[AUDIO] Failed to speak text:', err);
+    }
   };
 
   // --- NIEUWE SESSIE HANDLER ---
@@ -604,6 +592,11 @@ export default function Workspace() {
 
   const handleSendMessage = async () => {
     if ((!input.trim() && selectedImages.length === 0) || !sessionId) return;
+
+    // iOS AUDIO UNLOCK: Activeer audio-engine DIRECT tijdens user interaction (klik)
+    // Dit moet gebeuren VOORDAT de API call start, zodat iOS de klik als toestemming ziet
+    unlockAudioContext();
+    unlockSpeechSynthesis();
 
     let displayContent = input;
     const imagesForMessage = selectedImages.length > 0 ? [...selectedImages] : undefined;
@@ -1005,7 +998,7 @@ export default function Workspace() {
               <div className="max-w-4xl mx-auto w-full relative">
                 <ImagePreviews />
                 <InputDock 
-                    input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); setIsVoiceOn(!isVoiceOn); }} 
+                    input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} 
                     hasAttachment={selectedImages.length > 0} 
                 />
                 {isAttachMenuOpen && (
@@ -1026,7 +1019,7 @@ export default function Workspace() {
       <div className="lg:hidden flex-none z-50 px-4 bg-stone-50" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="relative">
            <ImagePreviews />
-          <InputDock input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => setIsVoiceOn(!isVoiceOn)} hasAttachment={selectedImages.length > 0} />
+          <InputDock input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} hasAttachment={selectedImages.length > 0} />
           {isAttachMenuOpen && (
             <div ref={attachMenuMobileRef} className="absolute bottom-14 left-4 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">
               <button onClick={() => cameraInputRef.current?.click()} className="flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl text-left transition-colors text-stone-700 text-sm font-medium"><ImageIcon className="w-5 h-5 text-stone-600" strokeWidth={2} /><span>Foto of Bestand</span></button>
