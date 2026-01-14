@@ -4,7 +4,7 @@ import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { UploadCloud, Check, Camera, Loader2 } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
-import { compressImage } from '@/utils/imageUtils'
+import { compressImage, base64ToBlob } from '@/utils/imageUtils'
 
 function UploadContent() {
   const searchParams = useSearchParams()
@@ -65,18 +65,13 @@ function UploadContent() {
       // 1. Converteer base64 Data URL naar blob voor Storage upload
       console.log('[UPLOAD] Step 1: Converting base64 to blob...')
       // preview is al een base64 Data URL (data:image/jpeg;base64,...)
-      const base64Data = preview.split(',')[1]; // Haal base64 string eruit
-      const byteCharacters = atob(base64Data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'image/jpeg' });
+      const blob = base64ToBlob(preview, 'image/jpeg');
       console.log('[UPLOAD] Blob created, size:', blob.size, 'bytes')
       
-      // 2. Genereer unieke filename
-      const fileName = `${sessionId}-${Date.now()}.jpg`;
+      // 2. Genereer unieke filename (schone naam zonder rare tekens)
+      // VERIFY UPLOAD PATH: Gebruik alleen timestamp voor schone bestandsnaam
+      const timestamp = Date.now();
+      const fileName = `mobile-${timestamp}.jpg`;
       const filePath = `mobile-uploads/${fileName}`;
       console.log('[UPLOAD] Step 2: Generated file path:', filePath)
       

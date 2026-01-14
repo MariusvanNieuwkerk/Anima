@@ -7,6 +7,30 @@
  * - Output: Base64 string
  */
 
+/**
+ * Converteer Base64 Data URL naar Blob object
+ * @param base64 - Base64 Data URL (bijv. "data:image/jpeg;base64,...")
+ * @param mimeType - MIME type (default: 'image/jpeg')
+ * @returns Blob object geschikt voor Supabase Storage upload
+ */
+export function base64ToBlob(base64: string, mimeType: string = 'image/jpeg'): Blob {
+  // Haal de base64 string eruit (verwijder "data:image/jpeg;base64," prefix)
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+  
+  // Decodeer base64 naar binary string
+  const byteCharacters = atob(base64Data);
+  
+  // Converteer naar Uint8Array
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  
+  // Maak Blob object
+  return new Blob([byteArray], { type: mimeType });
+}
+
 export async function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
