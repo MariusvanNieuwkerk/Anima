@@ -20,16 +20,24 @@ function UploadContent() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0]
+      console.log('[UPLOAD] File selected:', {
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: selectedFile.type
+      })
+      
       setIsUploading(true) // Even laden tijdens resizen
       
       try {
+        console.log('[UPLOAD] Starting compression...')
         // Direct verkleinen bij selecteren met gedeelde utility
         const resizedBase64 = await compressImage(selectedFile)
+        console.log('[UPLOAD] Compression complete, preview size:', resizedBase64.length)
         setPreview(resizedBase64)
         setIsSuccess(false)
         setError(null)
       } catch (err) {
-        console.error(err)
+        console.error('[UPLOAD] Compression error:', err)
         setError("Kon foto niet verwerken.")
       } finally {
         setIsUploading(false)
@@ -38,13 +46,23 @@ function UploadContent() {
   }
 
   const handleUpload = async () => {
-    if (!preview || !sessionId) return
+    if (!preview || !sessionId) {
+      console.warn('[UPLOAD] Missing preview or sessionId:', { preview: !!preview, sessionId })
+      return
+    }
+    
+    console.log('[UPLOAD] Starting upload process...', {
+      sessionId: sessionId,
+      previewLength: preview.length,
+      bucket: 'chat-images' // CHECK BUCKET NAME: We gebruiken 'chat-images'
+    })
     
     setIsUploading(true)
     setError(null)
 
     try {
       // 1. Converteer base64 Data URL naar blob voor Storage upload
+      console.log('[UPLOAD] Step 1: Converting base64 to blob...')
       // preview is al een base64 Data URL (data:image/jpeg;base64,...)
       const base64Data = preview.split(',')[1]; // Haal base64 string eruit
       const byteCharacters = atob(base64Data);
@@ -54,13 +72,16 @@ function UploadContent() {
       }
       const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'image/jpeg' });
+      console.log('[UPLOAD] Blob created, size:', blob.size, 'bytes')
       
       // 2. Genereer unieke filename
       const fileName = `${sessionId}-${Date.now()}.jpg`;
       const filePath = `mobile-uploads/${fileName}`;
+      console.log('[UPLOAD] Step 2: Generated file path:', filePath)
       
       // 3. Upload naar Supabase Storage
-      const { error: storageError } = await supabase.storage
+      console.log('[UPLOAD] Step 3: Starting Storage upload to bucket "chat-images"...')
+      const { data: uploadData, error: storageError } = await supabase.storage
         .from('chat-images')
         .upload(filePath, blob, {
           contentType: 'image/jpeg',
@@ -68,19 +89,25 @@ function UploadContent() {
         });
       
       if (storageError) {
+        console.error('[UPLOAD] Storage upload failed:', storageError)
         // ROBUST ERROR HANDLING: Toon specifieke Storage error
         const errorMessage = storageError.message || 'Onbekende Storage error';
         const errorCode = storageError.statusCode || 'N/A';
         throw new Error(`Storage upload mislukt (${errorCode}): ${errorMessage}. Controleer of de 'chat-images' bucket bestaat en anonieme uploads toestaat.`);
       }
       
+      console.log('[UPLOAD] Storage upload successful:', uploadData)
+      
       // 4. Haal publieke URL op
+      console.log('[UPLOAD] Step 4: Getting public URL...')
       const { data: urlData } = supabase.storage
         .from('chat-images')
         .getPublicUrl(filePath);
+      console.log('[UPLOAD] Public URL:', urlData.publicUrl)
       
       // 5. Insert record in mobile_uploads met image_path
-      const { error: uploadError } = await supabase
+      console.log('[UPLOAD] Step 5: Inserting record into mobile_uploads table...')
+      const { data: insertData, error: uploadError } = await supabase
         .from('mobile_uploads')
         .insert({
           session_id: sessionId,
@@ -89,12 +116,16 @@ function UploadContent() {
         });
 
       if (uploadError) {
+        console.error('[UPLOAD] Database insert failed:', uploadError)
         // ROBUST ERROR HANDLING: Toon specifieke Database error
         const errorMessage = uploadError.message || 'Onbekende Database error';
         const errorCode = uploadError.code || 'N/A';
         const errorDetails = uploadError.details || '';
         throw new Error(`Database insert mislukt (${errorCode}): ${errorMessage}. ${errorDetails ? `Details: ${errorDetails}` : ''} Controleer of de 'mobile_uploads' tabel anonieme inserts toestaat.`);
       }
+
+      console.log('[UPLOAD] Database insert successful:', insertData)
+      console.log('[UPLOAD] ✅ Upload complete!')
 
       setIsUploading(false)
       setIsSuccess(true)
@@ -103,16 +134,23 @@ function UploadContent() {
       setTimeout(() => setIsSuccess(false), 3000)
       
     } catch (err: any) {
-      // ROBUST ERROR HANDLING: Toon de échte foutmelding voor betere debugging
-      console.error('[UPLOAD] Error:', err)
-      console.error('[UPLOAD] Error details:', {
-        message: err.message,
-        name: err.name,
-        stack: err.stack,
-        cause: err.cause
-      })
+      // DEBUG ERROR HANDLING: Alert met volledige error details
+      const errorDetails = {
+        message: err.message || 'Geen error message',
+        name: err.name || 'Unknown',
+        code: err.code || err.statusCode || 'N/A',
+        details: err.details || '',
+        stack: err.stack || 'No stack trace',
+        fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+      }
       
-      // Toon specifieke error message (of fallback naar generieke)
+      console.error('[UPLOAD] ❌ Upload failed with error:', err)
+      console.error('[UPLOAD] Error details:', errorDetails)
+      
+      // Browser alert met volledige error details
+      alert(`DEBUG ERROR:\n\nMessage: ${errorDetails.message}\n\nCode: ${errorDetails.code}\n\nDetails: ${errorDetails.details}\n\nFull Error: ${errorDetails.fullError}`)
+      
+      // Toon specifieke error message in UI (de rode tekst)
       const errorMessage = err.message || 'Upload mislukt. Probeer het opnieuw.'
       setError(errorMessage)
       setIsUploading(false)
