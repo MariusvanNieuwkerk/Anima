@@ -836,14 +836,15 @@ export default function Workspace() {
       </div>
 
       {/* IOS STICKY FIX: Gebruik fixed height en overflow-hidden op main, laat kolommen zelf scrollen */}
-      <main className="lg:hidden flex-1 min-h-0 flex flex-col overflow-hidden bg-stone-50">
-        <div className="flex-1 min-h-0 p-4 md:p-8 overflow-hidden">
+      {/* iOS Safari fix: gebruik position: relative en height: 100% voor betere sticky support */}
+      <main className="lg:hidden flex-1 min-h-0 flex flex-col overflow-hidden bg-stone-50" style={{ position: 'relative', height: '100%' }}>
+        <div className="flex-1 min-h-0 p-4 md:p-8 overflow-hidden" style={{ position: 'relative', height: '100%' }}>
           {mobileView === 'chat' ? (
-            <div className="h-full overflow-hidden">
+            <div className="h-full overflow-hidden" style={{ position: 'relative', height: '100%' }}>
               <ChatColumn messages={messages} isTyping={isTyping} />
             </div>
           ) : (
-            <div className="h-full overflow-hidden">
+            <div className="h-full overflow-hidden" style={{ position: 'relative', height: '100%' }}>
               <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
             </div>
           )}
