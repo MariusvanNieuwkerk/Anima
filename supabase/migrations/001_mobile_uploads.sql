@@ -19,11 +19,15 @@ CREATE INDEX IF NOT EXISTS idx_mobile_uploads_created_at ON mobile_uploads(creat
 ALTER TABLE mobile_uploads ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Iedereen kan INSERT (anoniem uploaden)
+-- BELANGRIJK: session_id is verplicht (NOT NULL constraint), maar gebruiker hoeft niet ingelogd te zijn
 CREATE POLICY "Allow anonymous inserts on mobile_uploads"
   ON mobile_uploads
   FOR INSERT
   TO anon, authenticated
-  WITH CHECK (true);
+  WITH CHECK (
+    session_id IS NOT NULL AND 
+    length(session_id) > 0
+  );
 
 -- Policy: Iedereen kan SELECT (om eigen uploads te lezen)
 CREATE POLICY "Allow select on mobile_uploads"

@@ -67,7 +67,12 @@ function UploadContent() {
           upsert: false
         });
       
-      if (storageError) throw storageError;
+      if (storageError) {
+        // ROBUST ERROR HANDLING: Toon specifieke Storage error
+        const errorMessage = storageError.message || 'Onbekende Storage error';
+        const errorCode = storageError.statusCode || 'N/A';
+        throw new Error(`Storage upload mislukt (${errorCode}): ${errorMessage}. Controleer of de 'chat-images' bucket bestaat en anonieme uploads toestaat.`);
+      }
       
       // 4. Haal publieke URL op
       const { data: urlData } = supabase.storage
@@ -83,7 +88,13 @@ function UploadContent() {
           image_url: urlData.publicUrl
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        // ROBUST ERROR HANDLING: Toon specifieke Database error
+        const errorMessage = uploadError.message || 'Onbekende Database error';
+        const errorCode = uploadError.code || 'N/A';
+        const errorDetails = uploadError.details || '';
+        throw new Error(`Database insert mislukt (${errorCode}): ${errorMessage}. ${errorDetails ? `Details: ${errorDetails}` : ''} Controleer of de 'mobile_uploads' tabel anonieme inserts toestaat.`);
+      }
 
       setIsUploading(false)
       setIsSuccess(true)
@@ -92,8 +103,18 @@ function UploadContent() {
       setTimeout(() => setIsSuccess(false), 3000)
       
     } catch (err: any) {
+      // ROBUST ERROR HANDLING: Toon de échte foutmelding voor betere debugging
       console.error('[UPLOAD] Error:', err)
-      setError('Upload mislukt. Probeer het opnieuw.')
+      console.error('[UPLOAD] Error details:', {
+        message: err.message,
+        name: err.name,
+        stack: err.stack,
+        cause: err.cause
+      })
+      
+      // Toon specifieke error message (of fallback naar generieke)
+      const errorMessage = err.message || 'Upload mislukt. Probeer het opnieuw.'
+      setError(errorMessage)
       setIsUploading(false)
     }
   }
