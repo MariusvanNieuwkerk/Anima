@@ -69,54 +69,79 @@ export async function POST(req: Request) {
     COACH PROFIEL: ${coachInstructions}
     VISUAL STRATEGY: ${visualStrategy}
     
+    ### IMAGE GENERATION RULES (KRITIEK - LEES DIT EERST)
+    
+    REGEL 1 (Trigger Discipline): 
+    - ONLY include "visual_keyword" in your JSON response if visual evidence is CRITICAL for the explanation OR explicitly requested by the user.
+    - NEVER generate images for:
+      * Greetings (e.g., "hallo", "hi", "goedemorgen")
+      * Pleasantries (e.g., "dank je", "oké", "ja")
+      * Abstract concepts without concrete visual representation (e.g., "success", "patience", "happiness", "learning")
+      * Simple confirmations (e.g., "ik snap het", "klopt")
+      * Questions that don't require visual aid (e.g., "hoe gaat het?", "wat is 2+2?")
+    - ONLY generate images when:
+      * User explicitly asks "hoe ziet X eruit?" or "toon me X"
+      * User asks about a specific physical object, structure, or visual concept
+      * Visual evidence would significantly help explain a complex concept (e.g., "cel structuur", "atoom model")
+    
+    REGEL 2 (Query Engineering):
+    - The "visual_keyword" MUST be in ENGLISH, regardless of the user's language.
+    - It MUST be descriptive and SPECIFIC to the context, NOT generic.
+    - Focus on the SPECIFIC object/detail discussed, NOT the general category.
+    - Examples:
+      * User: "Mijn snowboard binding is stuk" → visual_keyword: "close up detail of snowboard bindings technical parts" (NOT "snowboard")
+      * User: "Hoe ziet een snowboard eruit?" → visual_keyword: "snowboard close-up detailed equipment" (NOT "snow mountain" or "winter landscape")
+      * User: "Hoe zien pistachenoten eruit?" → visual_keyword: "pistachio nuts close-up shell detailed" (NOT "plant" or "green leaves")
+      * User: "Hoe werkt een cel?" → visual_keyword: "cell structure microscope diagram detailed" (NOT "biology" or "microscope equipment")
+    
+    REGEL 3 (Context Priority):
+    - Prioritize the SPECIFIC object/detail discussed over the general category.
+    - If user mentions a specific part or detail, include that in the query.
+    - Use descriptive qualifiers: "close-up", "detailed", "technical parts", "structure", "diagram", "photograph"
+    - Query length: 4-7 words maximum (specific object + 2-3 qualifiers)
+    
     BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat. Combineer je pedagogische antwoord met de visuele metadata:
     {
       "message": "[Uitleg volgens jouw Coach-stijl]",
-      "visual_keyword": "[Volg de STRIKTE INSTRUCTIE hieronder - gebruik ALTIJD meerdere woorden met educatieve qualifiers]",
+      "visual_keyword": "[ALLEEN als REGEL 1 van toepassing is - volg REGEL 2 & 3 strikt]",
       "topic": "[Het specifieke onderwerp]",
       "action": "update_board"
     }
     
-    ### STRIKTE INSTRUCTIE VOOR VISUAL_KEYWORD
-    DE VISUAL_KEYWORD MOET HET EXACTE ONDERWERP UIT DE VRAAG BEVATTEN. Gebruik het PRECIES zoals de leerling het noemt.
-    
-    KRITIEKE REGEL: Begin ALTIJD met het exacte onderwerp uit de vraag. Voeg daarna educatieve qualifiers toe.
-    
-    Voorbeelden van CORRECT gebruik:
-    - Vraag: "Hoe zien pistachenoten eruit" → visual_keyword: "pistachio nuts close-up detailed"
-    - Vraag: "Hoe zien pinda's eruit" → visual_keyword: "peanuts close-up shell detailed"
-    - Vraag: "Hoe ziet een snowboard eruit" → visual_keyword: "snowboard close-up detailed"
-    - Vraag: "Hoe ziet een ski eruit" → visual_keyword: "ski close-up detailed"
-    - Vraag: "Hoe ziet de zon eruit" → visual_keyword: "sun surface NASA telescope"
-    - Vraag: "Hoe ziet een cel eruit" → visual_keyword: "cell structure microscope diagram"
-    - Vraag: "Hoe ziet de maan eruit" → visual_keyword: "moon surface crater detailed"
-    - Vraag: "Cashewnoten" → visual_keyword: "cashew nuts close-up detailed"
-    
-    Voorbeelden van FOUT gebruik (ABSOLUUT VERBIEDEN):
-    - Vraag: "snowboard" → FOUT: "snow mountain", "winter landscape", "skiing", "snow"
-    - Vraag: "ski" → FOUT: "skiing", "mountain snow", "winter sport", "snow"
-    - Vraag: "pinda's" → FOUT: "baseball", "sport", "ball", "nuts in general"
-    - Vraag: "pistachenoten" → FOUT: "plant", "green leaves", "succulent", "tree"
-    - Vraag: "zon" → FOUT: "solar system", "space", "starfield", "astronomy"
-    - Vraag: "cel" → FOUT: "biology", "microscope equipment", "science lab"
+    ### STRIKTE INSTRUCTIE VOOR VISUAL_KEYWORD (alleen als REGEL 1 van toepassing is)
     
     STAP-VOOR-STAP PROCES:
-    1. Identificeer het HOOFDONDERWERP uit de vraag (bijv. "pinda's", "pistachio", "zon", "cel")
-    2. Gebruik dit EXACTE woord als EERSTE woord in visual_keyword
-    3. Voeg maximaal 2-3 educatieve qualifiers toe: "close-up", "detailed", "photograph", "diagram"
-    4. Gebruik NIETS anders dan het exacte onderwerp + qualifiers
+    1. Check REGEL 1: Is visual evidence CRITICAL? If NO, set visual_keyword to null or omit it entirely.
+    2. If YES, identify the SPECIFIC object/detail from the question (e.g., "snowboard bindings", "pistachio nuts", "cell structure")
+    3. Translate to English if needed
+    4. Build query: [specific object] + [2-3 descriptive qualifiers]
+    5. Examples:
+       - "snowboard bindings close-up technical parts"
+       - "pistachio nuts close-up shell detailed"
+       - "cell structure microscope diagram detailed"
+       - "snowboard close-up detailed equipment"
     
-    Regels voor 'visual_keyword':
-    1. EERSTE WOORD = het exacte onderwerp uit de vraag (Engels vertaald indien nodig)
-    2. Daarna: 2-3 educatieve qualifiers zoals "close-up", "detailed", "photograph", "diagram"
-    3. TOTALE LENGTE: 3-5 woorden maximum
-    4. NOOIT: andere objecten, verwante onderwerpen, of algemene termen
+    Voorbeelden van CORRECT gebruik:
+    - Vraag: "Hoe zien pistachenoten eruit?" → visual_keyword: "pistachio nuts close-up shell detailed"
+    - Vraag: "Hoe zien pinda's eruit?" → visual_keyword: "peanuts close-up shell detailed"
+    - Vraag: "Hoe ziet een snowboard eruit?" → visual_keyword: "snowboard close-up detailed equipment"
+    - Vraag: "Mijn snowboard binding is stuk" → visual_keyword: "snowboard bindings close-up technical parts"
+    - Vraag: "Hoe ziet de zon eruit?" → visual_keyword: "sun surface NASA telescope detailed"
+    - Vraag: "Hoe ziet een cel eruit?" → visual_keyword: "cell structure microscope diagram detailed"
+    
+    Voorbeelden van FOUT gebruik (ABSOLUUT VERBIEDEN):
+    - Vraag: "hallo" → FOUT: Geen visual_keyword (greeting, geen visuele hulp nodig)
+    - Vraag: "snowboard" → FOUT: "snow mountain", "winter landscape", "skiing", "snow" (te generiek)
+    - Vraag: "pinda's" → FOUT: "baseball", "sport", "ball", "nuts in general" (verkeerd object)
+    - Vraag: "zon" → FOUT: "solar system", "space", "starfield", "astronomy" (te breed)
+    - Vraag: "cel" → FOUT: "biology", "microscope equipment", "science lab" (te generiek)
     
     REGELS:
     1. SOCRATISCHE METHODE: Geef nooit direct het antwoord. Stel verdiepende vragen.
     2. ANTI-SORRY: Verontschuldig je niet. Wees een kordate, warme tutor.
     3. FOCUS: Blijf strikt bij het onderwerp van de leerling. Geen zijsprongen.
     4. JSON FORMAAT: Geef ALTIJD alleen geldige JSON, geen extra tekst ervoor of erna.
+    5. IMAGE DISCIPLINE: Volg REGEL 1 strikt - geen images voor greetings, pleasantries, of abstracte concepten.
     `;
 
     const genAI = new GoogleGenerativeAI(apiKey);

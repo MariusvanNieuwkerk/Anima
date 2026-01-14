@@ -705,15 +705,20 @@ export default function Workspace() {
         
         const parsed = JSON.parse(jsonText);
         
-        if (parsed.message && parsed.visual_keyword && parsed.action === 'update_board') {
+        // OPTIMIZE IMAGE GENERATION: Accepteer JSON met of zonder visual_keyword
+        // Als er geen visual_keyword is (bijv. bij "hallo"), toon alleen het bericht
+        if (parsed.message) {
           finalChatMessage = parsed.message;
-          visualKeyword = parsed.visual_keyword;
-          topic = parsed.topic || null;
           
-          // Update board ALLEEN als er GEEN afbeelding is geüpload
-          // Bij afbeelding upload blijft het board zoals het is (analyse gebeurt wel, maar geen visual update)
-          if (imagesToSend.length === 0 && visualKeyword) {
-            try {
+          // Alleen als visual_keyword aanwezig is EN action === 'update_board', haal image op
+          if (parsed.visual_keyword && parsed.action === 'update_board') {
+            visualKeyword = parsed.visual_keyword;
+            topic = parsed.topic || null;
+            
+            // Update board ALLEEN als er GEEN afbeelding is geüpload
+            // Bij afbeelding upload blijft het board zoals het is (analyse gebeurt wel, maar geen visual update)
+            if (imagesToSend.length === 0 && visualKeyword) {
+              try {
               const visualResponse = await fetch('/api/visual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -741,18 +746,20 @@ export default function Workspace() {
                 });
                 setHasNewImage(true);
               }
-            } catch (visualError) {
-              console.error('Error fetching visual:', visualError);
-              // Secundair: Stijlvolle tekst-placeholder (Blueprint V5.3)
-              setBoardData({
-                url: null,
-                topic: topic || visualKeyword
-              });
-              setHasNewImage(true);
+              } catch (visualError) {
+                console.error('Error fetching visual:', visualError);
+                // Secundair: Stijlvolle tekst-placeholder (Blueprint V5.3)
+                setBoardData({
+                  url: null,
+                  topic: topic || visualKeyword
+                });
+                setHasNewImage(true);
+              }
             }
           }
           
-          setMessages(prev => 
+          // Update message (met of zonder visual_keyword)
+          setMessages(prev =>
             prev.map(msg => msg.id === aiMessageId ? { ...msg, content: finalChatMessage } : msg)
           );
         }
