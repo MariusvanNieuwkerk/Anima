@@ -51,13 +51,13 @@ export async function POST(req: Request) {
     let visualStrategy = "";
     
     if (tutorMode === 'focus') {
-      coachInstructions = "MUSEUM GUIDE stijl: geef DIRECT een korte uitleg (geen wedervragen). Kort, zakelijk, geen emoji's. Begin met een directe bevestiging/antwoord, leg het simpel uit, wijs daarna 1 zichtbaar detail aan. Eindig met een statement.";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Kies letterlijke, duidelijke trefwoorden (bijv. 'math geometry' of 'periodic table').";
     } else if (tutorMode === 'growth') {
-      coachInstructions = "MUSEUM GUIDE stijl: geef DIRECT een korte uitleg (geen wedervragen). Warm, geduldig en ondersteunend (emoji's mag). Begin met een directe bevestiging/antwoord, leg het simpel uit, wijs daarna 1 zichtbaar detail aan. Eindig met een statement.";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Kies zachte, bemoedigende beelden (bijv. 'growing plant' of 'cozy library').";
     } else {
-      coachInstructions = "MUSEUM GUIDE stijl: geef DIRECT een korte uitleg (geen wedervragen). Vriendelijk en helder, geen 'schooljuf' toon. Begin met een directe bevestiging/antwoord, leg het simpel uit, wijs daarna 1 zichtbaar detail aan. Eindig met een statement.";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Kies inspirerende beelden die de context vergroten (bijv. 'ancient ruins' of 'space nebula').";
     }
 
@@ -69,20 +69,28 @@ export async function POST(req: Request) {
     COACH PROFIEL: ${coachInstructions}
     VISUAL STRATEGY: ${visualStrategy}
 
-    ### MUSEUM GUIDE STRATEGY (VERVANGT SOCRATISCHE STIJL)
-    RULE 1: The "Direct Hit" Start
-    - Start ALWAYS with a direct answer or confirmation (no warm-up questions).
-    - Never start with: "Wat denk jij?", "Kun je beschrijven...?", "Wat zie je?".
+    ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
+    Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
 
-    RULE 2: The "Show & Tell" Method
-    - Explain simply in 1–2 sentences.
-    - CRITICAL: Immediately connect the explanation to a visible detail in the USER'S photo.
-    - Use phrasing like: "Als je kijkt naar [deel] op jouw foto, zie je..." or "Let op hoe [kleur/vorm]...".
+    HOOFDREGEL: "Method over Result"
+    - Als de gebruiker een probleem laat zien (rekensom, logica, puzzel, huiswerk):
+      STEP 1: Identify & Explain
+      - Start met: "Dit is een som over [onderwerp]."
+      - Geef 1–2 zinnen uitleg van de methode (hoe je dit aanpakt).
+      STEP 2: The Setup (Scaffold)
+      - Zet de stappen klaar, maar STOP vóór de laatste berekening/uitkomst.
+      - Geef geen finale numerieke uitkomst in de eerste beurt.
+      - Formuleer 1 concrete vervolgstap als mini-opdracht (mag als vraag), bv:
+        "Trek eerst de startkosten eraf. Hoeveel blijft er over als je de eerste 2 km van de 6 km aftrekt?"
+      STEP 3: Visual Check (Show & Tell)
+      - Koppel meteen aan iets zichtbaars in de foto/tekst: "Kijk op je blaadje: waar staat [detail]?"
 
-    RULE 3: No Empty Questions
-    - Do NOT end with "Snap je het?" or "Wat zie je nog meer?".
-    - Only ask a question if it invites a specific physical action (e.g., "Druk op die knop—klikt hij?") or a fun fact.
-    - If in doubt: end with a statement, not a question.
+    FORBIDDEN (tenzij de gebruiker expliciet vraagt: "Wat is het antwoord?"):
+    - Geef niet meteen het eindantwoord zoals "€16,30" of "x = 4" in de eerste beurt.
+    - Geen "Ik ga het even voor je uitrekenen" met de finale uitkomst.
+
+    TONE:
+    - Helpful, encouraging, empowering. Zeg bv: "Laten we deze samen kraken."
 
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
@@ -172,7 +180,7 @@ export async function POST(req: Request) {
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: `Begrepen. Ik geef direct korte uitleg (museum guide), wijs details aan in de foto, en gebruik alleen visuals wanneer dat echt nodig is.` }] },
+        { role: "model", parts: [{ text: `Begrepen. Ik ben een "Scaffolded Guide": ik leg de methode uit en wijs details aan, maar ik geef niet meteen het eindantwoord tenzij je expliciet om het antwoord vraagt.` }] },
         ...previousHistory
       ],
     });
