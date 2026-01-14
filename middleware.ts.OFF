@@ -1,0 +1,118 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { getUserProfile, createFallbackProfile } from './utils/auth';
+import { supabase } from './utils/supabase';
+
+/**
+ * Middleware voor Role-Based Access Control
+ * 
+ * Beschermt routes op basis van user role:
+ * - /parent - Alleen voor role 'parent'  
+ * - /teacher - Alleen voor role 'teacher'
+ * - / (home) - Redirect naar juiste dashboard op basis van role
+ * 
+ * Logging: Print user info in terminal
+ */
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // EMERGENCY BYPASS: Skip ALL /api/auth routes (geen profile checks)
+  if (pathname.startsWith('/api/auth/')) {
+    console.log('[MIDDLEWARE] BYPASS: /api/auth route');
+    return NextResponse.next();
+  }
+
+  // Skip voor API routes (worden beschermd in de route zelf)
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  // Skip voor static files
+  if (pathname.startsWith('/_next/') || pathname.startsWith('/favicon')) {
+    return NextResponse.next();
+  }
+
+  try {
+    // MIDDLEWARE EXEMPTION: Skip login pagina VOLLEDIG (geen profile checks)
+    if (pathname === '/login') {
+      console.log('[MIDDLEWARE] EXEMPTION: /login route - volledig overgeslagen');
+      return NextResponse.next();
+    }
+
+    // SESSION CHECK: Check eerst of er een geldige sessie is
+    // Dit is sneller dan profile check en voorkomt onnodige redirects
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      console.log('[MIDDLEWARE] Geen sessie gevonden, redirect naar /login');
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // Als er een sessie is, laat altijd door (zelfs als profile check langzaam is)
+    // Profile check gebeurt in de component zelf
+    console.log('[MIDDLEWARE] ✅ Sessie gevonden, doorlaten');
+    
+    // Haal user profile op (optioneel, niet blokkerend)
+    const userProfile = await getUserProfile();
+    
+    const effectiveProfile = userProfile || createFallbackProfile();
+
+    // LOGGING: Print in terminal
+    console.log(`USER ${effectiveProfile.email} LOGGED IN WITH ROLE ${effectiveProfile.role}`);
+
+    // SECURE ROUTES: Check role-based access
+    if (pathname === '/parent' || pathname.startsWith('/parent/')) {
+      if (effectiveProfile.role !== 'parent') {
+        console.log(`BLOCKED: User ${effectiveProfile.email} (role: ${effectiveProfile.role}) tried to access /parent`);
+        // Redirect naar home (wordt automatisch naar juiste dashboard gestuurd)
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    }
+
+    if (pathname === '/teacher' || pathname.startsWith('/teacher/')) {
+      if (effectiveProfile.role !== 'teacher') {
+        console.log(`BLOCKED: User ${effectiveProfile.email} (role: ${effectiveProfile.role}) tried to access /teacher`);
+        // Redirect naar home (wordt automatisch naar juiste dashboard gestuurd)
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    }
+
+    // ROLE CHECK: Forceer studenten naar /student
+    if (effectiveProfile.role === 'student') {
+      if (pathname === '/') {
+        return NextResponse.redirect(new URL('/student', request.url));
+      }
+    }
+
+    // LOGIN REDIRECT: Als gebruiker naar home gaat, redirect naar juiste dashboard
+    if (pathname === '/') {
+      if (effectiveProfile.role === 'parent') {
+        return NextResponse.redirect(new URL('/parent', request.url));
+      } else if (effectiveProfile.role === 'teacher') {
+        return NextResponse.redirect(new URL('/teacher', request.url));
+      }
+      // Student wordt hierboven al afgehandeld
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('[MIDDLEWARE] Error:', error);
+    // Bij error, gebruik fallback en laat door
+    const fallback = createFallbackProfile();
+    console.log(`USER ${fallback.email} LOGGED IN WITH ROLE ${fallback.role} (FALLBACK)`);
+    return NextResponse.next();
+  }
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
+};
+
