@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { UploadCloud, Check, Camera, Loader2 } from 'lucide-react'
 import { supabase } from '@/utils/supabase'
+import { compressImage } from '@/utils/imageUtils'
 
 function UploadContent() {
   const searchParams = useSearchParams()
@@ -14,44 +15,7 @@ function UploadContent() {
   const [isSuccess, setIsSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // Deze functie verkleint de foto naar max 1024x1024
-  const resizeImage = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.src = URL.createObjectURL(file)
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-        
-        // Max afmetingen
-        const MAX_WIDTH = 1024
-        const MAX_HEIGHT = 1024
-        
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height
-            height = MAX_HEIGHT
-          }
-        }
-        
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx?.drawImage(img, 0, 0, width, height)
-        
-        // Converteer naar JPEG met 0.8 kwaliteit (veel lichter!)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
-        resolve(dataUrl)
-      }
-      img.onerror = (err) => reject(err)
-    })
-  }
+  // Gebruik de gedeelde compressImage utility
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -59,8 +23,8 @@ function UploadContent() {
       setIsUploading(true) // Even laden tijdens resizen
       
       try {
-        // Direct verkleinen bij selecteren
-        const resizedBase64 = await resizeImage(selectedFile)
+        // Direct verkleinen bij selecteren met gedeelde utility
+        const resizedBase64 = await compressImage(selectedFile)
         setPreview(resizedBase64)
         setIsSuccess(false)
         setError(null)
@@ -80,15 +44,46 @@ function UploadContent() {
     setError(null)
 
     try {
-      // We sturen nu de verkleinde 'preview' string (die is al Base64)
+      // 1. Converteer base64 Data URL naar blob voor Storage upload
+      // preview is al een base64 Data URL (data:image/jpeg;base64,...)
+      const base64Data = preview.split(',')[1]; // Haal base64 string eruit
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'image/jpeg' });
+      
+      // 2. Genereer unieke filename
+      const fileName = `${sessionId}-${Date.now()}.jpg`;
+      const filePath = `mobile-uploads/${fileName}`;
+      
+      // 3. Upload naar Supabase Storage
+      const { error: storageError } = await supabase.storage
+        .from('chat-images')
+        .upload(filePath, blob, {
+          contentType: 'image/jpeg',
+          upsert: false
+        });
+      
+      if (storageError) throw storageError;
+      
+      // 4. Haal publieke URL op
+      const { data: urlData } = supabase.storage
+        .from('chat-images')
+        .getPublicUrl(filePath);
+      
+      // 5. Insert record in mobile_uploads met image_path
       const { error: uploadError } = await supabase
         .from('mobile_uploads')
         .insert({
           session_id: sessionId,
-          image_data: preview
-        })
+          image_path: filePath,
+          image_url: urlData.publicUrl
+        });
 
-      if (uploadError) throw uploadError
+      if (uploadError) throw uploadError;
 
       setIsUploading(false)
       setIsSuccess(true)
@@ -97,7 +92,7 @@ function UploadContent() {
       setTimeout(() => setIsSuccess(false), 3000)
       
     } catch (err: any) {
-      console.error(err)
+      console.error('[UPLOAD] Error:', err)
       setError('Upload mislukt. Probeer het opnieuw.')
       setIsUploading(false)
     }

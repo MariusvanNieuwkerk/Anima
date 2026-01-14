@@ -199,43 +199,79 @@ export default function Workspace() {
     fetchMessages();
   }, [sessionId]);
 
-  // --- 4. ROBUUSTE MOBILE BRIDGE (Polling) 🌉 ---
-  // We checken elke 2 seconden of er nieuwe uploads zijn.
-  // Dit werkt betrouwbaarder voor grote bestanden dan Realtime.
+  // --- 4. REALTIME MOBILE BRIDGE (Supabase Realtime) 🌉 ---
+  // Luister naar INSERT events op mobile_uploads voor deze sessie
   useEffect(() => {
     if (!sessionId) return;
 
-    const checkUploads = async () => {
-      // 1. Haal uploads op voor deze sessie
-      const { data, error } = await supabase
-        .from('mobile_uploads')
-        .select('id, image_data')
-        .eq('session_id', sessionId);
+    console.log(`[WORKSPACE] Realtime listener gestart voor sessie: ${sessionId}`);
 
-      if (data && data.length > 0) {
-        console.log(`📥 ${data.length} nieuwe foto(s) ontvangen!`);
-        
-        // 2. Voeg toe aan de previews
-        const newImages = data.map(row => row.image_data);
-        setSelectedImages(prev => [...prev, ...newImages]);
-        
-        // 3. Sluit de QR modal als die open staat
-        setIsQRModalOpen(false);
-        
-        // 4. VERWIJDER ze uit de database (zodat we ze niet dubbel ophalen)
-        const idsToDelete = data.map(row => row.id);
-        await supabase
-          .from('mobile_uploads')
-          .delete()
-          .in('id', idsToDelete);
-      }
+    // Maak een Supabase Realtime channel
+    const channel = supabase
+      .channel(`mobile_uploads:${sessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'mobile_uploads',
+          filter: `session_id=eq.${sessionId}`
+        },
+        async (payload) => {
+          console.log('📥 Nieuwe mobile upload ontvangen:', payload.new);
+          
+          const newRecord = payload.new as { id: string; session_id: string; image_url?: string; image_path?: string; image_data?: string };
+          
+          try {
+            // 1. Haal de image URL op (prioriteit: image_url > image_data)
+            let imageBase64: string | null = null;
+            
+            if (newRecord.image_url) {
+              // Download van Storage URL
+              const response = await fetch(newRecord.image_url);
+              const blob = await response.blob();
+              const reader = new FileReader();
+              imageBase64 = await new Promise<string>((resolve, reject) => {
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } else if (newRecord.image_data) {
+              // Fallback naar oude base64 data
+              imageBase64 = newRecord.image_data;
+            }
+            
+            if (imageBase64) {
+              // 2. Voeg toe aan de previews
+              setSelectedImages(prev => [...prev, imageBase64!]);
+              
+              // 3. Sluit de QR modal als die open staat
+              setIsQRModalOpen(false);
+              
+              // 4. VERWIJDER het record uit de database (cleanup)
+              await supabase
+                .from('mobile_uploads')
+                .delete()
+                .eq('id', newRecord.id);
+              
+              console.log('✅ Mobile upload verwerkt en verwijderd');
+            } else {
+              console.warn('⚠️ Geen image data gevonden in upload record');
+            }
+          } catch (error) {
+            console.error('[WORKSPACE] Error processing mobile upload:', error);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log(`[WORKSPACE] Realtime subscription status: ${status}`);
+      });
+
+    // Cleanup: unsubscribe bij unmount
+    return () => {
+      console.log(`[WORKSPACE] Realtime listener gestopt voor sessie: ${sessionId}`);
+      supabase.removeChannel(channel);
     };
-
-    // Start de interval (elke 2 seconden)
-    const interval = setInterval(checkUploads, 2000);
-
-    // Opruimen als we weggaan
-    return () => clearInterval(interval);
   }, [sessionId]);
 
   // --- HULPFUNCTIE: Opslaan in DB (gebruikt de huidige sessionId) ---
