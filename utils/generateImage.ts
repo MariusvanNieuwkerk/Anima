@@ -4,7 +4,6 @@ export async function generateImage(prompt: string) {
   console.log("🎨 [Clean Engine] Generating:", prompt);
 
   if (!process.env.REPLICATE_API_TOKEN) {
-    console.error("❌ No Token found");
     throw new Error("Server configuration error: Missing API Token");
   }
 
@@ -13,7 +12,6 @@ export async function generateImage(prompt: string) {
   });
 
   try {
-    // De simpele, robuuste Flux Schnell aanroep
     const output = await replicate.run(
       "black-forest-labs/flux-schnell",
       {
@@ -26,15 +24,30 @@ export async function generateImage(prompt: string) {
       }
     );
 
-    // Flux geeft een array van URL's terug. Pak de eerste.
-    const imageUrl = Array.isArray(output) ? output[0] : String(output);
-    console.log("✅ [Clean Engine] Success:", imageUrl);
+    console.log("📦 Raw Output Type:", typeof output);
+    
+    // FIX: Unwrap Replicate Output (Handle Stream vs String)
+    let imageItem = Array.isArray(output) ? output[0] : output;
+    let imageUrl = "";
+
+    if (typeof imageItem === "string") {
+      imageUrl = imageItem;
+    } else if (imageItem && typeof imageItem === "object" && "url" in imageItem) {
+      // Handle file output objects
+      imageUrl = String((imageItem as any).url());
+    } else if (imageItem && typeof imageItem.toString === "function") {
+      imageUrl = imageItem.toString();
+    } else {
+      console.error("❌ Unknown output format:", imageItem);
+      throw new Error("Kon geen URL uit de output halen");
+    }
+
+    console.log("✅ Final URL:", imageUrl);
     
     return { url: imageUrl, alt: prompt };
 
   } catch (error: any) {
     console.error("❌ [Clean Engine] Error:", error.message);
-    // Gooi een simpele error die de frontend snapt
     throw new Error("Visual generation failed");
   }
 }

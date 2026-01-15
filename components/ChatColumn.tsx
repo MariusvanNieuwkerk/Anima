@@ -28,11 +28,11 @@ export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
       {/* Messages Area - IOS POLISH: overflow-y-auto met -webkit-overflow-scrolling voor soepel scrollen */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 bg-stone-50/30" style={{ WebkitOverflowScrolling: 'touch' }}>
         {messages.map((msg) => (
-          <div 
+          <div
             key={msg.id} 
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
           >
-            <div 
+            <div
               className={`max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
                 msg.role === 'user' 
                   ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 

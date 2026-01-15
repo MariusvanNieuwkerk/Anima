@@ -157,13 +157,13 @@ export default function ParentDashboard({ studentName = 'Rens', parentName = 'Ma
             <div className="mt-4 space-y-2">
               {hasRealData && focusData.length > 0 ? (
                 focusData.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                      <span className="text-stone-700">{item.name}</span>
-                    </div>
-                    <span className="text-stone-600 font-medium">{item.value} min</span>
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                    <span className="text-stone-700">{item.name}</span>
                   </div>
+                  <span className="text-stone-600 font-medium">{item.value} min</span>
+                </div>
                 ))
               ) : (
                 <div className="text-center py-8">
@@ -181,24 +181,24 @@ export default function ParentDashboard({ studentName = 'Rens', parentName = 'Ma
             <div className="space-y-4">
               {hasRealData && focusData.length > 0 ? (
                 focusData.map((item, index) => {
-                  const isLowFlow = item.flowScore < 50
-                  const isHighFlow = item.flowScore >= 70
+                const isLowFlow = item.flowScore < 50
+                const isHighFlow = item.flowScore >= 70
                   const barColor = isLowFlow ? 'bg-stone-300' : isHighFlow ? 'bg-stone-600' : 'bg-stone-400'
-                  
-                  return (
-                    <div key={index} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-stone-900">{item.name}</span>
-                        <span className="text-xs text-stone-500">{item.flowLabel}</span>
-                      </div>
-                      <div className="relative h-2 bg-stone-100 rounded-full overflow-hidden">
-                        <div
-                          className={`absolute top-0 left-0 h-full ${barColor} rounded-full transition-all duration-500`}
-                          style={{ width: `${item.flowScore}%` }}
-                        />
-                      </div>
+                
+                return (
+                  <div key={index} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-stone-900">{item.name}</span>
+                      <span className="text-xs text-stone-500">{item.flowLabel}</span>
                     </div>
-                  )
+                    <div className="relative h-2 bg-stone-100 rounded-full overflow-hidden">
+                      <div
+                        className={`absolute top-0 left-0 h-full ${barColor} rounded-full transition-all duration-500`}
+                        style={{ width: `${item.flowScore}%` }}
+                      />
+                    </div>
+                  </div>
+                )
                 })
               ) : (
                 <div className="text-center py-8">
