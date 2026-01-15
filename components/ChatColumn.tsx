@@ -1,50 +1,85 @@
+'use client'
+
 import { Fragment, useEffect, useRef } from 'react'
-import SvgDisplay from './SvgDisplay'
+import SvgDisplay from './SvgDisplay';
+import MapPane from './MapPane'
 
 type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
   images?: string[] // Base64 image data voor preview in chat
+  // Optional interactive map spec (OSM/Leaflet)
+  map?: any
 }
 
 interface ChatColumnProps {
   messages: Message[];
   isTyping: boolean;
+  renderImages?: boolean;
+  renderSvgs?: boolean;
+  renderMaps?: boolean;
 }
 
-export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
+export default function ChatColumn({ messages, isTyping, renderImages = true, renderSvgs = true, renderMaps = true }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const renderContent = (content: string) => {
-    if (!content) return null
+  const renderTextWithInlineSvgs = (text: string, keyPrefix: string) => {
+    const chunks = text.split(/(<svg[\s\S]*?<\/svg>)/gi)
+    return chunks.map((chunk, idx) => {
+      if (!chunk || !chunk.trim()) return null
 
-    // Split and keep the code blocks (capturing group)
-    const parts = content.split(/(```(?:xml|svg)[\s\S]*?```)/gi)
-
-    return parts.map((part, index) => {
-      const trimmed = part.trim()
-      if (!trimmed) return null
-
-      if (/^```(?:xml|svg)/i.test(trimmed)) {
-        const svgContent = trimmed
-          .replace(/^```(?:xml|svg)\s*/i, '')
-          .replace(/```$/i, '')
-          .trim()
-        return <SvgDisplay key={`svg-${index}`} content={svgContent} />
+      if (/^<svg[\s>]/i.test(chunk.trim())) {
+        if (!renderSvgs) return null
+        return <SvgDisplay key={`${keyPrefix}-svg-${idx}`} content={chunk} />
       }
 
-      // Render regular text as paragraphs; keep line breaks inside paragraphs.
-      const paragraphs = part.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean)
+      const paragraphs = chunk.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean)
       return (
-        <Fragment key={`text-${index}`}>
+        <Fragment key={`${keyPrefix}-text-${idx}`}>
           {paragraphs.map((p, pIndex) => (
-            <p key={`p-${index}-${pIndex}`} className="mb-2 last:mb-0 whitespace-pre-wrap">
+            <p key={`${keyPrefix}-p-${idx}-${pIndex}`} className="mb-2 last:mb-0 whitespace-pre-wrap">
               {p}
             </p>
           ))}
         </Fragment>
       )
+    })
+  }
+
+  const renderContent = (content?: string) => {
+    if (!content) return null
+
+    const parts = content.split(/(```[\s\S]*?```)/g)
+
+    return parts.map((part, index) => {
+      if (!part || !part.trim()) return null
+
+      const trimmed = part.trim()
+
+      // Code block
+      if (trimmed.startsWith('```') && trimmed.endsWith('```')) {
+        const inner = trimmed
+          .replace(/^```[^\n]*\n?/, '')
+          .replace(/```$/, '')
+          .trim()
+
+        // If it contains an SVG, render it
+        if (/<svg[\s>]/i.test(inner)) {
+          if (!renderSvgs) return null
+          return <SvgDisplay key={`svg-${index}`} content={inner} />
+        }
+
+        // Otherwise show the code (debug)
+        return (
+          <pre key={`code-${index}`} className="whitespace-pre-wrap text-xs bg-white/70 border border-stone-200 rounded-lg p-3 overflow-x-auto">
+            <code>{inner}</code>
+          </pre>
+        )
+      }
+
+      // Plain text (also supports inline <svg>...</svg> without code fences)
+      return <Fragment key={`text-${index}`}>{renderTextWithInlineSvgs(part, `seg-${index}`)}</Fragment>
     })
   }
 
@@ -72,7 +107,13 @@ export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
                   : 'bg-stone-100 text-stone-800 rounded-tl-none border border-transparent hover:scale-[1.02] transition-transform'
               }`}
             >
-              {msg.images && msg.images.length > 0 && (
+              {renderMaps && msg.map ? (
+                <div className={`${msg.content ? 'mb-3' : ''} h-[320px] max-w-[520px]`}>
+                  <MapPane spec={msg.map} />
+                </div>
+              ) : null}
+
+              {renderImages && msg.images && msg.images.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${msg.content ? 'mb-2' : ''}`}>
                   {msg.images.map((img, index) => (
                     <img 

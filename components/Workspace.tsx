@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Menu, Smartphone, Camera, Image as ImageIcon, QrCode, X, UploadCloud, Phone, Cloud, Monitor } from 'lucide-react'
 import ChatColumn from './ChatColumn'
-import BoardColumn from './BoardColumn'
 import InputDock from './InputDock'
 import MobileHeader from './MobileHeader'
+import VisualPane from './VisualPane'
 import SideMenu from './SideMenu'
 import SettingsModal from './SettingsModal'
 import ParentDashboard from './ParentDashboard'
@@ -34,6 +34,7 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   images?: string[] // Base64 image data voor preview in chat
+  map?: any
 }
 
 export default function Workspace() {
@@ -59,11 +60,11 @@ export default function Workspace() {
   
   // Chat & Board State
   const [messages, setMessages] = useState<Message[]>([]) 
-  const [boardData, setBoardData] = useState<{ url: string | null, topic: string | null }>({ url: null, topic: null })
+  // Board is intentionally removed: visuals are shown inline in chat for stability/simplicity.
   
   // Vision State
   const [selectedImages, setSelectedImages] = useState<string[]>([])
-  const [hasNewImage, setHasNewImage] = useState(false) 
+  const [hasNewImage, setHasNewImage] = useState(false)
 
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -402,8 +403,6 @@ export default function Workspace() {
     // 3. Reset UI
     const msg = language === 'en' ? 'New session! How can I help?' : 'Nieuwe sessie! Waar kan ik je mee helpen?';
     setMessages([{ id: Date.now().toString(), role: 'assistant', content: msg }]);
-    setBoardData({ url: null, topic: null });
-    setHasNewImage(false);
     setSelectedImages([]);
     
     // 4. Spreek
@@ -572,11 +571,10 @@ export default function Workspace() {
       setSelectedImages(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
+  // Board removed: keep chat as the single view (no view switching).
   const handleViewChange = (view: 'chat' | 'board') => {
-    setMobileView(view);
-    if (view === 'board') {
-        setHasNewImage(false);
-    }
+    setMobileView(view)
+    if (view === 'board') setHasNewImage(false)
   }
 
   // Client-side functie om Unsplash visual op te halen
@@ -637,13 +635,6 @@ export default function Workspace() {
     setSelectedImages([]);
     setIsTyping(true);
     
-    // Reset board data alleen bij tekstvragen (zonder afbeelding upload)
-    // Bij afbeelding upload blijft het board zoals het is (wordt alleen bijgewerkt als AI expliciet visual_keyword geeft)
-    if (imagesToSend.length === 0) {
-      setBoardData({ url: null, topic: null });
-      setHasNewImage(false);
-    }
-
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -660,137 +651,50 @@ export default function Workspace() {
       });
 
       if (!response.ok) throw new Error('API Error');
-      if (!response.body) return;
-
       const aiMessageId = (Date.now() + 1).toString();
       setMessages(prev => [...prev, { id: aiMessageId, role: 'assistant', content: '' }]);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let fullStreamedResponse = ''; 
+      // Server now returns strict JSON (validated)
+      const parsed = await response.json();
 
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        if (value) {
-          const chunk = decoder.decode(value);
-          fullStreamedResponse += chunk;
-          setMessages(prev => 
-            prev.map(msg => msg.id === aiMessageId ? { ...msg, content: fullStreamedResponse } : msg)
-          );
-        }
+      const finalChatMessage: string = typeof parsed?.message === 'string' ? parsed.message : 'Er ging iets mis bij het verwerken van het antwoord.'
+      const visualKeyword: string | null = typeof parsed?.visual_keyword === 'string' ? parsed.visual_keyword : null
+      const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
+      const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
+      const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
+
+      // Update message immediately (no more brittle regex/stream parsing)
+      setMessages(prev =>
+        prev.map(msg => msg.id === aiMessageId ? { ...msg, content: finalChatMessage, map: mapSpec } : msg)
+      );
+
+      // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
+      if (mobileView === 'chat' && (mapSpec || hasSvg)) {
+        setHasNewImage(true)
       }
 
-      let finalChatMessage = fullStreamedResponse;
-      let visualKeyword: string | null = null;
-      let topic: string | null = null;
+      // Optional: fetch a Flux visual (only when requested by the model contract)
+      if (!mapSpec && visualKeyword && action === 'update_board' && imagesToSend.length === 0) {
+        try {
+          const visualResponse = await fetch('/api/visual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: visualKeyword })
+          });
 
-      // Try to parse JSON response
-      try {
-        // Extract JSON from response (can be embedded in text with markdown code blocks)
-        let jsonText = fullStreamedResponse.trim();
-        
-        // Try to find JSON object in the response (handle markdown code blocks)
-        const jsonMatch = jsonText.match(/```json\s*(\{[\s\S]*?\})\s*```/) || jsonText.match(/```\s*(\{[\s\S]*?\})\s*```/) || jsonText.match(/(\{[\s\S]*?"action"\s*:\s*"update_board"[\s\S]*?\})/);
-        
-        if (jsonMatch && jsonMatch[1]) {
-          jsonText = jsonMatch[1].trim();
-        } else if (jsonText.startsWith('```json')) {
-          jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        } else if (jsonText.startsWith('```')) {
-          jsonText = jsonText.replace(/```\n?/g, '').trim();
-        }
-        
-        const parsed = JSON.parse(jsonText);
-        
-        // OPTIMIZE IMAGE GENERATION: Accepteer JSON met of zonder visual_keyword
-        // Als er geen visual_keyword is (bijv. bij "hallo"), toon alleen het bericht
-        if (parsed.message) {
-          finalChatMessage = parsed.message;
-          
-          // Alleen als visual_keyword aanwezig is EN action === 'update_board', haal image op
-          if (parsed.visual_keyword && parsed.action === 'update_board') {
-            visualKeyword = parsed.visual_keyword;
-            topic = parsed.topic || null;
-            
-            // Update board ALLEEN als er GEEN afbeelding is geüpload
-            // Bij afbeelding upload blijft het board zoals het is (analyse gebeurt wel, maar geen visual update)
-            if (imagesToSend.length === 0 && visualKeyword) {
-              try {
-              const visualResponse = await fetch('/api/visual', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: visualKeyword })
-              });
-              
-              if (visualResponse.ok) {
-                const { url } = await visualResponse.json();
-                // Update "Het Bord" met de nieuwe image URL (Primair: Flux/Replicate)
-                setBoardData({
-                  url: url,
-                  topic: topic || visualKeyword
-                });
-                setHasNewImage(true);
-              } else {
-                // Secundair: Stijlvolle tekst-placeholder (Blueprint V5.3)
-                setBoardData({
-                  url: null,
-                  topic: topic || visualKeyword
-                });
-                setHasNewImage(true);
-              }
-              } catch (visualError) {
-                console.error('Error fetching visual:', visualError);
-                // Secundair: Stijlvolle tekst-placeholder (Blueprint V5.3)
-                setBoardData({
-                  url: null,
-                  topic: topic || visualKeyword
-                });
-                setHasNewImage(true);
-              }
-            }
+          if (visualResponse.ok) {
+            const { url } = await visualResponse.json();
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === aiMessageId
+                  ? { ...msg, images: [url] }
+                  : msg
+              )
+            );
+            if (mobileView === 'chat') setHasNewImage(true)
           }
-          
-          // Update message (met of zonder visual_keyword)
-          setMessages(prev =>
-            prev.map(msg => msg.id === aiMessageId ? { ...msg, content: finalChatMessage } : msg)
-          );
-        }
-      } catch (e) {
-        // Not valid JSON, fallback to old [IMAGE: ...] tag parsing (legacy support)
-        const imageMatch = fullStreamedResponse.match(/\[IMAGE:\s*(.*?)\]/);
-        
-        if (imageMatch && imageMatch[1]) {
-          const extractedPrompt = imageMatch[1].trim();
-          // Legacy: probeer alsnog via Visual API, anders tekst-placeholder
-          // Maar ALLEEN als er GEEN afbeelding is geüpload
-          if (imagesToSend.length === 0) {
-            try {
-              const visualResponse = await fetch('/api/visual', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: extractedPrompt })
-              });
-              
-              if (visualResponse.ok) {
-                const { url } = await visualResponse.json();
-                setBoardData({ url: url, topic: extractedPrompt });
-              } else {
-                setBoardData({ url: null, topic: extractedPrompt });
-              }
-              setHasNewImage(true);
-            } catch (err) {
-              setBoardData({ url: null, topic: extractedPrompt });
-              setHasNewImage(true);
-            }
-          }
-          
-          finalChatMessage = fullStreamedResponse.replace(imageMatch[0], '').trim();
-          
-          setMessages(prev => 
-            prev.map(msg => msg.id === aiMessageId ? { ...msg, content: finalChatMessage } : msg)
-          );
+        } catch (visualError) {
+          console.error('Error fetching visual:', visualError);
         }
       }
 
@@ -963,35 +867,38 @@ export default function Workspace() {
       )}
 
       {/* STICKY ZONES: Header - flex-none z-50 relative (mag niet krimpen) */}
-      <div className="lg:hidden flex-none z-50 relative">
+      <div className="xl:hidden flex-none z-50 relative">
         <MobileHeader 
-          activeView={mobileView} 
-          onViewChange={handleViewChange} 
+          activeView={mobileView}
+          onViewChange={handleViewChange}
           animaName={animaName}
           onMenuClick={() => setIsMenuOpen(true)}
           tutorMode={tutorMode}
-          hasNewImage={hasNewImage} 
+          hasNewImage={hasNewImage}
         />
       </div>
 
       {/* STICKY ZONES: Chat Area - flex-1 overflow-y-auto overscroll-contain (alleen dit stuk mag scrollen) */}
-      <main className="lg:hidden flex-1 overflow-y-auto overscroll-contain bg-stone-50" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <div className="p-4 md:p-8">
+      <main className="xl:hidden flex-1 min-h-0 overflow-hidden bg-stone-50" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="h-full p-4 md:p-8 min-h-0">
           {mobileView === 'chat' ? (
-            <ChatColumn messages={messages} isTyping={isTyping} />
+            // Mobile/tablet: chat-only view (no visuals)
+            <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} />
           ) : (
-            <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
+            // Mobile/tablet: board-only view (visuals only)
+            <VisualPane messages={messages as any} />
           )}
         </div>
       </main>
 
-      <div className="hidden lg:flex lg:flex-1 lg:min-h-0 lg:overflow-hidden relative">
-        <div className="hidden lg:flex absolute top-4 left-4 z-40"><button onClick={() => setIsSettingsOpen(true)} className="p-3 bg-white/80 backdrop-blur-md border border-stone-200 shadow-sm rounded-full hover:bg-white hover:shadow-md transition-all text-stone-600 hover:text-stone-800"><Menu className="w-6 h-6" /></button></div>
+      <div className="hidden xl:flex xl:flex-1 xl:min-h-0 xl:overflow-hidden relative">
+        <div className="hidden xl:flex absolute top-4 left-4 z-40"><button onClick={() => setIsSettingsOpen(true)} className="p-3 bg-white/80 backdrop-blur-md border border-stone-200 shadow-sm rounded-full hover:bg-white hover:shadow-md transition-all text-stone-600 hover:text-stone-800"><Menu className="w-6 h-6" /></button></div>
         <div className="flex-1 flex flex-col min-w-0">
           <main className="flex-1 min-h-0 flex flex-col bg-stone-50 overflow-hidden">
-            <div className="flex-1 grid grid-cols-2 gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
-              <ChatColumn messages={messages} isTyping={isTyping} />
-              <BoardColumn imageUrl={boardData.url} topic={boardData.topic} />
+            <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
+              {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
+              <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} />
+              <VisualPane messages={messages as any} />
             </div>
 
             <div className="bg-gradient-to-t from-white/95 to-white/80 backdrop-blur-sm px-8 py-6">
@@ -1016,7 +923,7 @@ export default function Workspace() {
       </div>
 
       {/* STICKY ZONES: Input Dock - flex-none z-50 pb-[env(safe-area-inset-bottom)] (blijft vast op de bodem) */}
-      <div className="lg:hidden flex-none z-50 px-4 bg-stone-50" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+      <div className="xl:hidden flex-none z-50 px-4 bg-stone-50" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="relative">
            <ImagePreviews />
           <InputDock input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} hasAttachment={selectedImages.length > 0} />

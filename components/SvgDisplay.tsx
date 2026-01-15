@@ -1,90 +1,49 @@
 'use client'
 
-import { useMemo } from 'react'
-
-type SvgDisplayProps = {
-  content: string
-}
-
-function sanitizeSvg(raw: string): string | null {
+function extractAndSanitizeSvg(input: string): string | null {
+  const raw = (input || '').trim()
   if (!raw) return null
 
-  // Basic fast-path cleanup
-  const trimmed = raw.trim()
-  if (!trimmed) return null
+  // Only render actual <svg>...</svg> to avoid arbitrary HTML injection.
+  const svgMatch = raw.match(/<svg[\s\S]*?<\/svg>/i)
+  if (!svgMatch) return null
 
-  // Extract <svg>...</svg> if wrapped with other text
-  const svgMatch = trimmed.match(/<svg[\s\S]*?<\/svg>/i)
-  const svgCandidate = (svgMatch ? svgMatch[0] : trimmed).trim()
-  if (!/^<svg[\s>]/i.test(svgCandidate)) return null
+  let svg = svgMatch[0]
 
-  // DOM-based sanitize (client-only)
-  if (typeof window === 'undefined') return svgCandidate
+  // Very small safety net: strip scripts/foreignObject and inline event handlers.
+  svg = svg.replace(/<script[\s\S]*?<\/script>/gi, '')
+  svg = svg.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+  svg = svg.replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
 
-  try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(svgCandidate, 'image/svg+xml')
-    const svgEl = doc.querySelector('svg')
-    if (!svgEl) return null
+  // Make rendering robust: ensure the SVG has usable sizing.
+  // - Force a responsive style so it doesn't collapse to 0px
+  // - Add preserveAspectRatio
+  // - Add a viewBox fallback if missing (common model mistake)
+  svg = svg.replace(/<svg\b([^>]*)>/i, (_m, attrs: string) => {
+    const hasViewBox = /\bviewBox\s*=\s*(['"])/i.test(attrs)
+    const hasPreserve = /\bpreserveAspectRatio\s*=\s*(['"])/i.test(attrs)
+    const hasStyle = /\bstyle\s*=\s*(['"])/i.test(attrs)
 
-    // Remove potentially dangerous elements
-    const blockedSelectors = [
-      'script',
-      'foreignObject',
-      'iframe',
-      'object',
-      'embed',
-    ]
-    doc.querySelectorAll(blockedSelectors.join(',')).forEach((n) => n.remove())
+    const extraAttrs: string[] = []
+    if (!hasViewBox) extraAttrs.push("viewBox='0 0 300 300'")
+    if (!hasPreserve) extraAttrs.push("preserveAspectRatio='xMidYMid meet'")
+    if (!hasStyle) extraAttrs.push("style='width:100%;height:auto;display:block;'")
 
-    // Remove event handler attrs + javascript: URLs
-    const walker = doc.createTreeWalker(svgEl, NodeFilter.SHOW_ELEMENT)
-    let node: Node | null = walker.currentNode
-    while (node) {
-      const el = node as Element
-      ;[...el.attributes].forEach((attr) => {
-        const name = attr.name.toLowerCase()
-        const value = (attr.value || '').trim().toLowerCase()
+    return `<svg${attrs}${extraAttrs.length ? ' ' + extraAttrs.join(' ') : ''}>`
+  })
 
-        if (name.startsWith('on')) {
-          el.removeAttribute(attr.name)
-          return
-        }
-
-        if ((name === 'href' || name === 'xlink:href') && value.startsWith('javascript:')) {
-          el.removeAttribute(attr.name)
-          return
-        }
-
-        // Block HTML injection via data: URLs (keep images if needed later, but safe-mode default)
-        if ((name === 'href' || name === 'xlink:href') && value.startsWith('data:text/html')) {
-          el.removeAttribute(attr.name)
-          return
-        }
-      })
-
-      node = walker.nextNode()
-    }
-
-    const serializer = new XMLSerializer()
-    return serializer.serializeToString(svgEl)
-  } catch {
-    // If parsing fails, refuse to render
-    return null
-  }
+  return svg.trim()
 }
 
-export default function SvgDisplay({ content }: SvgDisplayProps) {
-  const safeSvg = useMemo(() => sanitizeSvg(content), [content])
+export default function SvgDisplay({ content }: { content: string }) {
+  if (!content) return null
 
+  const safeSvg = extractAndSanitizeSvg(content)
   if (!safeSvg) return null
 
   return (
-    <div className="bg-white p-4 rounded-xl border shadow-sm mx-auto max-w-full">
-      <div
-        className="flex justify-center max-w-full [&_svg]:max-w-full [&_svg]:h-auto"
-        dangerouslySetInnerHTML={{ __html: safeSvg }}
-      />
+    <div className="w-full min-h-[100px] max-h-[420px] overflow-auto p-4 bg-white border rounded-md">
+      <div dangerouslySetInnerHTML={{ __html: safeSvg }} />
     </div>
   )
 }

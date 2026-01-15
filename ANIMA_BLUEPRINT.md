@@ -1,14 +1,16 @@
-📘 ANIMA BLUEPRINT V8.0 (Revision: Generative Core & Credits)
-Datum: 15 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Robuustheid boven Perfectie"
+📘 ANIMA BLUEPRINT V9.0 (Hybrid Edition)
+Datum: 15 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
 1. De Anima Filosofie
 * AI als Tutor: Anima is een 'Scaffolded Guide'. Ze biedt eerst heldere uitleg en structuur (de methode), maar houdt het eindantwoord achter totdat het kind het zelf heeft geprobeerd.
 * De "Escape Hatch" (Genuanceerd): We bewaken de balans tussen uitdagen en frustreren. De ontsnapping is strategisch (regel, analogie of voorzetje), afhankelijk van de gekozen modus.
 * De "Anti-Sorry" Regel: Een tutor verontschuldigt zich niet voor kort of streng zijn; de intentie is pedagogisch.
 * Instant Responsiviteit: We optimaliseren voor snelheid (Low Latency). De gebruiker mag nooit wachten op een "denkende" server zonder feedback.
 * Multimodaal Begrip: Anima "ziet" huiswerk via Vision voor gerichte hulp, mits toegestaan door de ouder.
-* Visuele Strategie (The Generative Engine): We gebruiken geen stock-foto's meer, maar genereren alles on-the-fly voor maximale relevantie.
-    * Single Source (Flux): Alles verloopt via black-forest-labs/flux-schnell op Replicate.
-    * Visual Recipes: De AI (Gemini) fungeert als "Director". Ze vertaalt abstracte termen (zoals "Pythagoras") naar exacte geometrische bouwinstructies ("Teken een driehoek met vierkanten aan de zijden") om wiskundige accuratesse te garanderen.
+Visuele Strategie (The Hybrid Engine): We gebruiken een tweesporenbeleid:
+1. Flux (De Kwast): Voor alle contextuele verbeelding. Denk aan: Geschiedenis (Romeinen), Aardrijkskunde (Vulkanen), Biologie (Dieren/Cellen), Kunst, Literatuur (Scenes uit boeken) en Sfeer. Alles wat rijk en beeldend moet zijn.
+2. SVG (De Passer): Voor exacte logica. Wiskunde, Meetkunde, Grafieken en Breuken. Alles wat meetbaar en schematisch moet zijn.
+* Universal Geometry Engine: De AI gebruikt "Vertex Counting Logica" (tel punten -> bereken coördinaten -> sluit vorm met 'Z') om te garanderen dat wiskundige figuren altijd gesloten en kloppend zijn.
+* Visual Mandate: Bij vragen over meetkunde is visuele output verplicht. De AI mag geen uitleg geven zonder bijbehorende SVG-constructie.
 * Prikkelarm & Warm Design: Geen kille tech-look, maar een tactiel "Paper Feel". Kleurenpalet verschuift van Slate (koud) naar Stone (warm).
 * Fail-Safe: Stil falen bij technische errors. Geen agressieve rode foutmeldingen. "Graceful Degradation" is de norm.
 * Global & Inclusive: Anima is er voor iedereen. Universele leeftijd-instelling en meertaligheid zitten in de kern.
@@ -19,8 +21,8 @@ A. Het Kind ("De Maker")
 * Interface: Direct op het bureau (Chat + Board). Geen administratie.
 * Navigatie: Master Menu (linksboven) vervangt vaste zijbalken. Toont Profiel, Coach-keuze en Settings.
 * Input: Smart Paperclip met "Mobile Bridge".
-    * Mobiel/Tablet: Opent direct de native camera.
-    * Desktop: Toont QR-code om telefoon tijdelijk als scanner te gebruiken.
+* Mobiel/Tablet: Opent direct de native camera.
+* Desktop: Toont QR-code om telefoon tijdelijk als scanner te gebruiken.
 * Rechten: Read/Write Chat.
 B. De Ouder ("De Toeschouwer")
 * Doel: Geruststelling & Emotional ROI.
@@ -40,14 +42,15 @@ C. De Leraar ("De Regisseur")
 * State Management: SPA in app/page.tsx met strikte scheiding via activeView en Role-based returns.
 * AI Core Strategy:
     * Model: Google Gemini 2.0 Flash (Text & Vision).
-    * System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd. De visual instruction bevat de "Visual Recipe" logica.
-* Visual Engine (The Clean Engine):
-    * Provider: Replicate API (flux-schnell).
-    * Output Handling: Robuuste "Unwrap Logic" om Replicate's ReadableStream om te zetten naar bruikbare URL's.
+    * System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd. Bevat de "Universal Geometry Engine" instructies.
+* Visual Engine (The Hybrid Engine):
+    * Art/Context: Replicate API (flux-schnell) voor artistieke beelden.
+    * Math/Logic: Directe SVG Code Injection in de chat stream (geen API call nodig).
+    * Output Handling: Robuuste "Unwrap Logic" voor Flux en "Smart Detect" regex voor SVG blokken.
     * Database Lock: Geen database logging tijdens generatie om crashes te voorkomen.
 * Economy & Credits:
     * Supabase Table: profiles (kolommen: image_credits, is_premium).
-    * Logic: Check credits vóór API call. Indien Credits > 0 of Premium = True -> Genereer & Trek 1 credit af. Anders -> Block.
+    * Logic: Check credits vóór Flux API call. SVG-generatie is gratis (kost geen credits).
 * Vision Pipeline: Client (Mobile/QR) -> Supabase Storage -> Gemini Vision -> Antwoord.
 * Hosting: Vercel (Production).
 * Database: Supabase.
@@ -77,14 +80,14 @@ C. Ouderlijke Controle: "Diep-Lees Modus"
 * [x] Vercel Deployment: Live & HTTPS.
 * [x] Brain Upgrade: Gemini 2.0 Flash integratie met Vision.
 * [x] Camera Interface: Mobile Bridge (QR logic) volledig werkend via Supabase.
-* [x] Visual Engine: Clean Slate (Flux Only). Unsplash verwijderd. "Visual Recipe" prompting actief.
+* [x] Visual Engine: Hybrid Engine (Flux + SVG) operationeel. "Universal Geometry Engine" actief.
 * [x] Credit System: Database structuur (profiles) en API-checks operationeel.
 * [x] UI Warmth Upgrade: Stone-theme & Dot Grid.
 * [x] UX Upgrade: Master Menu & Smart Age Slider Design.
 7. Roadmap naar V3
 Fase 1: UX & Core Experience (AFGEROND)
 * [x] Chat Logic, Vision, Board & Settings.
-* [x] Betrouwbare Image Generation (Flux).
+* [x] Betrouwbare Image Generation (Flux & SVG).
 Fase 2: Authenticatie & Rollen (NU)
 * [ ] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
 * [ ] UI voor Credit Display (Teller in beeld).
@@ -100,7 +103,7 @@ Fase 3: Scaling & Polish
 9. Business Model & Retention
 * Conversie: Doel 4% naar betaald.
 * Credits (The Fuel):
-    * Gratis: 5 Credits per maand (Flux afbeeldingen).
+    * Gratis: 5 Credits per maand (Flux afbeeldingen). SVG is altijd gratis.
     * Premium: Onbeperkt (Fair use).
 * Abonnementen: Basis (Gratis), Tutor (€6,95), Family (€11,95).
 * De "Emotional ROI" Mail: Wekelijkse mail naar ouders over autonomie en voortgang.

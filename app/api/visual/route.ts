@@ -6,9 +6,18 @@ import { getUserProfile } from '@/utils/auth';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { prompt } = body;
+    let { prompt } = body;
     
     if (!prompt) return NextResponse.json({ error: 'No prompt' }, { status: 400 });
+
+    // BLUEPRINT V9: Allow prompts wrapped as [GENERATE_IMAGE: ...]
+    // This keeps the chat contract stable (visual_keyword) while still supporting the tag style.
+    if (typeof prompt === 'string') {
+      const m = prompt.match(/^\s*\[GENERATE_IMAGE:\s*([\s\S]*?)\]\s*$/i);
+      if (m && m[1]) {
+        prompt = m[1].trim();
+      }
+    }
 
     // --- CREDITS (Freemium) ---
     // Best-effort user lookup: if we can't find a user session server-side, allow free generation.

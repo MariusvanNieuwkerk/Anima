@@ -44,7 +44,7 @@ export default function MobileHeader({ activeView, onViewChange, animaName, onMe
           <CreditBalance />
         </div>
       </div>
-      {/* Bottom row: CapsuleSwitch */}
+      {/* Bottom row: CapsuleSwitch (mobile/tablet) */}
       <div className="px-5 pb-4 md:px-8 md:pb-6 flex justify-center">
         <CapsuleSwitch activeView={activeView} onViewChange={onViewChange} hasNewImage={hasNewImage} />
       </div>

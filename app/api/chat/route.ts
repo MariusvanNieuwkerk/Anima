@@ -71,12 +71,73 @@ export async function POST(req: Request) {
     ### VISUAL STRATEGY: FLUX VS SVG (HYBRID ENGINE)
     - Als de vraag gaat over **Wiskunde / Meetkunde / Breuken / Grafieken / Functies / Diagrammen**:
       - Gebruik GEEN image tool en zet ` + "`visual_keyword`" + ` op null/weglaten.
-      - Genereer in je ` + "`message`" + ` een **strakke, kloppende SVG** in een markdown code block met taalhint:
-        \`\`\`xml\n<svg ...>...</svg>\n\`\`\`
-      - SVG EISEN: altijd ` + "`viewBox`" + `, hoge contrastlijnen, duidelijke kleuren, en **labels mogen als <text>**.
+      - Je output moet een SVG zijn (voor rendering in de app).
+      - CRITICAL (JSON-SAFE): Plaats de SVG ALTIJD in een markdown code block met xml fences in de ` + "`message`" + ` string:
+        ` + "```xml" + `
+        <svg>...</svg>
+        ` + "```" + `
+      - CRITICAL (JSON-SAFE): Gebruik in de SVG ALTIJD **single quotes** voor alle attribute values (dus geen dubbele quotes) om JSON-escaping fouten te voorkomen.
       - BELANGRIJK VOOR JSON: nieuwe regels in strings moeten als ` + "`\\n`" + ` (escaped) zodat het geldige JSON blijft.
+      - VISUAL MANDATE (meetkunde): Bij vragen over vormen/hoeken/oppervlakte is visuele output VERPLICHT. Je mag geen uitleg geven zonder bijbehorende SVG-constructie in ` + "`message`" + `.
+      - In je ` + "`message`" + `: geef een KORTE uitleg (1–4 zinnen) + daarna de SVG (in de xml code block).
+      - De SVG MOET het gevraagde diagram precies voorstellen (geen generieke vorm als er een specifieke situatie gevraagd wordt).
+
+    ### UNIVERSAL GEOMETRY ENGINE ###
+
+    Wanneer je gevraagd wordt om een geometrische vorm te tekenen, volg je dit strikte algoritme:
+
+    **STEP 0: PARSE THE REQUEST (Diagram Spec)**
+    - Bepaal eerst WAT er precies getekend moet worden:
+      - Welke vorm(en)? (bijv. driehoek, trapezium, zeshoek, assenstelsel + grafiek)
+      - Welke eigenschappen? (bijv. rechte hoek, gelijke zijden, parallelle lijnen, symmetrie)
+      - Welke labels? (punten A,B,C; lengtes; hoekgrootte; aslabels)
+    - Als er details ontbreken, maak redelijke aannames en label ze duidelijk in het diagram (maar blijf simpel).
+
+    **STEP 1: IDENTIFY VERTICES (The "Points" Rule)**
+    - Identificeer de vorm en het vereiste aantal hoekpunten (vertices).
+      - Triangle = 3 vertices.
+      - Rectangle/Square = 4 vertices.
+      - Pentagon = 5 vertices.
+    - CRITICAL: Je MAG een vorm niet tekenen met minder vertices dan vereist.
+      (Bijv. een driehoek MOET 3 sets coördinaten hebben.)
+
+    **STEP 2: PLOT COORDINATES**
+    - Bereken de (x,y) coördinaten voor ALLE vertices eerst (mentaal) vóór je de SVG schrijft.
+    - Centreer de vorm in een ` + "`viewBox=\"0 0 300 300\"`" + `.
+    - Houd marge (bijv. 20–30px) zodat lijnen/labels niet worden afgesneden.
+
+    **STEP 3: GENERATE SVG WITH "CLOSE PATH"**
+    - Gebruik een ` + "`<path>`" + `.
+    - Start met ` + "`M`" + ` (Move naar punt 1).
+    - Gebruik ` + "`L`" + ` (Line naar punt 2, punt 3, ...).
+    - MANDATORY: Eindig elke polygon path met ` + "`Z`" + `.
+      - ` + "`Z`" + ` betekent: Close Path (terug naar het begin).
+      - Zonder ` + "`Z`" + ` is de vorm BROKEN/OPEN.
+
+    **STEP 4: ADD CONSTRAINT MARKERS (If requested)**
+    - Rechte hoek: teken een klein hoekvierkantje met ` + "`<path>`" + ` of ` + "`<rect>`" + ` bij de 90°-hoek.
+    - Gelijke zijden: teken 1 of 2 kleine streepjes (ticks) op de betreffende zijden.
+    - Parallelle lijnen: markeer met pijltjes/gelijke marker.
+
+    **Example Logic (Internal Monologue)**
+    - "User wants a triangle. That means 3 points: A, B, C. I will draw A->B, B->C, C->A. I will use 'Z' to close it."
+
+    **QUALITY CHECK (BEFORE YOU OUTPUT)**
+    - Check: klopt het aantal vertices?
+    - Check: is de vorm gesloten (Z aanwezig)?
+    - Check: zie je de gevraagde eigenschap? (bijv. rechte hoek-marker als het een rechthoekige driehoek is)
+    - Check: staan labels niet bovenop lijnen? (gebruik kleine offset)
+
+    **OUTPUT**
+    - Plaats de SVG ALTIJD in een ` + "```xml" + ` code block in de ` + "`message`" + ` (JSON-safe).
+    - Include labels (A, B, C) near the vertices using ` + "`<text>`" + ` elements.
+
     - Als de vraag gaat over **Geschiedenis / Natuur / Biologie / Kunst / Context & sfeer**:
-      - Gebruik ` + "`generate_educational_image`" + ` (Flux) via ` + "`visual_keyword`" + ` zoals eerder.
+      - Gebruik Flux ALLEEN als de gebruiker expliciet om een plaatje vraagt (bv. "maak een afbeelding", "teken", "laat zien", "kun je een plaatje maken?").
+      - Zet anders ` + "`visual_keyword`" + ` op null/weglaten (dus géén automatische visuals).
+      - Gebruik Flux NOOIT voor dingen die tekst/labels nodig hebben (kaarten, grafieken met aslabels, woorden in beeld). Kies dan SVG (als het schematisch is) of leg het uit met woorden.
+      - Format: zet ` + "`visual_keyword`" + ` op een string die start met:
+        [GENERATE_IMAGE: <your detailed English prompt>]
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
     Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
@@ -120,10 +181,33 @@ export async function POST(req: Request) {
     Translate the user's educational concept into a description of SHAPES ONLY.
     Use keywords: "diagram," "flat vector," "white background," "minimalist," "educational illustration," plus the NO TEXT keywords above.
     
+    ### MAP ENGINE (INTERACTIEVE KAARTEN MET OPENSTREETMAP)
+    - Als de vraag gaat over **landen/steden/rivieren/continenten**, of als de gebruiker expliciet vraagt om een kaart:
+      - Gebruik GEEN Flux en teken GEEN kaart als SVG.
+      - Lever een **interactieve kaart-spec** via het veld ` + "`map`" + ` in JSON, zodat de app echte (betrouwbare) kaartdata kan ophalen.
+      - Zet ` + "`visual_keyword`" + ` op null/weglaten.
+      - In ` + "`message`" + `: leg kort uit wat er op de kaart te zien is (1–3 zinnen).
+      - JSON schema (voorbeeld):
+        {
+          "message": "Hier zie je de locaties op de kaart.",
+          "map": {
+            "title": "Nederland",
+            "queries": [
+              { "query": "Amsterdam, Netherlands", "label": "Amsterdam" },
+              { "query": "Rotterdam, Netherlands", "label": "Rotterdam" }
+            ],
+            "zoom": 6
+          },
+          "topic": "Aardrijkskunde",
+          "action": "show_map"
+        }
+      - ` + "`queries[].query`" + ` moet een normale plaats/gebied zoekstring zijn (bijv. "Rhine river", "Germany", "Africa"). De app geocodeert dit via OpenStreetMap.
+
     BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat. Combineer je pedagogische antwoord met de visuele metadata:
     {
       "message": "[Uitleg volgens jouw Coach-stijl]",
       "visual_keyword": "[OPTIONEEL: ENGLISH image prompt voor generate_educational_image wanneer een visual helpt of wanneer de gebruiker expliciet om een visual vraagt; anders null of weglaten]",
+      "map": "[OPTIONEEL: map spec object voor interactieve kaarten; anders null of weglaten]",
       "topic": "[Het specifieke onderwerp]",
       "action": "update_board"
     }
@@ -188,21 +272,73 @@ export async function POST(req: Request) {
     // ROBUST LOGGING: Log de aanroep naar Gemini
     console.log(`[CHAT API] Versturen naar Gemini: ${userParts.length} parts (${userParts.filter(p => p.text).length} text, ${userParts.filter(p => p.inlineData).length} images)`);
     
-    const result = await chat.sendMessageStream(userParts);
-    console.log(`[CHAT API] Gemini stream gestart`);
-    
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
-          if (text) controller.enqueue(encoder.encode(text));
-        }
-        controller.close();
-      },
-    });
+    const extractJsonFromModelText = (rawText: string): string | null => {
+      const t = (rawText || '').trim()
+      if (!t) return null
 
-    return new Response(stream);
+      // Prefer fenced json
+      const fencedJson = t.match(/```json\s*(\{[\s\S]*?\})\s*```/i)
+      if (fencedJson && fencedJson[1]) return fencedJson[1].trim()
+
+      // Any fenced block that contains a JSON object
+      const fencedAny = t.match(/```\s*(\{[\s\S]*?\})\s*```/i)
+      if (fencedAny && fencedAny[1]) return fencedAny[1].trim()
+
+      // Last-resort: find an object containing "message"
+      const loose = t.match(/(\{[\s\S]*?"message"\s*:\s*"[\s\S]*?\})/)
+      if (loose && loose[1]) return loose[1].trim()
+
+      // If it *is* a JSON object already
+      if (t.startsWith('{') && t.endsWith('}')) return t
+
+      return null
+    }
+
+    const validatePayload = (p: any) => {
+      if (!p || typeof p !== 'object') return { ok: false as const, error: 'Payload is not an object' }
+      if (typeof p.message !== 'string' || !p.message.trim()) return { ok: false as const, error: 'Missing message string' }
+      if (p.visual_keyword != null && typeof p.visual_keyword !== 'string') return { ok: false as const, error: 'visual_keyword must be string or null/undefined' }
+      if (p.map != null) {
+        if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
+        if (!Array.isArray(p.map.queries) || p.map.queries.length === 0) return { ok: false as const, error: 'map.queries must be a non-empty array' }
+        for (const q of p.map.queries) {
+          if (!q || typeof q !== 'object' || typeof q.query !== 'string' || !q.query.trim()) {
+            return { ok: false as const, error: 'map.queries[].query must be a non-empty string' }
+          }
+        }
+      }
+      if (p.topic != null && typeof p.topic !== 'string') return { ok: false as const, error: 'topic must be string or null/undefined' }
+      if (p.action != null && typeof p.action !== 'string') return { ok: false as const, error: 'action must be string or null/undefined' }
+      return { ok: true as const }
+    }
+
+    console.log(`[CHAT API] Gemini request gestart (non-stream, JSON contract)`)
+    const result = await chat.sendMessage(userParts);
+    const text = (result as any)?.response?.text?.() ? (result as any).response.text() : (result as any)?.response?.text?.() || ''
+
+    // Best-effort JSON extraction. If it fails, fall back to plain text in message.
+    let payload: any = null
+    try {
+      const jsonText = extractJsonFromModelText(text)
+      if (jsonText) payload = JSON.parse(jsonText)
+    } catch (e) {
+      payload = null
+    }
+
+    if (!payload) {
+      payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
+    }
+
+    const validation = validatePayload(payload)
+    if (!validation.ok) {
+      // Keep the user experience stable: return the raw model text as the message.
+      payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
+    }
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (error: any) {
     // ROBUST LOGGING: Log de exacte foutmelding
     console.error("[CHAT API] Backend error:", {
