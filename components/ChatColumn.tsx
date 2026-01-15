@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import SvgDisplay from './SvgDisplay'
 
 type Message = {
   id: string
@@ -14,6 +15,24 @@ interface ChatColumnProps {
 
 export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const extractSvgBlock = useMemo(() => {
+    return (content: string) => {
+      if (!content) return null
+
+      const match = content.match(/```(?:xml|svg)\s*([\s\S]*?)```/i)
+      if (!match || !match[1]) return null
+
+      const rawBlock = match[1].trim()
+      // Prefer a real <svg>...</svg> payload if present
+      const svgMatch = rawBlock.match(/<svg[\s\S]*?<\/svg>/i)
+      const svg = (svgMatch ? svgMatch[0] : rawBlock).trim()
+      if (!/^<svg[\s>]/i.test(svg)) return null
+
+      const textWithout = content.replace(match[0], '').trim()
+      return { svg, textWithout }
+    }
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -51,7 +70,17 @@ export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
                   ))}
                 </div>
               )}
-              {msg.content && <div>{msg.content}</div>}
+              {msg.content && (() => {
+                const svgBlock = extractSvgBlock(msg.content)
+                if (!svgBlock) return <div>{msg.content}</div>
+
+                return (
+                  <div className="space-y-3">
+                    {svgBlock.textWithout ? <div>{svgBlock.textWithout}</div> : null}
+                    <SvgDisplay content={svgBlock.svg} />
+                  </div>
+                )
+              })()}
             </div>
           </div>
         ))}
