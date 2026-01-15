@@ -92,7 +92,7 @@ export default function InputDock({
       {/* Input field */}
             <input
         className="flex-1 bg-transparent border-none outline-none focus:ring-0 text-stone-800 placeholder:text-stone-400 text-base md:text-xl px-2 md:px-0"
-        placeholder={isListening ? "Ik luister..." : (hasAttachment ? "Schrijf er iets bij..." : "Typ je antwoord...")}
+        placeholder={isListening ? "Ik luister..." : (hasAttachment ? "Schrijf er iets bij..." : "Typ je vraag...")}
               value={input}
               onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onSend()}

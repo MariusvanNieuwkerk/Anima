@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUnsplashVisual } from '@/utils/unsplash';
+import { generateImage } from '@/utils/generateImage';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,17 +12,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
     }
 
-    // VISIBILITY (DEBUG): laat zien wat we binnenkrijgen (finale query wordt gelogd in utils/unsplash.ts)
-    console.log('Unsplash Query:', keyword);
+    // VISIBILITY (DEBUG): laat zien wat we binnenkrijgen (dit is nu een Flux prompt, niet een Unsplash search term)
+    console.log('[VISUAL] Flux prompt:', keyword);
 
-    const url = await getUnsplashVisual(
-      keyword,
-      topic || keyword,
-      age || 12,
-      coach || 'explorer'
-    );
+    const result = await generateImage(keyword);
 
-    return NextResponse.json({ url });
+    // Keep response shape stable for the frontend (Workspace expects { url })
+    return NextResponse.json({ url: result.url, alt: result.alt, topic, age, coach });
   } catch (error) {
     console.error('Visual API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

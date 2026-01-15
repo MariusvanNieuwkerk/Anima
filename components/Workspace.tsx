@@ -731,7 +731,7 @@ export default function Workspace() {
               
               if (visualResponse.ok) {
                 const { url } = await visualResponse.json();
-                // Update "Het Bord" met de nieuwe foto URL (Primair: Unsplash API)
+                // Update "Het Bord" met de nieuwe image URL (Primair: Flux/Replicate)
                 setBoardData({
                   url: url,
                   topic: topic || visualKeyword
@@ -768,7 +768,7 @@ export default function Workspace() {
         
         if (imageMatch && imageMatch[1]) {
           const extractedPrompt = imageMatch[1].trim();
-          // Legacy: probeer alsnog via Unsplash API, anders tekst-placeholder
+          // Legacy: probeer alsnog via Visual API, anders tekst-placeholder
           // Maar ALLEEN als er GEEN afbeelding is geüpload
           if (imagesToSend.length === 0) {
             try {
