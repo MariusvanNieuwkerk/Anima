@@ -35,6 +35,8 @@ type Message = {
   content: string
   images?: string[] // Base64 image data voor preview in chat
   map?: any
+  diagram?: any
+  remoteImage?: any
 }
 
 export default function Workspace() {
@@ -661,20 +663,82 @@ export default function Workspace() {
       const visualKeyword: string | null = typeof parsed?.visual_keyword === 'string' ? parsed.visual_keyword : null
       const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
       const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
+      const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
+
+      const parseRemoteImageTag = (text: string) => {
+        // Support: <remote-image src="..." caption="..." />
+        // Optional query fallback: <remote-image query="..." caption="..." />
+        const m = text.match(/<remote-image\s+([^>]*?)\/>/i)
+        if (!m) return { cleaned: text, spec: null as any }
+
+        const attrs = m[1] || ''
+        const getAttr = (name: string) => {
+          const r = new RegExp(`${name}\\s*=\\s*"(.*?)"`, 'i')
+          const mm = attrs.match(r)
+          return mm?.[1] ? mm[1].trim() : null
+        }
+
+        const spec: any = {
+          src: getAttr('src') || undefined,
+          query: getAttr('query') || undefined,
+          caption: getAttr('caption') || undefined,
+        }
+
+        const cleaned = text.replace(m[0], '').trim()
+        return { cleaned, spec }
+      }
+
+      const { cleaned: messageWithoutRemote, spec: remoteFromTag } = parseRemoteImageTag(finalChatMessage)
 
       // Update message immediately (no more brittle regex/stream parsing)
       setMessages(prev =>
-        prev.map(msg => msg.id === aiMessageId ? { ...msg, content: finalChatMessage, map: mapSpec } : msg)
+        prev.map(msg =>
+          msg.id === aiMessageId
+            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag }
+            : msg
+        )
       );
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (mapSpec || hasSvg)) {
+      if (mobileView === 'chat' && (mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 
+      // If the model provided a remote-image query (or a non-Wikimedia src), resolve it via Wikimedia.
+      if (
+        remoteFromTag &&
+        (remoteFromTag.query ||
+          (remoteFromTag.src && !/wikimedia|wikipedia|upload\\.wikimedia\\.org/i.test(remoteFromTag.src)))
+      ) {
+        try {
+          const wikiResp = await fetch('/api/wikimedia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: remoteFromTag.query || remoteFromTag.caption || 'human anatomy' })
+          })
+          const wikiJson = await wikiResp.json()
+          if (wikiResp.ok && wikiJson?.found && wikiJson?.url) {
+            const resolved = {
+              src: wikiJson.url,
+              caption: remoteFromTag.caption || wikiJson.title,
+              sourceUrl: wikiJson.descriptionUrl,
+              attribution: wikiJson.attribution,
+            }
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === aiMessageId ? { ...msg, remoteImage: resolved } : msg
+              )
+            )
+            if (mobileView === 'chat') setHasNewImage(true)
+          }
+        } catch {
+          // ignore lookup failures
+        }
+      }
+
       // Optional: fetch a Flux visual (only when requested by the model contract)
-      if (!mapSpec && visualKeyword && action === 'update_board' && imagesToSend.length === 0) {
+      if (!mapSpec && !diagramSpec && visualKeyword && action === 'update_board' && imagesToSend.length === 0) {
         try {
           const visualResponse = await fetch('/api/visual', {
             method: 'POST',
@@ -883,7 +947,14 @@ export default function Workspace() {
         <div className="h-full p-4 md:p-8 min-h-0">
           {mobileView === 'chat' ? (
             // Mobile/tablet: chat-only view (no visuals)
-            <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} />
+            <ChatColumn
+              messages={messages}
+              isTyping={isTyping}
+              renderImages={false}
+              renderSvgs={false}
+              renderMaps={false}
+              renderUploadThumbnails={true}
+            />
           ) : (
             // Mobile/tablet: board-only view (visuals only)
             <VisualPane messages={messages as any} />
@@ -897,7 +968,7 @@ export default function Workspace() {
           <main className="flex-1 min-h-0 flex flex-col bg-stone-50 overflow-hidden">
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
-              <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} />
+              <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
               <VisualPane messages={messages as any} />
             </div>
 

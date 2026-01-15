@@ -19,10 +19,20 @@ interface ChatColumnProps {
   renderImages?: boolean;
   renderSvgs?: boolean;
   renderMaps?: boolean;
+  renderUploadThumbnails?: boolean;
 }
 
-export default function ChatColumn({ messages, isTyping, renderImages = true, renderSvgs = true, renderMaps = true }: ChatColumnProps) {
+export default function ChatColumn({
+  messages,
+  isTyping,
+  renderImages = true,
+  renderSvgs = true,
+  renderMaps = true,
+  renderUploadThumbnails = true,
+}: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const isDataImage = (s: string) => /^data:image\//i.test(s || '')
 
   const renderTextWithInlineSvgs = (text: string, keyPrefix: string) => {
     const chunks = text.split(/(<svg[\s\S]*?<\/svg>)/gi)
@@ -96,17 +106,33 @@ export default function ChatColumn({ messages, isTyping, renderImages = true, re
       {/* Messages Area - IOS POLISH: overflow-y-auto met -webkit-overflow-scrolling voor soepel scrollen */}
       <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 bg-stone-50/30" style={{ WebkitOverflowScrolling: 'touch' }}>
         {messages.map((msg) => (
-          <div
-            key={msg.id} 
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
-          >
+          <div key={msg.id} className="space-y-2">
+            {/* User-upload thumbnails shown inline in chat stream (between messages) */}
+            {renderUploadThumbnails && msg.role === 'user' && msg.images && msg.images.some(isDataImage) ? (
+              <div className="flex justify-end">
+                <div className="max-w-[85%] flex flex-wrap gap-2">
+                  {msg.images.filter(isDataImage).map((img, index) => (
+                    <img
+                      key={index}
+                      src={img}
+                      alt={`Upload ${index + 1}`}
+                      className="h-16 w-16 rounded-xl object-cover border border-stone-200 shadow-sm bg-white"
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div
-              className={`max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
-                msg.role === 'user' 
-                  ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 
-                  : 'bg-stone-100 text-stone-800 rounded-tl-none border border-transparent hover:scale-[1.02] transition-transform'
-              }`}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
+              <div
+                className={`max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
+                  msg.role === 'user' 
+                    ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 
+                    : 'bg-stone-100 text-stone-800 rounded-tl-none border border-transparent hover:scale-[1.02] transition-transform'
+                }`}
+              >
               {renderMaps && msg.map ? (
                 <div className={`${msg.content ? 'mb-3' : ''} h-[320px] max-w-[520px]`}>
                   <MapPane spec={msg.map} />
@@ -126,6 +152,7 @@ export default function ChatColumn({ messages, isTyping, renderImages = true, re
                 </div>
               )}
               {msg.content ? <div className="space-y-3">{renderContent(msg.content)}</div> : null}
+              </div>
             </div>
           </div>
         ))}

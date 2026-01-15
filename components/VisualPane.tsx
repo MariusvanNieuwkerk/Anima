@@ -5,12 +5,18 @@ import { Pencil } from 'lucide-react'
 import SvgDisplay from './SvgDisplay'
 import MapPane from './MapPane'
 import type { MapSpec } from './mapTypes'
+import DiagramRenderer from './DiagramRenderer'
+import type { DiagramSpec } from './diagramTypes'
+import RemoteImageDisplay from './RemoteImageDisplay'
+import type { RemoteImageSpec } from './remoteImageTypes'
 
 type Message = {
   role: 'user' | 'assistant'
   content: string
   images?: string[]
   map?: MapSpec
+  diagram?: DiagramSpec
+  remoteImage?: RemoteImageSpec
 }
 
 function extractSvg(text: string): string | null {
@@ -37,8 +43,16 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
       const msg = messages[i]
       // Prefer assistant visuals (maps/diagrams), but also allow user-uploaded images as fallback.
 
+      if ((msg as any).remoteImage && ((msg as any).remoteImage.src || (msg as any).remoteImage.query)) {
+        return { kind: 'remoteImage' as const, remoteImage: (msg as any).remoteImage as RemoteImageSpec, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
+      }
+
       if ((msg as any).map && (msg as any).map.queries?.length) {
         return { kind: 'map' as const, map: (msg as any).map as MapSpec, svg: null as string | null, imageUrl: null as string | null }
+      }
+
+      if ((msg as any).diagram && (msg as any).diagram.templateId) {
+        return { kind: 'diagram' as const, diagram: (msg as any).diagram as DiagramSpec, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
       }
 
       if (msg.role === 'assistant') {
@@ -49,7 +63,7 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
       const img = (msg.images || []).find((u) => typeof u === 'string' && u.trim().length > 0)
       if (img) return { kind: 'image' as const, svg: null as string | null, imageUrl: img }
     }
-    return { kind: 'empty' as const, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
+    return { kind: 'empty' as const, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
   }, [messages])
 
   return (
@@ -77,6 +91,20 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
         {latest.kind === 'map' && (latest as any).map && (
           <div className="w-full h-full">
             <MapPane spec={(latest as any).map} />
+          </div>
+        )}
+
+        {latest.kind === 'remoteImage' && (latest as any).remoteImage?.src && (
+          <div className="w-full h-full">
+            <RemoteImageDisplay spec={(latest as any).remoteImage} />
+          </div>
+        )}
+
+        {latest.kind === 'diagram' && (latest as any).diagram && (
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="w-full max-w-full max-h-full rounded-2xl shadow-lg bg-white p-4">
+              <DiagramRenderer spec={(latest as any).diagram} />
+            </div>
           </div>
         )}
 

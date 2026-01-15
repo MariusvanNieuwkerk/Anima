@@ -72,6 +72,7 @@ export async function POST(req: Request) {
     - Als de vraag gaat over **Wiskunde / Meetkunde / Breuken / Grafieken / Functies / Diagrammen**:
       - Gebruik GEEN image tool en zet ` + "`visual_keyword`" + ` op null/weglaten.
       - Je output moet een SVG zijn (voor rendering in de app).
+      - Je MAG een SVG ook ZONDER dat de gebruiker erom vraagt toevoegen als het de uitleg merkbaar duidelijker maakt (bijv. bij meetkunde, grafieken, breuken, krachten/diagrammen). Niet vragen "wil je een tekening?"—gewoon doen als het helpt.
       - CRITICAL (JSON-SAFE): Plaats de SVG ALTIJD in een markdown code block met xml fences in de ` + "`message`" + ` string:
         ` + "```xml" + `
         <svg>...</svg>
@@ -81,6 +82,31 @@ export async function POST(req: Request) {
       - VISUAL MANDATE (meetkunde): Bij vragen over vormen/hoeken/oppervlakte is visuele output VERPLICHT. Je mag geen uitleg geven zonder bijbehorende SVG-constructie in ` + "`message`" + `.
       - In je ` + "`message`" + `: geef een KORTE uitleg (1–4 zinnen) + daarna de SVG (in de xml code block).
       - De SVG MOET het gevraagde diagram precies voorstellen (geen generieke vorm als er een specifieke situatie gevraagd wordt).
+
+    - Als de vraag gaat over **Biologie / Anatomie (mens of dier)** en de gebruiker vraagt om een **afbeelding / plaat**:
+      - Gebruik GEEN Flux en teken GEEN vrije SVG.
+      - Gebruik de **REMOTE IMAGE ENGINE**: zet in ` + "`message`" + ` een tag:
+        <remote-image query="..." caption="..." />
+      - ` + "`query`" + ` moet Engels zijn en gericht op Gray's Anatomy (bv. "human anatomy", "human skeleton", "heart anatomy", "pituitary gland").
+      - De app zoekt de juiste Wikimedia Commons plaat + bronvermelding.
+
+    - Als de vraag gaat over **Biologie / Anatomie** maar de gebruiker vraagt om een **schematisch diagram** of je wilt iets simpel uitleggen:
+      - Kies **DIAGRAM-FIRST (CURATED TEMPLATES)**: je tekent NIET vrij.
+      - Je geeft een ` + "`diagram`" + ` object terug dat een bestaande template kiest + highlights/labels toevoegt.
+      - Beschikbare templates (MENS): ` + "`human_organs_basic`" + `, ` + "`human_skeleton_basic`" + `
+      - ` + "`diagram`" + ` schema (voorbeeld):
+        "diagram": { "templateId": "human_organs_basic", "highlights": [{ "id": "heart", "color": "#ef4444" }] }
+      - IDs (organen): ` + "`lung_left, lung_right, heart, liver, stomach, intestines, torso`" + `
+      - IDs (skelet): ` + "`skull, spine, ribcage, pelvis, arm_left, arm_right, leg_left, leg_right`" + `
+
+    ### REMOTE IMAGE ENGINE (WIKIMEDIA / GRAY'S ANATOMY)
+    - Als de gebruiker expliciet vraagt om een **echte anatomie-plaat** (bijv. "Gray's Anatomy", "bron", "echte plaat", "historische anatomie plaat"):
+      - Gebruik GEEN Flux en teken GEEN SVG.
+      - Voeg in ` + "`message`" + ` een self-closing tag toe:
+        <remote-image query="..." caption="..." />
+      - ` + "`query`" + ` moet een korte zoekstring zijn (Engels), bv. "pituitary gland", "human skeleton", "heart anatomy".
+      - De app zoekt vervolgens de juiste Wikimedia Commons plaat en toont de bronvermelding automatisch.
+      - Zet ` + "`visual_keyword`" + ` op null/weglaten en zet ` + "`diagram`" + ` op null/weglaten.
 
     ### UNIVERSAL GEOMETRY ENGINE ###
 
@@ -208,6 +234,7 @@ export async function POST(req: Request) {
       "message": "[Uitleg volgens jouw Coach-stijl]",
       "visual_keyword": "[OPTIONEEL: ENGLISH image prompt voor generate_educational_image wanneer een visual helpt of wanneer de gebruiker expliciet om een visual vraagt; anders null of weglaten]",
       "map": "[OPTIONEEL: map spec object voor interactieve kaarten; anders null of weglaten]",
+      "diagram": "[OPTIONEEL: diagram spec object voor curated anatomie/biologie templates; anders null of weglaten]",
       "topic": "[Het specifieke onderwerp]",
       "action": "update_board"
     }
@@ -220,7 +247,14 @@ export async function POST(req: Request) {
     `;
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    // Prefer JSON-only responses to reduce fragile formatting. If unsupported, Gemini will ignore it.
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash-exp",
+      generationConfig: {
+        // @ts-expect-error - SDK typing may lag behind Gemini features
+        responseMimeType: "application/json",
+      },
+    });
 
     const previousHistory = messages.slice(0, -1).map((msg: any) => ({
         role: msg.role === 'user' ? 'user' : 'model',
@@ -284,12 +318,15 @@ export async function POST(req: Request) {
       const fencedAny = t.match(/```\s*(\{[\s\S]*?\})\s*```/i)
       if (fencedAny && fencedAny[1]) return fencedAny[1].trim()
 
-      // Last-resort: find an object containing "message"
-      const loose = t.match(/(\{[\s\S]*?"message"\s*:\s*"[\s\S]*?\})/)
-      if (loose && loose[1]) return loose[1].trim()
-
       // If it *is* a JSON object already
       if (t.startsWith('{') && t.endsWith('}')) return t
+
+      // Robust fallback: take substring from first "{" to last "}" (handles leading/trailing text)
+      const first = t.indexOf('{')
+      const last = t.lastIndexOf('}')
+      if (first !== -1 && last !== -1 && last > first) {
+        return t.slice(first, last + 1).trim()
+      }
 
       return null
     }
@@ -307,14 +344,74 @@ export async function POST(req: Request) {
           }
         }
       }
+      if (p.diagram != null) {
+        if (typeof p.diagram !== 'object') return { ok: false as const, error: 'diagram must be object or null/undefined' }
+        if (typeof p.diagram.templateId !== 'string' || !p.diagram.templateId.trim()) return { ok: false as const, error: 'diagram.templateId must be a string' }
+        if (p.diagram.highlights != null) {
+          if (!Array.isArray(p.diagram.highlights)) return { ok: false as const, error: 'diagram.highlights must be array' }
+          for (const h of p.diagram.highlights) {
+            if (!h || typeof h !== 'object' || typeof h.id !== 'string' || !h.id.trim()) return { ok: false as const, error: 'diagram.highlights[].id must be string' }
+          }
+        }
+        if (p.diagram.labels != null) {
+          if (!Array.isArray(p.diagram.labels)) return { ok: false as const, error: 'diagram.labels must be array' }
+          for (const l of p.diagram.labels) {
+            if (!l || typeof l !== 'object' || typeof l.text !== 'string') return { ok: false as const, error: 'diagram.labels[].text must be string' }
+            if (typeof l.x !== 'number' || typeof l.y !== 'number') return { ok: false as const, error: 'diagram.labels[].x/.y must be numbers' }
+          }
+        }
+      }
       if (p.topic != null && typeof p.topic !== 'string') return { ok: false as const, error: 'topic must be string or null/undefined' }
       if (p.action != null && typeof p.action !== 'string') return { ok: false as const, error: 'action must be string or null/undefined' }
       return { ok: true as const }
     }
 
     console.log(`[CHAT API] Gemini request gestart (non-stream, JSON contract)`)
-    const result = await chat.sendMessage(userParts);
-    const text = (result as any)?.response?.text?.() ? (result as any).response.text() : (result as any)?.response?.text?.() || ''
+    const needsSvg = (() => {
+      const t = (lastMessageContent || '').toLowerCase()
+      return /pythagoras|meetkunde|driehoek|vierhoek|breuk|grafiek|functie|diagram|hoek|oppervlakte|omtrek|stelsel|assenstelsel|natuurkunde|kracht|stroomkring|spannings|weerstand|bio|biologie|anatomie|orgaan|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|oog|oor|huid|bot|botten|dier|zoogdier|reptiel|vogel/.test(t)
+    })()
+
+    const isAnatomy = (() => {
+      const t = (lastMessageContent || '').toLowerCase()
+      return /biologie|anatomie|orgaan|organen|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|darmen|spijsverter|bloedsomloop|ademhaling|zenuwstelsel|bot|botten|menselijk lichaam/.test(
+        t
+      )
+    })()
+
+    const wantsSchematicDiagram = (() => {
+      const t = (lastMessageContent || '').toLowerCase()
+      return /schematisch|schema|diagram/.test(t)
+    })()
+
+    const needsDiagram = (() => {
+      const t = (lastMessageContent || '').toLowerCase()
+      return wantsSchematicDiagram && /biologie|anatomie|orgaan|organen|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|darmen|spijsverter|bloedsomloop|ademhaling|zenuwstelsel|bot|botten|menselijk lichaam/.test(t)
+    })()
+
+    const wantsRemoteAnatomyPlate = (() => {
+      const t = (lastMessageContent || '').toLowerCase()
+      const asksForImage = /afbeelding|plaat|plate|wikimedia|bron|historisch|gray|grays|gray's/.test(t)
+      return isAnatomy && asksForImage && !wantsSchematicDiagram
+    })()
+
+    const hasSvgInMessage = (m: string) => /<svg[\s\S]*?<\/svg>/i.test(m || '')
+
+    const partsCloneWithTextSuffix = (parts: any[], suffix: string) => {
+      const cloned = parts.map((p) => ({ ...p }))
+      if (cloned.length > 0 && typeof cloned[0]?.text === 'string') {
+        cloned[0].text = `${cloned[0].text}${suffix}`
+      }
+      return cloned
+    }
+
+    const runOnce = async (parts: any[]) => {
+      const r = await chat.sendMessage(parts)
+      const txt = (r as any)?.response?.text?.() ? (r as any).response.text() : (r as any)?.response?.text?.() || ''
+      return String(txt || '')
+    }
+
+    let text = await runOnce(userParts)
 
     // Best-effort JSON extraction. If it fails, fall back to plain text in message.
     let payload: any = null
@@ -333,6 +430,67 @@ export async function POST(req: Request) {
     if (!validation.ok) {
       // Keep the user experience stable: return the raw model text as the message.
       payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
+    }
+
+    // If we *expected* a diagram but got none, retry once with stricter instruction.
+    if (needsSvg && !hasSvgInMessage(payload.message) && !payload.map) {
+      const strictAddon =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): Geef GEEN wedervragen. Voeg ALTIJD een SVG toe in een ```xml code block in 'message' (met <svg>...</svg> en single quotes). Antwoord als geldige JSON en niets anders.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictAddon)
+      const retryText = await runOnce(retryParts)
+
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && hasSvgInMessage(payload2.message)) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore retry failures
+      }
+    }
+
+    // If we expected a curated anatomy diagram, retry once to force a diagram spec.
+    if (needsDiagram && !payload.diagram && !wantsRemoteAnatomyPlate) {
+      const strictDiagram =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): Voor biologie/anatomie: geef GEEN vrije SVG. Geef een 'diagram' object met templateId ('human_organs_basic' of 'human_skeleton_basic') + highlights ids (bijv. heart, lung_left, lung_right, liver, stomach, intestines) + optionele labels. Antwoord als geldige JSON en niets anders. 'visual_keyword' moet null zijn.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictDiagram)
+      const retryText = await runOnce(retryParts)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && payload2.diagram) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // If the user wants a real anatomy plate, force a remote-image tag once.
+    if (wantsRemoteAnatomyPlate && !/remote-image/i.test(payload.message || '')) {
+      const strictRemote =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): Geef een <remote-image query=\"...\" caption=\"...\" /> tag in 'message' (self-closing). GEEN SVG/GEEN diagram. Antwoord als geldige JSON en niets anders. visual_keyword moet null zijn.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictRemote)
+      const retryText = await runOnce(retryParts)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && /remote-image/i.test(payload2.message || '')) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
 
     return new Response(JSON.stringify(payload), {
