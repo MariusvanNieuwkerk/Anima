@@ -2,6 +2,7 @@
 
 import { Menu, Zap, Compass, Sprout } from 'lucide-react'
 import CapsuleSwitch from './CapsuleSwitch'
+import CreditBalance from './CreditBalance'
 
 type TutorMode = 'focus' | 'explorer' | 'growth'
 
@@ -39,7 +40,9 @@ export default function MobileHeader({ activeView, onViewChange, animaName, onMe
           })()}
           <span>{animaName}</span>
         </h1>
-        <div className="w-12 md:w-16" /> {/* Spacer for balance */}
+        <div className="flex items-center justify-end min-w-12 md:min-w-16">
+          <CreditBalance />
+        </div>
       </div>
       {/* Bottom row: CapsuleSwitch */}
       <div className="px-5 pb-4 md:px-8 md:pb-6 flex justify-center">
