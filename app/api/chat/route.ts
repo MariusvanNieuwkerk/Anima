@@ -94,34 +94,21 @@ export async function POST(req: Request) {
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
     
-    ### INSTRUCTIES VOOR VISUELE GENERATIE (EDUCATIEVE FOCUS) ###
+    ### STRICT IMAGE PROMPTING RULES ###
 
-    Wanneer de gebruiker vraagt om een afbeelding die een educatief concept uitlegt (bijv. wiskunde, wetenschap, geschiedenis, breuken, meetkunde), is je HOOFDDOEL **ACCURATESSE en DUIDELIJKHEID**.
+    1. **NO TEXT RULE:** The prompt MUST explicitly forbid text. Always include keywords:
+       "no text, no letters, no numbers, no labels, no writing."
+       Reason: The image generator cannot render text correctly. All explanations must happen in the chat, not the image.
 
-    Je gedraagt je als een **Wetenschappelijk Illustrator** en **Educatief Ontwerper**.
+    2. **VISUAL RECIPE (GEOMETRY ONLY):** Describe strictly the shapes, colors, and composition.
+       - Bad: "A diagram showing 3/4."
+       - Good: "A minimalist flat vector icon of a single circle. The circle is divided into exactly 4 equal pie slices. 3 slices are filled with solid blue color. 1 slice is white. White background. Clean lines. High contrast. No text, no letters, no numbers, no labels, no writing."
 
-    TOOL: "generate_educational_image(prompt)"
-    - In deze app trigger je dit door een ENGLISH image prompt in "visual_keyword" te zetten.
+    3. **STYLE:** Use "Flat Vector Art" or "Minimalist Icon" style for math/science. Avoid "Photorealistic" for abstract concepts like fractions.
 
-    **Regels voor het schrijven van de prompt voor de 'generate_educational_image' tool:**
-
-    1. **Feitelijke Juistheid is Cruciaal:** Zorg dat de visuele representatie mathematisch of wetenschappelijk klopt.
-       - Bijv. Pythagoras: er MOET een duidelijke rechte hoek (90 graden) zichtbaar zijn. De verhoudingen van de vierkanten op de zijden moeten kloppen.
-       - Bijv. Breuken: de delen van het geheel MOETEN visueel exact even groot zijn.
-
-    2. **Stijl & Helderheid:** Kies voor een stijl die de uitleg ondersteunt. Voor abstracte concepten werkt een diagram beter dan een foto.
-       - Gebruik termen als: "clear educational diagram," "infographic style," "textbook illustration," "clean lines," "high contrast," "minimalist background."
-       - Vermijd: "cinematic lighting," "dramatic atmosphere," "photorealistic" (tenzij het concept daarom vraagt, zoals een historisch object).
-
-    3. **Structuur van de Prompt:** Beschrijf exact de geometrie, de opstelling en de labels die nodig zijn om het concept te snappen.
-
-    **VOORBEELDEN (Volg deze stijl):**
-
-    - User: "Visualiseer de stelling van Pythagoras."
-      Prompt: "A clear educational diagram illustrating the Pythagorean theorem. A perfectly right-angled triangle (90 degrees) with squares built outwards on each of the three sides. The areas of the two smaller squares clearly visually add up to the area of the largest square on the hypotenuse. Clean lines, flat colors, textbook illustration style, against a white background."
-
-    - User: "Laat 3/4 zien."
-      Prompt: "A clear visual representation of the fraction 3/4 as a diagram. A perfect circle pie chart divided into exactly 4 equal segments. 3 of the 4 segments are shaded a solid blue color, while 1 segment remains white. High contrast, clean diagrammatic style, no shadows."
+    **YOUR TASK:**
+    Translate the user's educational concept into a description of SHAPES ONLY.
+    Use keywords: "diagram," "flat vector," "white background," "minimalist," "educational illustration," plus the NO TEXT keywords above.
     
     BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat. Combineer je pedagogische antwoord met de visuele metadata:
     {
