@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { Fragment, useEffect, useRef } from 'react'
 import SvgDisplay from './SvgDisplay'
 
 type Message = {
@@ -16,23 +16,37 @@ interface ChatColumnProps {
 export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const extractSvgBlock = useMemo(() => {
-    return (content: string) => {
-      if (!content) return null
+  const renderContent = (content: string) => {
+    if (!content) return null
 
-      const match = content.match(/```(?:xml|svg)\s*([\s\S]*?)```/i)
-      if (!match || !match[1]) return null
+    // Split and keep the code blocks (capturing group)
+    const parts = content.split(/(```(?:xml|svg)[\s\S]*?```)/gi)
 
-      const rawBlock = match[1].trim()
-      // Prefer a real <svg>...</svg> payload if present
-      const svgMatch = rawBlock.match(/<svg[\s\S]*?<\/svg>/i)
-      const svg = (svgMatch ? svgMatch[0] : rawBlock).trim()
-      if (!/^<svg[\s>]/i.test(svg)) return null
+    return parts.map((part, index) => {
+      const trimmed = part.trim()
+      if (!trimmed) return null
 
-      const textWithout = content.replace(match[0], '').trim()
-      return { svg, textWithout }
-    }
-  }, [])
+      if (/^```(?:xml|svg)/i.test(trimmed)) {
+        const svgContent = trimmed
+          .replace(/^```(?:xml|svg)\s*/i, '')
+          .replace(/```$/i, '')
+          .trim()
+        return <SvgDisplay key={`svg-${index}`} content={svgContent} />
+      }
+
+      // Render regular text as paragraphs; keep line breaks inside paragraphs.
+      const paragraphs = part.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean)
+      return (
+        <Fragment key={`text-${index}`}>
+          {paragraphs.map((p, pIndex) => (
+            <p key={`p-${index}-${pIndex}`} className="mb-2 last:mb-0 whitespace-pre-wrap">
+              {p}
+            </p>
+          ))}
+        </Fragment>
+      )
+    })
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -70,17 +84,7 @@ export default function ChatColumn({ messages, isTyping }: ChatColumnProps) {
                   ))}
                 </div>
               )}
-              {msg.content && (() => {
-                const svgBlock = extractSvgBlock(msg.content)
-                if (!svgBlock) return <div>{msg.content}</div>
-
-                return (
-                  <div className="space-y-3">
-                    {svgBlock.textWithout ? <div>{svgBlock.textWithout}</div> : null}
-                    <SvgDisplay content={svgBlock.svg} />
-                  </div>
-                )
-              })()}
+              {msg.content ? <div className="space-y-3">{renderContent(msg.content)}</div> : null}
             </div>
           </div>
         ))}
