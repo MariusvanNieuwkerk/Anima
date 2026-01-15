@@ -1,5 +1,5 @@
-📘 ANIMA BLUEPRINT V5.3 (Revision: Scaffolded Guide)
-Datum: 14 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Robuustheid boven Perfectie"
+📘 ANIMA BLUEPRINT V5.4 (Revision: Hybrid Visuals)
+Datum: 15 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Robuustheid boven Perfectie"
 
 1. De Anima Filosofie
 AI als Tutor: Anima is een 'Scaffolded Guide'. Ze biedt eerst heldere uitleg en structuur (de methode), maar houdt het eindantwoord achter totdat het kind het zelf heeft geprobeerd.
@@ -12,13 +12,13 @@ Instant Responsiviteit: We optimaliseren voor snelheid (Low Latency). De gebruik
 
 Multimodaal Begrip: Anima "ziet" huiswerk via Vision voor gerichte hulp, mits toegestaan door de ouder.
 
-Visuele Strategie (The Power-Search Engine): We verkiezen educatieve robuustheid boven willekeurige decoratie. De visuele ondersteuning werkt via een gelaagde Unsplash-aanpak:
+Visuele Strategie (The Hybrid Visual Engine): We combineren de authenticiteit van fotografie met de flexibiliteit van Generatieve AI.
 
-Power Keyword Engineering: De AI dwingt via specifieke Engelse qualifiers (zoals NASA imagery, scientific diagram of microscope) af dat Unsplash feitelijke, ondersteunende beelden toont in plaats van abstracte kunst.
+Tier 1 (Snelheid & Feit): Unsplash. Voor bestaande objecten (dieren, plaatsen) gebruiken we echte fotografie. Dit is snel en gratis.
 
-Contextuele Validatie: Beelden worden afgestemd op de gekozen Coach (bijv. diagrammen voor Focus vs. contextuele landschappen voor Verkenner).
+Tier 2 (Maatwerk & Uitleg): Flux AI (via Replicate). Voor abstracte concepten, specifieke diagrammen of historische scènes genereren we on-the-fly een nieuwe afbeelding. Dit is de "Magic" laag (Premium feature).
 
-Kwaliteits-Loop: Mislukte of foutieve matches worden gelogd in de visual_misses tabel in Supabase. Dit stelt ons in staat om de zoeklogica van de AI continu aan te scherpen op basis van echte resultaten.
+Kwaliteits-Loop: We dwingen de AI tot fotorealistische en educatieve prompts ("educational diagram", "macro photography") om hallucinaties te beperken.
 
 Prikkelarm & Warm Design: Geen kille tech-look, maar een tactiel "Paper Feel". Kleurenpalet verschuift van Slate (koud) naar Stone (warm).
 
@@ -82,13 +82,13 @@ Model: Google Gemini 2.0 Flash (Text & Vision).
 
 System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd.
 
-Visual Engine (The Power-Search Engine):
+Visual Engine (The Hybrid Engine):
 
-Primair: Dynamische Unsplash API-aanroep aangestuurd door Power Keywords (zoals 'scientific diagram' of 'NASA imagery') om educatieve relevantie af te dwingen.
+Generative AI (Premium): Flux Schnell via Replicate API. Geoptimaliseerd voor snelheid (<1s) en kosten (€0,0028/img). Prompts worden strikt gestuurd (safety filters uit, educational filters aan).
 
-Logging: Automatische registratie van mislukte zoekopdrachten in de visual_misses tabel in Supabase voor continue verbetering van de zoeklogica.
+Stock Photography (Base): Unsplash API met Power Keyword Engineering.
 
-Secundair: Stijlvolle tekst-placeholder ("Concept: [Onderwerp]") als de API geen passend resultaat geeft.
+Logging: Robuuste error-handling. Als Replicate faalt (billing/downtime), valt het systeem stilzwijgend terug op Unsplash of een tekst-placeholder.
 
 Vision Pipeline: Client (Mobile/QR) -> Supabase Storage -> Gemini Vision -> Antwoord.
 
@@ -145,7 +145,7 @@ Doel: Dwingt het kind tot vertragen en typen (begrijpend lezen) i.p.v. scannen e
 
 [x] Camera Interface: Mobile Bridge (QR logic) volledig werkend via Supabase.
 
-[x] Visual Engine: Volledige integratie van de Unsplash Power-Search Engine (met automatische logging naar de visual_misses tabel).
+[x] Visual Engine: Hybrid System. Unsplash (Base) & Replicate/Flux Schnell (Generative AI) geïmplementeerd.
 
 [x] UI Warmth Upgrade: Stone-theme & Dot Grid.
 
