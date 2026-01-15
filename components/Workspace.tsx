@@ -721,12 +721,7 @@ export default function Workspace() {
               const visualResponse = await fetch('/api/visual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  keyword: visualKeyword,
-                  topic: topic || visualKeyword,
-                  age: age,
-                  coach: tutorMode
-                })
+                body: JSON.stringify({ prompt: visualKeyword })
               });
               
               if (visualResponse.ok) {
@@ -775,12 +770,7 @@ export default function Workspace() {
               const visualResponse = await fetch('/api/visual', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  keyword: extractedPrompt,
-                  topic: extractedPrompt,
-                  age: age,
-                  coach: tutorMode
-                })
+                body: JSON.stringify({ prompt: extractedPrompt })
               });
               
               if (visualResponse.ok) {

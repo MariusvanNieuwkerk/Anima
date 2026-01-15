@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { supabase } from '@/utils/supabase';
 import { getUserProfile } from '@/utils/auth';
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
@@ -203,30 +202,6 @@ export async function POST(req: Request) {
     
     const result = await chat.sendMessageStream(userParts);
     console.log(`[CHAT API] Gemini stream gestart`);
-    
-    // Test write naar insights tabel na succesvolle AI-respons
-    console.log('DEBUG: Poging tot schrijven naar Supabase...');
-    try {
-      const { error } = await supabase
-        .from('insights')
-        .insert({
-          topic: 'Test',
-          sentiment: 'Positief',
-          flow_score: 80,
-          summary: 'De verbinding werkt!',
-          parent_tip: 'Test tip',
-          needs_attention: false,
-          knelpunt_detail: ''
-        });
-      if (error) {
-        console.error('DEBUG: Fout bij test write naar insights:', error);
-      } else {
-        console.log('DEBUG: Test write naar insights succesvol');
-        console.log('SUCCESS');
-      }
-    } catch (testError) {
-      console.error('DEBUG: Fout bij test write naar insights:', testError);
-    }
     
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

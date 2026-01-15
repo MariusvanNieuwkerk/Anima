@@ -1,5 +1,3 @@
-import { supabase } from './supabase';
-
 export async function getUnsplashVisual(keyword: string, topic: string, age?: number, coach?: string) {
   const UNSPLASH_KEY = process.env.NEXT_PUBLIC_UNSPLASH_ACCESS_KEY;
   
@@ -64,35 +62,12 @@ export async function getUnsplashVisual(keyword: string, topic: string, age?: nu
       return data.results[0].urls.regular;
     }
 
-    // Als zelfs dit faalt, loggen we het als een kwalitatieve misser in Supabase
-    try {
-      await supabase.from('visual_misses').insert({
-        keyword: keyword,
-        topic: topic,
-        query: powerQuery,
-        age: age || null,
-        coach: coach || null
-      });
-    } catch (logError) {
-      // Stil falen bij logging errors (graceful degradation)
-      console.error('Error logging visual miss:', logError);
-    }
+    // HOTFIX (V5.4): geen database logging (visual_misses) — visuals moeten DB-onafhankelijk zijn
     
     return null;
   } catch (error) {
-    // Log ook errors tijdens de fetch
-    try {
-      await supabase.from('visual_misses').insert({
-        keyword: keyword,
-        topic: topic,
-        query: powerQuery,
-        age: age || null,
-        coach: coach || null,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    } catch (logError) {
-      console.error('Error logging visual miss:', logError);
-    }
+    // HOTFIX (V5.4): geen database logging (visual_misses)
+    console.error('Unsplash fetch error:', error);
     return null;
   }
 }

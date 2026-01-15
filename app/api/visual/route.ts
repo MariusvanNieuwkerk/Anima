@@ -1,26 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { generateImage } from '@/utils/generateImage';
 
-export const runtime = 'nodejs';
-export const maxDuration = 60;
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { keyword, topic, age, coach } = await req.json();
+    const body = await req.json();
+    const { prompt } = body;
+    
+    console.log("🎨 API/VISUAL: Prompt received:", prompt);
 
-    if (!keyword) {
-      return NextResponse.json({ error: 'Keyword is required' }, { status: 400 });
+    if (!prompt) {
+      return NextResponse.json({ error: 'No prompt provided' }, { status: 400 });
     }
 
-    // VISIBILITY (DEBUG): laat zien wat we binnenkrijgen (dit is nu een Flux prompt, niet een Unsplash search term)
-    console.log('[VISUAL] Flux prompt:', keyword);
+    // Directe aanroep zonder database logging
+    const result = await generateImage(prompt);
+    
+    return NextResponse.json(result);
 
-    const result = await generateImage(keyword);
-
-    // Keep response shape stable for the frontend (Workspace expects { url })
-    return NextResponse.json({ url: result.url, alt: result.alt, topic, age, coach });
-  } catch (error) {
-    console.error('Visual API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error("❌ API/VISUAL Error:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
