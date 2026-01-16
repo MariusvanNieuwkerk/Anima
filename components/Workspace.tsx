@@ -63,6 +63,8 @@ export default function Workspace() {
   
   // Chat & Board State
   const [messages, setMessages] = useState<Message[]>([]) 
+  // Keep a ref to the latest messages to avoid stale-closure bugs when sending quickly.
+  const messagesRef = useRef<Message[]>([])
   // Board is intentionally removed: visuals are shown inline in chat for stability/simplicity.
   
   // Vision State
@@ -223,6 +225,11 @@ export default function Workspace() {
 
     fetchMessages();
   }, [sessionId]);
+
+  // Keep messagesRef in sync (used by handleSendMessage to always send full context).
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   // --- 4. REALTIME MOBILE BRIDGE (Supabase Realtime) 🌉 ---
   // Luister naar INSERT events op mobile_uploads voor deze sessie
@@ -666,7 +673,8 @@ export default function Workspace() {
     
     try {
       const requestBody = JSON.stringify({
-        messages: [...messages, userMessage],
+        // IMPORTANT: use the latest message list (ref) to preserve context reliably.
+        messages: [...messagesRef.current, userMessage],
         data: {
           tutorMode,
           userAge: age,
