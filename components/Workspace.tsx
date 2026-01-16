@@ -82,6 +82,7 @@ export default function Workspace() {
   const attachMenuDesktopRef = useRef<HTMLDivElement>(null)
   const attachMenuMobileRef = useRef<HTMLDivElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // --- 1. INIT & AUTH ---
   useEffect(() => {
@@ -529,6 +530,27 @@ export default function Workspace() {
     if (isMobile) { cameraInputRef.current?.click() } else { setIsQRModalOpen(true) }
   }
 
+  // Shared ingest pipeline for desktop drag&drop / paste / file picker:
+  // compress -> add to selectedImages -> show previews
+  const ingestFiles = async (filesLike: FileList | File[]) => {
+    const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike || [])
+    const imageFiles = files.filter((f) => (f as any)?.type?.startsWith?.('image/'))
+    if (imageFiles.length === 0) return
+
+    setIsAttachMenuOpen(false)
+
+    try {
+      console.log(`[WORKSPACE] Comprimeren van ${imageFiles.length} afbeelding(en)...`)
+      const compressedResults = await Promise.all(imageFiles.map((file) => compressImage(file)))
+      console.log(`[WORKSPACE] ${compressedResults.length} afbeelding(en) gecomprimeerd`)
+      setSelectedImages((prev) => [...prev, ...compressedResults])
+      inputRef.current?.focus?.()
+    } catch (error) {
+      console.error('[WORKSPACE] Error comprimeren van afbeeldingen:', error)
+      alert("Er is een fout opgetreden bij het verwerken van de foto's. Probeer het opnieuw.")
+    }
+  }
+
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -566,24 +588,11 @@ export default function Workspace() {
       }
     }
 
-    // IMAGE COMPRESSION: Comprimeer alle afbeeldingen voordat we ze toevoegen
-    try {
-      console.log(`[WORKSPACE] Comprimeren van ${files.length} afbeelding(en)...`);
-      const compressionPromises: Promise<string>[] = [];
-      
-      Array.from(files).forEach((file) => {
-        compressionPromises.push(compressImage(file));
-      });
-      
-      const compressedResults = await Promise.all(compressionPromises);
-      console.log(`[WORKSPACE] ${compressedResults.length} afbeelding(en) gecomprimeerd`);
-      
-      // Voeg de gecomprimeerde afbeeldingen toe aan de state
-      setSelectedImages(prev => [...prev, ...compressedResults]);
-      setIsAttachMenuOpen(false);
-    } catch (error) {
-      console.error("[WORKSPACE] Error comprimeren van afbeeldingen:", error);
-      alert("Er is een fout opgetreden bij het verwerken van de foto's. Probeer het opnieuw.");
+    await ingestFiles(files)
+
+    // Reset the input so selecting the same file again triggers onChange
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = ''
     }
   };
 
@@ -1018,6 +1027,8 @@ export default function Workspace() {
                 <InputDock 
                     input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} 
                     hasAttachment={selectedImages.length > 0} 
+                    onFiles={ingestFiles}
+                    inputRef={inputRef}
                 />
                 {isAttachMenuOpen && (
                   <div ref={attachMenuDesktopRef} className="absolute bottom-14 left-0 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">
@@ -1037,7 +1048,19 @@ export default function Workspace() {
       <div className="xl:hidden flex-none z-50 px-4 bg-stone-50" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         <div className="relative">
            <ImagePreviews />
-          <InputDock input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} hasAttachment={selectedImages.length > 0} />
+          <InputDock
+            input={input}
+            setInput={setInput}
+            onSend={handleSendMessage}
+            onAttachClick={handleAttachClick}
+            onMicClick={handleMicClick}
+            isListening={isListening}
+            isVoiceOn={isVoiceOn}
+            onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }}
+            hasAttachment={selectedImages.length > 0}
+            onFiles={ingestFiles}
+            inputRef={inputRef}
+          />
           {isAttachMenuOpen && (
             <div ref={attachMenuMobileRef} className="absolute bottom-14 left-4 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">
               <button onClick={() => cameraInputRef.current?.click()} className="flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl text-left transition-colors text-stone-700 text-sm font-medium"><ImageIcon className="w-5 h-5 text-stone-600" strokeWidth={2} /><span>Foto of Bestand</span></button>
