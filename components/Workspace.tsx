@@ -665,21 +665,79 @@ export default function Workspace() {
     setIsTyping(true);
     
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: [...messages, userMessage], 
-          data: { 
-              tutorMode, 
-              userAge: age, 
-              userLanguage: language,
-              images: imagesToSend 
-          } 
-        }),
-      });
+      const requestBody = JSON.stringify({
+        messages: [...messages, userMessage],
+        data: {
+          tutorMode,
+          userAge: age,
+          userLanguage: language,
+          images: imagesToSend,
+        },
+      })
 
-      if (!response.ok) throw new Error('API Error');
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+      const postChatWithRetry = async () => {
+        let lastErr: any = null
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 55_000)
+          try {
+            const resp = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: requestBody,
+              signal: controller.signal,
+            })
+
+            if (resp.ok) return resp
+
+            // If server says payload too large, don't retry.
+            if (resp.status === 413) return resp
+
+            // Retry only on transient server errors.
+            if ([429, 500, 502, 503, 504].includes(resp.status) && attempt < 2) {
+              await sleep(800)
+              continue
+            }
+
+            return resp
+          } catch (e: any) {
+            lastErr = e
+            // Retry once on network/timeout errors.
+            if (attempt < 2) {
+              await sleep(800)
+              continue
+            }
+          } finally {
+            clearTimeout(timeout)
+          }
+        }
+        throw lastErr || new Error('Network error')
+      }
+
+      const response = await postChatWithRetry()
+
+      if (!response.ok) {
+        let details = ''
+        try {
+          const ct = response.headers.get('content-type') || ''
+          if (ct.includes('application/json')) {
+            const j: any = await response.json()
+            details = j?.details || j?.error || ''
+          } else {
+            details = await response.text()
+          }
+        } catch {
+          // ignore
+        }
+
+        if (response.status === 413) {
+          throw new Error('UPLOAD_TOO_LARGE')
+        }
+
+        throw new Error(`API_ERROR_${response.status}${details ? `: ${details}` : ''}`)
+      }
       const aiMessageId = (Date.now() + 1).toString();
       setMessages(prev => [...prev, { id: aiMessageId, role: 'assistant', content: '' }]);
 
@@ -842,9 +900,22 @@ export default function Workspace() {
         speakText(finalChatMessage);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Oeps, even geen verbinding.' }]);
+      const msg = (() => {
+        const m = String(error?.message || '')
+        if (m === 'UPLOAD_TOO_LARGE') {
+          return 'Deze upload is te groot. Maak een close-up (beeldvullend) of stuur 1 foto tegelijk.'
+        }
+        if (error?.name === 'AbortError') {
+          return 'Dit duurt langer dan normaal. Probeer het nog eens (of stuur een close-up van het stukje tekst).'
+        }
+        if (m.startsWith('API_ERROR_')) {
+          return 'De server reageert even niet goed. Probeer het nog eens.'
+        }
+        return 'Oeps, even geen verbinding.'
+      })()
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: msg }]);
     } finally {
       setIsTyping(false);
     }
