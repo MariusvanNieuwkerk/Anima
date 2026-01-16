@@ -26,6 +26,15 @@ function scoreTitle(title: string, rawQuery: string): number {
   // Prefer diagram-like assets and vector formats
   if (t.includes('.svg')) score += 40
   if (t.includes('diagram') || t.includes('proof') || t.includes('theorem') || t.includes('schema')) score += 20
+  if (q.includes('pythagorean') || q.includes('pythagoras')) {
+    if (t.includes('pythagorean')) score += 20
+    if (t.includes('square') || t.includes('squares')) score += 15
+    if (t.includes('right triangle')) score += 10
+    // "inverse" is often a less standard classroom diagram
+    if (t.includes('inverse')) score -= 20
+    // Avoid "Pythagoras tree" fractal results when the user wants the theorem diagram
+    if (t.includes('tree')) score -= 80
+  }
 
   // Strongly penalize document containers and scan-like formats
   if (t.includes('.pdf') || t.includes('.djvu')) score -= 60
@@ -87,6 +96,7 @@ export async function POST(req: Request) {
     const diagramHint = /diagram|proof|theorem|model|spectrum|cycle|symbols|curve/i.test(rawQuery)
     const filetypeCandidates = diagramHint
       ? [
+          `${rawQuery} simple school`,
           `${rawQuery} filetype:svg`,
           `${rawQuery} filetype:png`,
           `${rawQuery} filetype:jpg`,

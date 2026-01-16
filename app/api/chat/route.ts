@@ -128,6 +128,9 @@ export async function POST(req: Request) {
     **OUTPUT FORMAT (Search term):**
     - Geef in ` + "`message`" + ` een tag:
       [SEARCH_DIAGRAM: <specific English term> diagram]
+    - Kies de **meest standaard 'schoolboek' versie** van een concept-diagram (didactic, clear, common).
+      - Vermijd obscure varianten ("inverse", "advanced proof", "historical scan") als er een simpel standaarddiagram bestaat.
+      - Voeg waar nuttig context toe in de zoekterm: "simple", "school", "right triangle", "with squares", "labeled".
       Voorbeelden:
       - [SEARCH_DIAGRAM: Pythagorean theorem proof diagram]
       - [SEARCH_DIAGRAM: Bohr model atom diagram]
@@ -536,7 +539,7 @@ export async function POST(req: Request) {
     // If this is a standard concept diagram, force a SEARCH_DIAGRAM tag once.
     if (wantsCuratorDiagram && !/\[SEARCH_DIAGRAM:/i.test(payload.message || '')) {
       const strictSearch =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): Dit is een standaard concept-diagram. Voeg in 'message' EXACT één tag toe: [SEARCH_DIAGRAM: Pythagorean theorem proof diagram] of een equivalente specifieke Engelse term. GEEN SVG/GEEN diagram object/GEEN visual_keyword. Antwoord als geldige JSON en niets anders.]"
+        "\n\n[SYSTEEM OVERRIDE (STRICT): Dit is een standaard concept-diagram. Voeg in 'message' EXACT één tag toe met een schoolboek-zoekterm. Voor Pythagoras: gebruik bij voorkeur: [SEARCH_DIAGRAM: Pythagorean theorem squares on sides diagram]. GEEN SVG/GEEN diagram object/GEEN visual_keyword. Antwoord als geldige JSON en niets anders.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictSearch)
       const retryText = await runOnce(retryParts)
       try {
