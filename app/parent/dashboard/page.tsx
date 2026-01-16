@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Sparkles, Sun, LogOut } from 'lucide-react'
+import { LogOut, MessageCircle } from 'lucide-react'
 import { createBrowserClient } from '@supabase/ssr'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -19,6 +20,17 @@ export default function ParentDashboardPage() {
   const [deepReadMode, setDeepReadMode] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Hardcoded “newsletter” data for now (as requested).
+  const focusData = useMemo(
+    () => [
+      { name: 'Wiskunde', value: 45, color: '#a8a29e' }, // stone-400
+      { name: 'Geschiedenis', value: 30, color: '#d6d3d1' }, // stone-300
+      { name: 'Engels', value: 25, color: '#e7e5e4' }, // stone-200
+    ],
+    []
+  )
+  const totalMinutes = useMemo(() => focusData.reduce((sum, it) => sum + it.value, 0), [focusData])
 
   useEffect(() => {
     let mounted = true
@@ -94,85 +106,161 @@ export default function ParentDashboardPage() {
   }
 
   return (
-    <div
-      className="min-h-screen bg-stone-50"
-      style={{
-        backgroundImage:
-          'radial-gradient(rgba(120,113,108,0.12) 1px, transparent 1px)',
-        backgroundSize: '18px 18px',
-      }}
-    >
-      {/* Header */}
-      <header className="bg-transparent">
-        <div className="mx-auto max-w-4xl px-6 py-8 flex items-center justify-between">
-          <div className="text-stone-800 font-semibold text-xl tracking-tight">
-            Anima Ouderportaal
-          </div>
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition-colors"
-          >
-            <LogOut className="h-4 w-4" />
-            Uitloggen
-          </button>
-        </div>
-      </header>
-
-      {/* Container */}
-      <main className="mx-auto max-w-4xl px-6 py-10 space-y-6">
-        {/* Kaart 1: Glow Feed */}
-        <section className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 rounded-full bg-amber-100 text-amber-700">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <h2 className="text-stone-700 font-semibold text-lg">Vandaag in focus</h2>
-          </div>
-          <p className="text-stone-500 leading-relaxed">
-            Rens heeft vandaag 20 minuten gewerkt aan &apos;Tijdrekenen&apos;. Hij toonde veel
-            doorzettingsvermogen bij het omrekenen van analoge naar digitale tijd.
-          </p>
-        </section>
-
-        {/* Kaart 2: Instellingen */}
-        <section className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 rounded-full bg-stone-100 text-stone-700 border border-stone-200">
-              <Sun className="h-5 w-5" />
-            </div>
-            <h2 className="text-stone-700 font-semibold text-lg">Begeleiding &amp; Focus</h2>
-          </div>
-
-          <div className="flex items-start justify-between gap-8">
+    <div className="min-h-screen bg-stone-50">
+      <div
+        className="min-h-screen"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(120,113,108,0.10) 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+        }}
+      >
+        <main className="mx-auto max-w-5xl px-6 py-10 space-y-6">
+          {/* Header */}
+          <header className="flex items-start justify-between gap-6">
             <div>
-              <div className="font-semibold text-stone-700">Diep-Lees Modus</div>
-              <div className="text-sm text-stone-400 mt-1">
-                Schakelt de camera uit bij het kind. Dwingt vertragen en typen.
-              </div>
-              {error && <div className="text-sm text-red-700 mt-3">{error}</div>}
+              <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-stone-900">
+                Hoi Marius, hier is de update van Rens.
+              </h1>
+              <div className="mt-2 text-stone-500">Maandag 12 januari</div>
             </div>
-
-            {/* Toggle */}
             <button
-              type="button"
-              onClick={toggleDeepReadMode}
-              disabled={isLoading}
-              className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-colors ${
-                deepReadMode ? 'bg-stone-800 border-stone-800' : 'bg-stone-200 border-stone-200'
-              } ${isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-              aria-pressed={deepReadMode}
-              aria-label="Toggle Diep-Lees Modus"
-              title={isLoading ? 'Laden...' : deepReadMode ? 'Aan' : 'Uit'}
+              onClick={handleLogout}
+              className="mt-1 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition-colors"
+              title="Uitloggen"
             >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                  deepReadMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
+              <LogOut className="h-4 w-4" />
+              Uitloggen
             </button>
+          </header>
+
+          {/* Cards row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Focus card */}
+            <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+              <div className="text-stone-800 font-semibold text-lg">Focus</div>
+              <div className="mt-6 h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={focusData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={72}
+                      outerRadius={96}
+                      startAngle={90}
+                      endAngle={-270}
+                      paddingAngle={2}
+                      stroke="white"
+                      strokeWidth={4}
+                    >
+                      {focusData.map((entry, idx) => (
+                        <Cell key={idx} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none -mt-[168px] flex flex-col items-center justify-center">
+                  <div className="text-3xl font-semibold text-stone-900">{totalMinutes}</div>
+                  <div className="text-sm text-stone-500">min</div>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-3">
+                {focusData.map((row) => (
+                  <div key={row.name} className="flex items-center justify-between text-stone-600">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: row.color }}
+                      />
+                      <span>{row.name}</span>
+                    </div>
+                    <span className="text-stone-700">{row.value} min</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Flow card */}
+            <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+              <div className="text-stone-800 font-semibold text-lg">Flow</div>
+
+              <div className="mt-6 space-y-6">
+                {[
+                  { name: 'Wiskunde', label: 'Pittig', value: 0.25, color: '#f6caa2' },
+                  { name: 'Geschiedenis', label: 'In de zone', value: 0.92, color: '#5b5b5b' },
+                  { name: 'Engels', label: 'Stabiel', value: 0.55, color: '#a8a29e' },
+                ].map((row) => (
+                  <div key={row.name} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-stone-800 font-semibold">{row.name}</div>
+                      <div className="text-stone-500">{row.label}</div>
+                    </div>
+                    <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${Math.round(row.value * 100)}%`, backgroundColor: row.color }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
-        </section>
-      </main>
+
+          {/* Tip card */}
+          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+            <div className="flex items-center gap-3 text-stone-500 text-sm font-semibold tracking-wide uppercase">
+              <MessageCircle className="h-4 w-4" />
+              Tip voor aan tafel
+            </div>
+            <div className="mt-3 text-lg font-semibold text-stone-900">
+              Vraag Rens hoe hij die moeilijke som met breuken uiteindelijk toch heeft opgelost.
+            </div>
+          </section>
+
+          {/* Deep Read Mode card */}
+          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+            <div className="text-stone-800 font-semibold text-lg">Diep-Lees Modus</div>
+
+            <div className="mt-4 flex items-start justify-between gap-8">
+              <div>
+                <div className="text-stone-800 font-medium">Diep-Lees Modus</div>
+                <div className="text-sm text-stone-400 mt-2 max-w-xl">
+                  Activeer dit om de camera uit te schakelen. Dit dwingt je kind om de vraag rustig over te
+                  typen. Dit bevordert begrijpend lezen en vertraagt de haast.
+                </div>
+                {error && <div className="text-sm text-red-700 mt-3">{error}</div>}
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleDeepReadMode}
+                disabled={isLoading}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-colors ${
+                  deepReadMode ? 'bg-stone-800 border-stone-800' : 'bg-stone-200 border-stone-200'
+                } ${isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
+                aria-pressed={deepReadMode}
+                aria-label="Toggle Diep-Lees Modus"
+                title={isLoading ? 'Laden...' : deepReadMode ? 'Aan' : 'Uit'}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                    deepReadMode ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </section>
+
+          {/* Role badge */}
+          <div className="fixed bottom-4 right-4">
+            <div className="rounded-full bg-stone-700 text-white text-xs px-3 py-1 shadow-sm">
+              parent
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   )
 }
