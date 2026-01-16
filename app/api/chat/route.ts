@@ -313,9 +313,46 @@ export async function POST(req: Request) {
       },
     });
 
-    const previousHistory = messages.slice(0, -1).map((msg: any) => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }]
+    const dataUrlToInlineDataPart = (imgData: string) => {
+      const matches = imgData.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/)
+      if (matches && matches.length === 3) {
+        return {
+          inlineData: {
+            data: matches[2],
+            mimeType: matches[1],
+          },
+        }
+      }
+      const base64Data = imgData.includes(',') ? imgData.split(',')[1] : imgData
+      return {
+        inlineData: {
+          data: base64Data,
+          mimeType: 'image/jpeg',
+        },
+      }
+    }
+
+    const messageToGeminiParts = (msg: any) => {
+      const parts: any[] = []
+      const text = typeof msg?.content === 'string' ? msg.content : ''
+      if (text.trim()) parts.push({ text })
+
+      // IMPORTANT: Preserve image context across turns by including prior user images in history.
+      // This avoids "context reset" for follow-up replies like "7" -> "7:25" after a worksheet photo.
+      const imgs: any[] = Array.isArray(msg?.images) ? msg.images : []
+      if (msg?.role === 'user' && imgs.length > 0) {
+        for (const img of imgs) {
+          if (typeof img === 'string' && /^data:image\//i.test(img)) {
+            parts.push(dataUrlToInlineDataPart(img))
+          }
+        }
+      }
+      return parts.length ? parts : [{ text: '' }]
+    }
+
+    const previousHistory = (Array.isArray(messages) ? messages.slice(0, -1) : []).map((msg: any) => ({
+      role: msg?.role === 'user' ? 'user' : 'model',
+      parts: messageToGeminiParts(msg),
     }));
 
     const chat = model.startChat({
@@ -326,35 +363,19 @@ export async function POST(req: Request) {
       ],
     });
 
-    const lastMessageContent = messages[messages.length - 1].content;
+    const lastMessage = messages[messages.length - 1]
+    const lastMessageContent = lastMessage?.content || '';
     let userParts: any[] = [{ text: lastMessageContent }];
     
     // IMAGE PAYLOAD: Controleer en verwerk afbeeldingen correct
     if (images.length > 0) {
         console.log(`[CHAT API] Verwerken van ${images.length} afbeelding(en)...`);
         images.forEach((imgData: string, index: number) => {
-             const matches = imgData.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-             if (matches && matches.length === 3) {
-                 const mimeType = matches[1];
-                 const base64Data = matches[2];
-                 console.log(`[CHAT API] Afbeelding ${index + 1}: mimeType=${mimeType}, dataLength=${base64Data.length}`);
-                 userParts.push({ 
-                   inlineData: { 
-                     data: base64Data, 
-                     mimeType: mimeType 
-                   } 
-                 });
-             } else {
-                 // Fallback: probeer base64 data te extraheren
-                 const base64Data = imgData.includes(',') ? imgData.split(',')[1] : imgData;
-                 console.log(`[CHAT API] Afbeelding ${index + 1}: Fallback naar JPEG, dataLength=${base64Data.length}`);
-                 userParts.push({ 
-                   inlineData: { 
-                     data: base64Data, 
-                     mimeType: "image/jpeg" 
-                   } 
-                 });
-             }
+             const part = dataUrlToInlineDataPart(imgData)
+             const len = part?.inlineData?.data?.length || 0
+             const mt = part?.inlineData?.mimeType || 'image/jpeg'
+             console.log(`[CHAT API] Afbeelding ${index + 1}: mimeType=${mt}, dataLength=${len}`);
+             userParts.push(part)
         });
         userParts[0].text += `\n\n[Systeem: De gebruiker heeft ${images.length} afbeelding(en) geüpload. Kijk goed naar de inhoud.]`;
         console.log(`[CHAT API] ${images.length} afbeelding(en) toegevoegd aan userParts`);
