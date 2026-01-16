@@ -29,18 +29,45 @@ export default function LoginPage() {
 
       if (data?.session) {
         // Ensure profile exists (service role route auto-creates if missing)
+        const roleHome = (role?: string | null) => {
+          if (role === 'parent') return '/parent/dashboard'
+          if (role === 'teacher') return '/teacher/clipboard'
+          return '/student/desk'
+        }
+
+        // Respect redirect query if present (e.g. user tried to open a protected page)
+        const redirectParam =
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('redirect')
+            : null
+
         try {
-          await fetch('/api/auth/get-profile', {
+          const resp = await fetch('/api/auth/get-profile', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: data.session.user.id }),
           })
+          const json = await resp.json().catch(() => null)
+          const role = json?.profile?.role ?? null
+
+          // Prefer explicit redirect param, otherwise go to role home.
+          window.location.href = redirectParam || roleHome(role)
+          return
         } catch {
-          // ignore - middleware will still route with default student role
+          // ignore - fall back to role lookup below
         }
 
-        // Let middleware route by role
-        window.location.href = '/'
+        // Fallback: lookup role via client and go to role home.
+        try {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.session.user.id)
+            .single()
+          window.location.href = redirectParam || roleHome(prof?.role)
+        } catch {
+          window.location.href = redirectParam || '/student/desk'
+        }
       } else {
         setError('Inloggen mislukt. Probeer het opnieuw.')
         setIsLoading(false)
