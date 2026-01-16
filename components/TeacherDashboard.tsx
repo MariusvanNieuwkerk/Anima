@@ -386,7 +386,11 @@ export default function TeacherDashboard({ teacherName = 'Meneer Jansen', classN
               <button
                 key={index}
                 onClick={() => handleStudentClick(student.name)}
-                className="w-full p-3 md:p-4 flex items-center gap-3 md:gap-4 rounded-xl md:rounded-2xl transition-all hover:bg-stone-50 hover:shadow-sm border border-stone-200 hover:border-stone-300 cursor-pointer group text-left"
+                className={`w-full p-3 md:p-4 flex items-center gap-3 md:gap-4 rounded-xl md:rounded-2xl transition-all border cursor-pointer group text-left ${
+                  selectedStudent === student.name
+                    ? 'bg-stone-50 border-stone-300 ring-2 ring-stone-200'
+                    : 'bg-white border-stone-200 hover:bg-stone-50 hover:shadow-sm hover:border-stone-300'
+                }`}
               >
                 {/* Avatar */}
                 <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-stone-300 flex items-center justify-center text-stone-800 font-bold text-xs md:text-sm flex-shrink-0 border border-stone-400">
