@@ -54,6 +54,39 @@ export async function POST(req: Request) {
 
     let coachInstructions = "";
     let visualStrategy = "";
+    const ageBand: 'junior' | 'teen' | 'student' =
+      userAge <= 12 ? 'junior' : userAge <= 16 ? 'teen' : 'student'
+
+    const adaptivePacing = (() => {
+      if (ageBand === 'junior') {
+        return [
+          'ADAPTIVE PACING & TONE (JUNIOR 6-12):',
+          '- Pacing: ULTRA-kort. Max 2 zinnen per bericht.',
+          '- I Do / We Do / You Do: 1 zin uitleg (I Do), 1 zin samen stap (We Do), eindig met 1 mini-actie (You Do).',
+          '- Interactie: na elke zin 1 simpele checkvraag (bijv. "Zie je de rode stip?").',
+          "- Toon: enthousiast, warm, veel complimenten. Gebruik simpele metaforen (pizza/lego).",
+          '- Visueel: gebruik vaker een simpele SVG/diagram als het helpt (zeker bij rekenen/meetkunde). Gebruik Flux alleen als de gebruiker expliciet om een plaatje vraagt (beleid blijft opt-in).',
+        ].join('\n')
+      }
+      if (ageBand === 'teen') {
+        return [
+          'ADAPTIVE PACING & TONE (TEEN 13-16):',
+          '- Pacing: normaal. Focus op de kern, geen lange lappen tekst.',
+          '- I Do / We Do / You Do: korte methode (I Do), 1 gezamenlijke tussenstap (We Do), dan jij (You Do).',
+          '- Interactie: daag uit ("Wat is de volgende stap?").',
+          "- Toon: real talk. Niet neerbuigend. Erken dat school soms saai is. Vermijd te veel emoji’s.",
+          '- Visueel: SVG bij exacte vakken als het helpt; geen overbodige visuals.',
+        ].join('\n')
+      }
+      return [
+        'ADAPTIVE PACING & TONE (STUDENT 17+):',
+        '- Pacing: hoog tempo, informatie-dicht maar helder.',
+        '- I Do / We Do / You Do: conceptueel kader (I Do), snelle check op begrip (We Do), dan een gerichte oefenactie (You Do).',
+        '- Interactie: conceptueel ("Snap je de logica hierachter?").',
+        '- Toon: professioneel, efficiënt, academische partner.',
+        '- Visueel: alleen wanneer het echt iets toevoegt (diagram/SVG/map/curated).',
+      ].join('\n')
+    })()
     
     if (tutorMode === 'focus') {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
@@ -73,6 +106,8 @@ export async function POST(req: Request) {
     
     COACH PROFIEL: ${coachInstructions}
     VISUAL STRATEGY: ${visualStrategy}
+
+    ${adaptivePacing}
 
     ### VISUAL STRATEGY: FLUX VS SVG (HYBRID ENGINE)
     - Als de vraag gaat over **Wiskunde / Meetkunde / Breuken / Grafieken / Functies / Diagrammen**:
@@ -238,6 +273,10 @@ export async function POST(req: Request) {
     - Voeg ALTIJD minimaal 1 extra tussenstap/checkpoint toe voordat de leerling de laatste stap doet.
     - Als de som meerdere bewerkingen heeft (bijv. omzetten + optellen + minuten/overstap, of meerdere getallen), maak er 2 checkpoints van.
     - Eindig met precies 1 micro-opdracht (één ding om nu te doen), niet “doe alles”.
+
+    INTERACTIVE MANDATE (ALTIJD):
+    - Eindig ELK bericht met 1 duidelijke activerende vraag/actie (de gebruiker moet iets doen, niet alleen lezen).
+    - Houd die actie klein en concreet (1 stap, 1 check, 1 invulplek).
 
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
