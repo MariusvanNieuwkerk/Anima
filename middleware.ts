@@ -1,35 +1,100 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-/**
- * Simplified Middleware - Login first, security later
- * 
- * PRIORITY: Laat login pagina altijd door
- */
+const ROLE_HOME: Record<string, string> = {
+  student: '/student/desk',
+  parent: '/parent/dashboard',
+  teacher: '/teacher/clipboard',
+}
+
+const isPublicPath = (pathname: string) => {
+  if (pathname === '/login') return true
+  if (pathname.startsWith('/api/')) return true
+  if (pathname.startsWith('/_next/')) return true
+  if (pathname.startsWith('/favicon')) return true
+  // Mobile QR upload bridge should stay accessible without login
+  if (pathname.startsWith('/upload')) return true
+  return false
+}
+
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname } = request.nextUrl
 
-  // CRITICAL: Skip login pagina EERST (altijd toegankelijk)
-  if (pathname === '/login') {
-    return NextResponse.next();
+  if (isPublicPath(pathname)) return NextResponse.next()
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Fail-open for deployments missing env vars, to avoid locking you out.
+    return NextResponse.next()
   }
 
-  // Skip voor API routes
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.next();
+  // IMPORTANT: use a response we can mutate cookies on
+  let response = NextResponse.next()
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options)
+        })
+      },
+    },
+  })
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // Not logged in -> /login
+  if (!user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(url)
   }
 
-  // Skip voor static files
-  if (pathname.startsWith('/_next/') || pathname.startsWith('/favicon')) {
-    return NextResponse.next();
+  // Logged in: determine role
+  let role: string = 'student'
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle()
+    role = (data?.role as string) || 'student'
+  } catch {
+    role = 'student'
   }
 
-  // Voor nu: Laat alle andere routes door (we voegen beveiliging later toe)
-  return NextResponse.next();
+  const home = ROLE_HOME[role] || ROLE_HOME.student
+
+  // If user tries to access another role area, bounce to their home.
+  const isRoleArea =
+    pathname.startsWith('/student') ||
+    pathname.startsWith('/parent') ||
+    pathname.startsWith('/teacher')
+
+  if (pathname === '/' || pathname === '/student' || pathname === '/parent' || pathname === '/teacher') {
+    const url = request.nextUrl.clone()
+    url.pathname = home
+    return NextResponse.redirect(url)
+  }
+
+  if (isRoleArea && !pathname.startsWith(home.split('/')[1] ? `/${home.split('/')[1]}` : home)) {
+    const url = request.nextUrl.clone()
+    url.pathname = home
+    return NextResponse.redirect(url)
+  }
+
+  return response
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
-};
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}

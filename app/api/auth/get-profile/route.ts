@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
         }
 
         const userEmail = authUser.user.email || 'unknown@example.com';
+        const baseName = userEmail.split('@')[0] || 'Student';
         
         // Maak automatisch een student profile aan
         const { data: newProfile, error: insertError } = await supabaseAdmin
@@ -70,7 +71,8 @@ export async function POST(req: NextRequest) {
             id: userId,
             email: userEmail,
             role: 'student',
-            student_name: userEmail.split('@')[0] || 'Student',
+            display_name: baseName,
+            student_name: baseName,
             created_at: new Date().toISOString()
           })
           .select()

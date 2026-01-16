@@ -27,8 +27,19 @@ export default function LoginPage() {
       }
 
       if (data?.session) {
-        // CLEAN LOGIN: Direct redirect naar /student
-        window.location.href = '/student'
+        // Ensure profile exists (service role route auto-creates if missing)
+        try {
+          await fetch('/api/auth/get-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: data.session.user.id }),
+          })
+        } catch {
+          // ignore - middleware will still route with default student role
+        }
+
+        // Let middleware route by role
+        window.location.href = '/'
       } else {
         setError('Inloggen mislukt. Probeer het opnieuw.')
         setIsLoading(false)
