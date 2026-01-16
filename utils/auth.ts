@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabaseServer } from './supabaseServer';
 
 export interface UserProfile {
   id: string;
@@ -19,7 +19,7 @@ export async function getUserProfile(userId?: string): Promise<UserProfile | nul
 
     // Als er geen userId is opgegeven, haal de huidige sessie op
     if (!targetUserId) {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabaseServer.auth.getSession();
       
       if (sessionError || !session?.user) {
         // Geen actieve sessie, return null
@@ -29,7 +29,7 @@ export async function getUserProfile(userId?: string): Promise<UserProfile | nul
       targetUserId = session.user.id;
     }
     
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('profiles')
       .select('*')
       .eq('id', targetUserId)

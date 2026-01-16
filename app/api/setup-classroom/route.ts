@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/utils/supabase';
+import { supabaseServer } from '@/utils/supabaseServer';
 
 export async function POST(req: NextRequest) {
   try {
@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
     const teacherId = 'test-teacher-1'; // TODO: Vervang met echte auth
     
     // 1. Check of klas al bestaat
-    const { data: existingClass, error: checkError } = await supabase
+    const { data: existingClass, error: checkError } = await supabaseServer
       .from('classrooms')
       .select('*')
       .eq('name', 'Groep 8A')
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       console.log('[SETUP] Klas bestaat al:', classroomId);
     } else {
       // 2. Maak nieuwe klas aan
-      const { data: newClass, error: createError } = await supabase
+      const { data: newClass, error: createError } = await supabaseServer
         .from('classrooms')
         .insert({
           name: 'Groep 8A',
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Check of Rens al gekoppeld is
-    const { data: existingStudent, error: studentCheckError } = await supabase
+    const { data: existingStudent, error: studentCheckError } = await supabaseServer
       .from('classroom_students')
       .select('*')
       .eq('classroom_id', classroomId)
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     if (!existingStudent) {
       // 4. Koppel Rens aan de klas
-      const { error: linkError } = await supabase
+      const { error: linkError } = await supabaseServer
         .from('classroom_students')
         .insert({
           classroom_id: classroomId,
