@@ -528,6 +528,54 @@ export async function POST(req: Request) {
       }
     }
 
+    const extractMoneyLike = (t: string) => {
+      // Capture common money formats: 2,40 / 2.40 / €2,40 / € 2.40 / 240? (no)
+      // We deliberately avoid integers without decimals to reduce false positives.
+      const hits = (t || '').match(/€\s*\d{1,3}(?:[.,]\d{2})|\b\d{1,3}(?:[.,]\d{2})\b/g) || []
+      const normalized = hits
+        .map((s) => s.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+      // de-dupe while preserving order
+      const seen = new Set<string>()
+      const out: string[] = []
+      for (const h of normalized) {
+        if (!seen.has(h)) {
+          seen.add(h)
+          out.push(h)
+        }
+      }
+      return out
+    }
+
+    const makeLowConfidenceMessage = () => {
+      const amounts = ocrTranscript ? extractMoneyLike(ocrTranscript) : []
+      const lang = String(userLanguage || 'nl')
+      if (lang === 'en') {
+        return [
+          `I can’t read the amounts reliably from this photo yet (OCR confidence: ${ocrConfidence}).`,
+          amounts.length ? `I think I see these amounts: ${amounts.join(', ')}.` : `I can’t confidently detect the amounts.`,
+          `Can you send a close-up of the receipt table (fill the frame, less shadow/glare)?`,
+        ].join('\n')
+      }
+      return [
+        `Ik kan de bedragen nog niet betrouwbaar lezen uit deze foto (OCR-confidence: ${ocrConfidence}).`,
+        amounts.length ? `Ik denk dat ik deze bedragen zie: ${amounts.join(', ')}.` : `Ik kan de bedragen niet zeker herkennen.`,
+        `Kun je een close-up sturen van het kassabon-tabelletje (beeldvullend, minder schaduw/reflectie)?`,
+      ].join('\n')
+    }
+
+    // If OCR itself says medium/low confidence, do NOT proceed to "answer" (prevents wrong amounts).
+    if (wantsPreciseReading && ocrTranscript && ocrConfidence && ocrConfidence !== 'high') {
+      return new Response(
+        JSON.stringify({
+          message: makeLowConfidenceMessage(),
+          action: 'none',
+          topic: 'Begrijpend lezen / OCR',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Final pass: answer using transcript as ground truth (no guessing).
     const finalUserParts = (() => {
       if (!ocrTranscript) return userParts

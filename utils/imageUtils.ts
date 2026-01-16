@@ -2,8 +2,8 @@
  * Image Compression Utility
  * 
  * Comprimeert afbeeldingen client-side om Vercel timeout te voorkomen
- * - Resize naar max 1024x1024 pixels
- * - Converteer naar JPEG met kwaliteit 0.7
+ * - Resize naar max 1600x1600 pixels (betere leesbaarheid voor tekst/OCR)
+ * - Converteer naar JPEG met kwaliteit 0.82 (minder artifacts op kleine tekst)
  * - Output: Base64 string
  */
 
@@ -42,7 +42,7 @@ export async function compressImage(file: File): Promise<string> {
         // Bepaal nieuwe dimensies (max 1024x1024, behoud aspect ratio)
         let width = img.width;
         let height = img.height;
-        const maxDimension = 1024;
+        const maxDimension = 1600;
         
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -64,12 +64,16 @@ export async function compressImage(file: File): Promise<string> {
           reject(new Error('Canvas context niet beschikbaar'));
           return;
         }
+        // Improve downscale quality for text-heavy photos (receipts/workbooks).
+        ctx.imageSmoothingEnabled = true;
+        // @ts-expect-error - imageSmoothingQuality exists in modern browsers
+        ctx.imageSmoothingQuality = 'high';
         
         // Teken de afbeelding op het canvas (resized)
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Converteer naar JPEG met kwaliteit 0.7
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        // Converteer naar JPEG met iets hogere kwaliteit (minder OCR-fouten)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
         
         resolve(compressedBase64);
       };
