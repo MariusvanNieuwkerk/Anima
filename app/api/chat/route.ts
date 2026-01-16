@@ -650,6 +650,30 @@ export async function POST(req: Request) {
       return { endHHMM, optionLetter, options }
     }
 
+    const solveDutchTimeHoursOnly = (t: string) => {
+      // Handles follow-up questions like: "Hoeveel uur is 2 uur 's middags + 5 uur?"
+      // We only provide scaffolding (no final hour).
+      const text = (t || '').toLowerCase()
+      const looksLike =
+        /\bhoeveel\s+uur\b/.test(text) &&
+        /\b\d{1,2}\s*uur\b/.test(text) &&
+        /'s\s*middags|s\s*middags|middag/.test(text)
+      if (!looksLike) return null
+
+      const start = parseDutchStartTime(text)
+      if (!start) return null
+
+      // Duration hours: take the first "X uur" after a "+" or the last one in the sentence.
+      const plusH = text.match(/\+\s*(\d{1,2})\s*uur\b/)
+      const allH = Array.from(text.matchAll(/(\d{1,2})\s*uur\b/g)).map((m) => parseInt(m[1], 10))
+      const durHours = plusH ? parseInt(plusH[1], 10) : (allH.length >= 2 ? allH[allH.length - 1] : null)
+      if (durHours == null || Number.isNaN(durHours)) return null
+
+      const startHour24 = to24Hour(start.hour, start.daypart)
+      const startHHMM = `${pad2(startHour24)}:${pad2(start.minute)}`
+      return { startHHMM, durHours }
+    }
+
     const makeLowConfidenceMessage = () => {
       const amounts = ocrTranscript ? extractMoneyLike(ocrTranscript) : []
       const lang = String(userLanguage || 'nl')
@@ -726,6 +750,32 @@ export async function POST(req: Request) {
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         )
       }
+    }
+
+    // Follow-up text questions (without re-uploading the image) should still respect "’s middags" -> 24h.
+    // This prevents regressions like treating 2pm as 2am in subsequent turns.
+    const hoursOnly = solveDutchTimeHoursOnly(lastMessageContent)
+    if (hoursOnly) {
+      const lang = String(userLanguage || 'nl')
+      const msg =
+        lang === 'en'
+          ? [
+              `Let’s do only this step (no final answer yet).`,
+              `Mini-step 1: 2 pm → **${hoursOnly.startHHMM}** (24h time).`,
+              `Mini-step 2: ${hoursOnly.startHHMM} + ${hoursOnly.durHours} hours = **__ : __**`,
+              `What hour do you get?`,
+            ].join('\n')
+          : [
+              `We doen alleen deze stap (nog geen eindantwoord).`,
+              `Mini-stap 1: 2 uur ’s middags → **${hoursOnly.startHHMM}** (24-uurs tijd).`,
+              `Mini-stap 2: ${hoursOnly.startHHMM} + ${hoursOnly.durHours} uur = **__ : __**`,
+              `Welk uur krijg je?`,
+            ].join('\n')
+
+      return new Response(
+        JSON.stringify({ message: msg, action: 'none', topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
     }
 
     // Final pass: answer using transcript as ground truth (no guessing).
