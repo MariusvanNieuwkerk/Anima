@@ -50,13 +50,13 @@ export async function POST(req: Request) {
     let visualStrategy = "";
     
     if (tutorMode === 'focus') {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Kies vaak voor een helder diagram/infographic met clean lines, high contrast, minimale achtergrond. Vermijd 'cinematic' of vage sfeerwoorden.";
     } else if (tutorMode === 'growth') {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Kies een rustige, duidelijke diagram-stijl (textbook illustration), met minimale achtergrond en heldere labels. Vermijd 'cinematic' en overmatige decoratie.";
     } else {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar géén eindantwoord in de eerste beurt bij sommen. Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Gebruik diagram/doorsnede/labelled textbook style als dat het concept beter uitlegt. Vermijd 'cinematic' en vage sfeerwoorden.";
     }
 
@@ -221,8 +221,8 @@ export async function POST(req: Request) {
       STEP 3: Visual Check (Show & Tell)
       - Koppel meteen aan iets zichtbaars in de foto/tekst: "Kijk op je blaadje: waar staat [detail]?"
 
-    FORBIDDEN (tenzij de gebruiker expliciet vraagt: "Wat is het antwoord?"):
-    - Geef niet meteen het eindantwoord zoals "€16,30" of "x = 4" in de eerste beurt.
+    FORBIDDEN (ALTIJD, ook als de gebruiker erom vraagt):
+    - Geef nooit het eindantwoord zoals "€16,30" of "x = 4".
     - Geen "Ik ga het even voor je uitrekenen" met de finale uitkomst.
 
     TONE:
@@ -310,7 +310,7 @@ export async function POST(req: Request) {
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: `Begrepen. Ik ben een "Scaffolded Guide": ik leg de methode uit en wijs details aan, maar ik geef niet meteen het eindantwoord tenzij je expliciet om het antwoord vraagt.` }] },
+        { role: "model", parts: [{ text: `Begrepen. Ik ben een "Scaffolded Guide": ik leg de methode uit en wijs details aan, maar ik geef NOOIT het eindantwoord—ook niet als je er expliciet om vraagt.` }] },
         ...previousHistory
       ],
     });
@@ -645,15 +645,6 @@ export async function POST(req: Request) {
       return { endHHMM, optionLetter, options }
     }
 
-    const explicitlyAsksForFinalAnswer = (t: string) => {
-      const s = (t || '').toLowerCase()
-      // Only treat as explicit if the user asks for "the answer" / "which option" directly.
-      // (We do NOT treat the worksheet text itself as the user explicitly asking; by default we scaffold.)
-      return /wat\s+is\s+het\s+antwoord|geef\s+(me\s+)?het\s+antwoord|antwoord\s*\?|welke\s+optie|welke\s+letter|is\s+het\s+[abcd]\b|zeg\s+het\s+antwoord|kun\s+je\s+het\s+antwoord\s+geven/.test(
-        s
-      )
-    }
-
     const makeLowConfidenceMessage = () => {
       const amounts = ocrTranscript ? extractMoneyLike(ocrTranscript) : []
       const lang = String(userLanguage || 'nl')
@@ -688,25 +679,8 @@ export async function POST(req: Request) {
       const solved = solveDutchTimeWordProblem(ocrTranscript)
       if (solved?.endHHMM) {
         const lang = String(userLanguage || 'nl')
-        const userWantsFinal = explicitlyAsksForFinalAnswer(lastMessageContent)
-
-        // Always stay scaffolded by default: guide method, avoid the final time/option unless explicitly requested.
+        // Always stay scaffolded: guide method, avoid the final time/option (Blueprint V9).
         const msg = (() => {
-          if (userWantsFinal) {
-            return lang === 'en'
-              ? [
-                  `Computed precisely from the text:`,
-                  `2 pm → 14:00. Add 5 hours 25 minutes.`,
-                  `End time: **${solved.endHHMM}**${solved.optionLetter ? ` (option ${solved.optionLetter})` : ''}.`,
-                ].join('\n')
-              : [
-                  `Precies uitgerekend uit de tekst:`,
-                  `2 uur ’s middags = 14:00. Tel 5 uur en 25 minuten erbij op.`,
-                  `Eindtijd: **${solved.endHHMM}**${solved.optionLetter ? ` (antwoord: ${solved.optionLetter})` : ''}.`,
-                ].join('\n')
-          }
-
-          // Scaffolded hint path (default)
           // We can safely show the 24h conversion and the +hours intermediate, but not the final minutes result.
           // Derive intermediate "after hours" from transcript if possible (we know total end).
           const endH = parseInt(solved.endHHMM.slice(0, 2), 10)
@@ -750,7 +724,7 @@ export async function POST(req: Request) {
     const finalUserParts = (() => {
       if (!ocrTranscript) return userParts
       const suffix =
-        `\n\n[EXACTE TEKST UIT DE FOTO (OCR)]\n${ocrTranscript}\n\n[SYSTEEM OVERRIDE (STRICT): Gebruik ALLEEN de OCR-tekst hierboven om de opdracht te beantwoorden. Als info ontbreekt of onleesbaar is, zeg precies welk stukje ontbreekt en vraag om een scherpere close-up van dat deel. GEEN gokken. Houd je aan de Scaffolded Guide: methode/aanpak eerst, geen eindantwoord tenzij expliciet gevraagd.]`
+        `\n\n[EXACTE TEKST UIT DE FOTO (OCR)]\n${ocrTranscript}\n\n[SYSTEEM OVERRIDE (STRICT): Gebruik ALLEEN de OCR-tekst hierboven om de opdracht te beantwoorden. Als info ontbreekt of onleesbaar is, zeg precies welk stukje ontbreekt en vraag om een scherpere close-up van dat deel. GEEN gokken. Houd je aan de Scaffolded Guide: methode/aanpak eerst, NOOIT het eindantwoord geven.]`
       // Keep images attached so the model can cross-check, but transcript is the source of truth.
       return partsCloneWithTextSuffix(userParts, suffix)
     })()
