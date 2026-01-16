@@ -16,8 +16,7 @@ export default function BoardColumn({ imageUrl, topic, svgContent }: BoardColumn
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    // Blueprint V5.3: Primair - Dynamische Unsplash API (imageUrl)
-    // Secundair - Stijlvolle tekst-placeholder als fallback
+    // Visual rendering: show SVG diagram if present, otherwise show imageUrl, otherwise placeholder.
     if (svgContent) {
       setCurrentSvg(svgContent)
       setCurrentUrl(null)
@@ -44,7 +43,7 @@ export default function BoardColumn({ imageUrl, topic, svgContent }: BoardColumn
           </div>
         )}
 
-        {/* PRIMAIR: Dynamische Unsplash API afbeelding */}
+        {/* Image visual */}
         {currentUrl && !currentSvg && !isLoading && (
           <img 
             src={currentUrl} 

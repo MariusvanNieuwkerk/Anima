@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "sh -c \"(lsof -ti tcp:3000 || true) | xargs -I{} kill -9 {} 2>/dev/null || true; (lsof -ti tcp:3001 || true) | xargs -I{} kill -9 {} 2>/dev/null || true; (lsof -ti tcp:3002 || true) | xargs -I{} kill -9 {} 2>/dev/null || true; rm -rf .next node_modules/.cache; next dev --port 3000\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

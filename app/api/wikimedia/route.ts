@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { anatomyCandidates } from '@/utils/anatomyDictionary'
 
 type WikimediaSearchResult = {
   title: string
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
     // We bias toward Gray's Anatomy plates, but keep the search broad enough to actually find results.
     const qLower = rawQuery.toLowerCase()
     const grayHints = /gray|grays|gray's/.test(qLower)
+    const dict = anatomyCandidates(rawQuery)
     const synonymCandidates: string[] = []
     if (/\bpituitary\b|\bhypofyse\b/.test(qLower)) synonymCandidates.push('hypophysis')
     if (/\bhypophysis\b/.test(qLower)) synonymCandidates.push('pituitary')
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
       grayHints ? rawQuery : `"Gray's Anatomy" ${rawQuery}`,
       grayHints ? rawQuery : `Gray ${rawQuery}`,
       rawQuery,
+      ...dict.candidates,
       ...synonymCandidates.map((s) => (grayHints ? s : `${s} Gray`)),
       ...synonymCandidates,
     ]

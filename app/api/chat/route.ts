@@ -83,12 +83,19 @@ export async function POST(req: Request) {
       - In je ` + "`message`" + `: geef een KORTE uitleg (1–4 zinnen) + daarna de SVG (in de xml code block).
       - De SVG MOET het gevraagde diagram precies voorstellen (geen generieke vorm als er een specifieke situatie gevraagd wordt).
 
-    - Als de vraag gaat over **Biologie / Anatomie (mens of dier)** en de gebruiker vraagt om een **afbeelding / plaat**:
+    - Als de vraag gaat over **"hoe ziet X eruit?" (lichaamsdeel als uiterlijk/foto)**:
+      - Dit is GEEN anatomie-plaat. Gebruik Flux (via ` + "`visual_keyword`" + `) om een **heldere foto/illustratie** te tonen.
+      - Maak een Engelstalige prompt die fotorealistisch/helder is (white background / studio / medical reference photo style).
+      - Geen tekst in beeld (NO TEXT RULE).
+      - Voorbeeld user: "Hoe ziet een voet eruit?" -> visual_keyword: [GENERATE_IMAGE: A clear photorealistic reference photo of a human foot, neutral pose, studio lighting, white background, no text...]
+
+    - Als de vraag gaat over **Biologie / Anatomie (mens of dier) (botten/spieren/organen/doorsnede/labels/Gray)**:
       - Gebruik GEEN Flux en teken GEEN vrije SVG.
       - Gebruik de **REMOTE IMAGE ENGINE**: zet in ` + "`message`" + ` een tag:
         <remote-image query="..." caption="..." />
-      - ` + "`query`" + ` moet Engels zijn en gericht op Gray's Anatomy (bv. "human anatomy", "human skeleton", "heart anatomy", "pituitary gland").
+      - ` + "`query`" + ` moet Engels zijn en gericht op Gray's Anatomy (bv. "human skeleton", "hand bones", "pituitary gland", "heart anatomy").
       - De app zoekt de juiste Wikimedia Commons plaat + bronvermelding.
+      - GEEN wedervragen zoals "Wil je een afbeelding?". Bij anatomie hoort standaard een afbeelding, tenzij de gebruiker expliciet "schematisch/diagram" vraagt.
 
     - Als de vraag gaat over **Biologie / Anatomie** maar de gebruiker vraagt om een **schematisch diagram** of je wilt iets simpel uitleggen:
       - Kies **DIAGRAM-FIRST (CURATED TEMPLATES)**: je tekent NIET vrij.
@@ -105,6 +112,7 @@ export async function POST(req: Request) {
       - Voeg in ` + "`message`" + ` een self-closing tag toe:
         <remote-image query="..." caption="..." />
       - ` + "`query`" + ` moet een korte zoekstring zijn (Engels), bv. "pituitary gland", "human skeleton", "heart anatomy".
+      - Gebruik bij voorkeur CANONICAL termen (bijv. "pituitary gland" i.p.v. "hypofyse", "kidney anatomy" i.p.v. "nier").
       - De app zoekt vervolgens de juiste Wikimedia Commons plaat en toont de bronvermelding automatisch.
       - Zet ` + "`visual_keyword`" + ` op null/weglaten en zet ` + "`diagram`" + ` op null/weglaten.
 
@@ -372,27 +380,40 @@ export async function POST(req: Request) {
       return /pythagoras|meetkunde|driehoek|vierhoek|breuk|grafiek|functie|diagram|hoek|oppervlakte|omtrek|stelsel|assenstelsel|natuurkunde|kracht|stroomkring|spannings|weerstand|bio|biologie|anatomie|orgaan|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|oog|oor|huid|bot|botten|dier|zoogdier|reptiel|vogel/.test(t)
     })()
 
-    const isAnatomy = (() => {
-      const t = (lastMessageContent || '').toLowerCase()
-      return /biologie|anatomie|orgaan|organen|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|darmen|spijsverter|bloedsomloop|ademhaling|zenuwstelsel|bot|botten|menselijk lichaam/.test(
-        t
+    const lower = (lastMessageContent || '').toLowerCase()
+
+    const isBodyPartTopic = (() => {
+      return /menselijk lichaam|lichaamsdeel|hand|vinger|vingers|voet|voeten|teen|tenen|enkel|knie|arm|been|elleboog|schouder|heup|ribben|schedel|oor|oog|neus|mond|keel|huid/.test(
+        lower
       )
     })()
 
+    const isExplicitAnatomy = (() => {
+      // Words that imply anatomy/structure, not just appearance
+      return /anatomie|bot|botten|skelet|spier|spieren|pees|pezen|band|banden|orgaan|organen|doorsnede|spijsverter|bloedsomloop|ademhaling|zenuwstelsel|grays|gray's|gray|plaat|wikimedia|label|gelabeld/.test(
+        lower
+      )
+    })()
+
+    const isAnatomy = isExplicitAnatomy
+
     const wantsSchematicDiagram = (() => {
-      const t = (lastMessageContent || '').toLowerCase()
-      return /schematisch|schema|diagram/.test(t)
+      return /schematisch|schema|diagram/.test(lower)
     })()
 
     const needsDiagram = (() => {
-      const t = (lastMessageContent || '').toLowerCase()
-      return wantsSchematicDiagram && /biologie|anatomie|orgaan|organen|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|darmen|spijsverter|bloedsomloop|ademhaling|zenuwstelsel|bot|botten|menselijk lichaam/.test(t)
+      return wantsSchematicDiagram && isExplicitAnatomy
     })()
 
     const wantsRemoteAnatomyPlate = (() => {
-      const t = (lastMessageContent || '').toLowerCase()
-      const asksForImage = /afbeelding|plaat|plate|wikimedia|bron|historisch|gray|grays|gray's/.test(t)
-      return isAnatomy && asksForImage && !wantsSchematicDiagram
+      // Only when the user actually means anatomy (structure), not just appearance.
+      return isExplicitAnatomy && !wantsSchematicDiagram
+    })()
+
+    const wantsAppearanceImage = (() => {
+      // “Hoe ziet X eruit / laat zien / toon / foto” about a body part, without anatomy keywords => Flux is appropriate.
+      const asksLooksLike = /hoe ziet|laat zien|toon|foto|afbeelding|plaat|image/.test(lower)
+      return isBodyPartTopic && asksLooksLike && !isExplicitAnatomy && !wantsSchematicDiagram
     })()
 
     const hasSvgInMessage = (m: string) => /<svg[\s\S]*?<\/svg>/i.test(m || '')
@@ -485,6 +506,26 @@ export async function POST(req: Request) {
           const payload2 = JSON.parse(jsonText2)
           const v2 = validatePayload(payload2)
           if (v2.ok && /remote-image/i.test(payload2.message || '')) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // If the user asked “what does it look like?” for a body part and we got no visual_keyword, retry once to force Flux.
+    if (wantsAppearanceImage && !payload.visual_keyword) {
+      const strictFlux =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om hoe het eruit ziet (niet anatomisch). Zet 'visual_keyword' op een [GENERATE_IMAGE: ...] prompt (Engels, fotorealistisch, white background, no text). Antwoord als geldige JSON en niets anders. Geef GEEN remote-image en GEEN SVG/diagram.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictFlux)
+      const retryText = await runOnce(retryParts)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && typeof payload2.visual_keyword === 'string' && payload2.visual_keyword.includes('[GENERATE_IMAGE:')) {
             payload = payload2
           }
         }

@@ -1,14 +1,15 @@
-📘 ANIMA BLUEPRINT V9.0 (Hybrid Edition)
-Datum: 15 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
+📘 ANIMA BLUEPRINT V9.0 (Hybrid Edition) Datum: 15 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
 1. De Anima Filosofie
 * AI als Tutor: Anima is een 'Scaffolded Guide'. Ze biedt eerst heldere uitleg en structuur (de methode), maar houdt het eindantwoord achter totdat het kind het zelf heeft geprobeerd.
 * De "Escape Hatch" (Genuanceerd): We bewaken de balans tussen uitdagen en frustreren. De ontsnapping is strategisch (regel, analogie of voorzetje), afhankelijk van de gekozen modus.
 * De "Anti-Sorry" Regel: Een tutor verontschuldigt zich niet voor kort of streng zijn; de intentie is pedagogisch.
 * Instant Responsiviteit: We optimaliseren voor snelheid (Low Latency). De gebruiker mag nooit wachten op een "denkende" server zonder feedback.
 * Multimodaal Begrip: Anima "ziet" huiswerk via Vision voor gerichte hulp, mits toegestaan door de ouder.
-Visuele Strategie (The Hybrid Engine): We gebruiken een tweesporenbeleid:
-1. Flux (De Kwast): Voor alle contextuele verbeelding. Denk aan: Geschiedenis (Romeinen), Aardrijkskunde (Vulkanen), Biologie (Dieren/Cellen), Kunst, Literatuur (Scenes uit boeken) en Sfeer. Alles wat rijk en beeldend moet zijn.
-2. SVG (De Passer): Voor exacte logica. Wiskunde, Meetkunde, Grafieken en Breuken. Alles wat meetbaar en schematisch moet zijn.
+* Visuele Strategie (The Hybrid Engine): We gebruiken een meersporenbeleid:
+    * Flux (De Kwast): Voor alle contextuele verbeelding. Denk aan: Geschiedenis (Romeinen), Aardrijkskunde (Sfeer/Vulkanen), Kunst, Literatuur (Scenes uit boeken) en Sfeer. Alles wat rijk en beeldend moet zijn.
+    * SVG (De Passer): Voor exacte logica. Wiskunde, Meetkunde, Grafieken en Breuken. Alles wat meetbaar en schematisch moet zijn.
+    * Leaflet (De Atlas): Voor topografie en kaarten. Biedt de betrouwbaarheid van Google Maps, maar dan privacy-vriendelijk en volledig in eigen "Anima-stijl" (geen standaard kaart-look).
+    * Curator (De Archivaris): Voor anatomie en biologie. We gebruiken geverifieerde bronnen zoals Wikimedia (Gray's Anatomy) voor feitelijk correcte weergaven van het menselijk lichaam, in plaats van generatieve AI.
 * Universal Geometry Engine: De AI gebruikt "Vertex Counting Logica" (tel punten -> bereken coördinaten -> sluit vorm met 'Z') om te garanderen dat wiskundige figuren altijd gesloten en kloppend zijn.
 * Visual Mandate: Bij vragen over meetkunde is visuele output verplicht. De AI mag geen uitleg geven zonder bijbehorende SVG-constructie.
 * Prikkelarm & Warm Design: Geen kille tech-look, maar een tactiel "Paper Feel". Kleurenpalet verschuift van Slate (koud) naar Stone (warm).
@@ -21,8 +22,8 @@ A. Het Kind ("De Maker")
 * Interface: Direct op het bureau (Chat + Board). Geen administratie.
 * Navigatie: Master Menu (linksboven) vervangt vaste zijbalken. Toont Profiel, Coach-keuze en Settings.
 * Input: Smart Paperclip met "Mobile Bridge".
-* Mobiel/Tablet: Opent direct de native camera.
-* Desktop: Toont QR-code om telefoon tijdelijk als scanner te gebruiken.
+    * Mobiel/Tablet: Opent direct de native camera.
+    * Desktop: Toont QR-code om telefoon tijdelijk als scanner te gebruiken.
 * Rechten: Read/Write Chat.
 B. De Ouder ("De Toeschouwer")
 * Doel: Geruststelling & Emotional ROI.
@@ -46,11 +47,13 @@ C. De Leraar ("De Regisseur")
 * Visual Engine (The Hybrid Engine):
     * Art/Context: Replicate API (flux-schnell) voor artistieke beelden.
     * Math/Logic: Directe SVG Code Injection in de chat stream (geen API call nodig).
-    * Output Handling: Robuuste "Unwrap Logic" voor Flux en "Smart Detect" regex voor SVG blokken.
-    * Database Lock: Geen database logging tijdens generatie om crashes te voorkomen.
+    * Geography: React Leaflet integratie met custom styling.
+    * Anatomy: Remote Image Fetch logic voor Wikimedia/Gray's Anatomy databases.
+* Output Handling: Robuuste "Unwrap Logic" voor Flux, "Smart Detect" regex voor SVG blokken en "Component Mapping" voor Leaflet/External Images.
+* Database Lock: Geen database logging tijdens generatie om crashes te voorkomen.
 * Economy & Credits:
     * Supabase Table: profiles (kolommen: image_credits, is_premium).
-    * Logic: Check credits vóór Flux API call. SVG-generatie is gratis (kost geen credits).
+    * Logic: Check credits vóór Flux API call. SVG-generatie en Leaflet/Wikimedia gebruik is gratis (kost geen credits).
 * Vision Pipeline: Client (Mobile/QR) -> Supabase Storage -> Gemini Vision -> Antwoord.
 * Hosting: Vercel (Production).
 * Database: Supabase.
@@ -92,6 +95,7 @@ Fase 2: Authenticatie & Rollen (NU)
 * [ ] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
 * [ ] UI voor Credit Display (Teller in beeld).
 * [ ] Ouder Dashboard: Bouwen van de "Glow Feed" & Diep-Lees Modus toggle.
+* [ ] Integratie Leaflet (Kaarten) en Wikimedia (Anatomie).
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
 * [ ] Tech Debt Cleanup.
@@ -103,10 +107,12 @@ Fase 3: Scaling & Polish
 9. Business Model & Retention
 * Conversie: Doel 4% naar betaald.
 * Credits (The Fuel):
-    * Gratis: 5 Credits per maand (Flux afbeeldingen). SVG is altijd gratis.
+    * Gratis: 10 Credits per maand (Flux afbeeldingen). SVG, Leaflet en Wikimedia gebruik is altijd gratis.
     * Premium: Onbeperkt (Fair use).
-* Abonnementen: Basis (Gratis), Tutor (€6,95), Family (€11,95).
-* De "Emotional ROI" Mail: Wekelijkse mail naar ouders over autonomie en voortgang.
+* Abonnementen:
+    * Basis (Gratis): 10 Credits + Wekelijkse voortgangs-email.
+    * Tutor (€6,95) / Family (€11,95): Onbeperkt Credits + 24/7 Real-time toegang tot Ouder Dashboard (Glow Feed) + Wekelijkse email.
+* De "Emotional ROI" Mail: Wekelijkse mail naar alle ouders over autonomie en voortgang.
 10. Ethics, Privacy & Compliance 🛡️
 * Privacy (AVG/GDPR): Data opslag in EU. Recht op vergetelheid.
 * Data Hygiëne: Ouders en Leraren kunnen niet chatten, zodat het profiel van het kind zuiver blijft.

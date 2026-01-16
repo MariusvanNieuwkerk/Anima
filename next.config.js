@@ -8,6 +8,13 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // DEV STABILITY: avoid filesystem webpack cache corruption that can lead to missing .next server chunks.
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.cache = { type: 'memory' };
+    }
+    return config;
+  },
 }
 
 module.exports = nextConfig

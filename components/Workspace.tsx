@@ -16,6 +16,7 @@ import { compressImage } from '../utils/imageUtils'
 import { unlockAudioContext, unlockSpeechSynthesis } from '../utils/audioUnlock'
 import { getBestVoice, waitForVoices } from '../utils/voiceSelector'
 import QRCodeDisplay from './QRCodeDisplay'
+import { anatomyCandidates } from '@/utils/anatomyDictionary'
 
 declare global {
   interface Window {
@@ -579,7 +580,7 @@ export default function Workspace() {
     if (view === 'board') setHasNewImage(false)
   }
 
-  // Client-side functie om Unsplash visual op te halen
+  // Client-side helper to fetch a generated visual (Flux) via /api/visual
   const fetchAnimaVisual = async (keyword: string, topic: string, userAge: number, activeCoach: string): Promise<string | null> => {
     try {
       const response = await fetch('/api/visual', {
@@ -712,10 +713,13 @@ export default function Workspace() {
           (remoteFromTag.src && !/wikimedia|wikipedia|upload\\.wikimedia\\.org/i.test(remoteFromTag.src)))
       ) {
         try {
+          const baseQuery = remoteFromTag.query || remoteFromTag.caption || 'human anatomy'
+          const dict = anatomyCandidates(baseQuery)
+          const q = dict.canonical || baseQuery
           const wikiResp = await fetch('/api/wikimedia', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: remoteFromTag.query || remoteFromTag.caption || 'human anatomy' })
+            body: JSON.stringify({ query: q })
           })
           const wikiJson = await wikiResp.json()
           if (wikiResp.ok && wikiJson?.found && wikiJson?.url) {
