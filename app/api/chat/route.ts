@@ -132,7 +132,7 @@ export async function POST(req: Request) {
       - Vermijd obscure varianten ("inverse", "advanced proof", "historical scan") als er een simpel standaarddiagram bestaat.
       - Voeg waar nuttig context toe in de zoekterm: "simple", "school", "right triangle", "with squares", "labeled".
       Voorbeelden:
-      - [SEARCH_DIAGRAM: Pythagorean theorem proof diagram]
+      - [SEARCH_DIAGRAM: Pythagorean theorem squares on sides diagram]
       - [SEARCH_DIAGRAM: Bohr model atom diagram]
       - [SEARCH_DIAGRAM: supply and demand curve diagram]
       - [SEARCH_DIAGRAM: water cycle diagram]

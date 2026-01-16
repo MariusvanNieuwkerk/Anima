@@ -67,6 +67,73 @@ function likelyBadAsset(title: string): boolean {
   )
 }
 
+function preferredFileTitlesForQuery(rawQuery: string): string[] {
+  const q = (rawQuery || '').toLowerCase()
+
+  // "Schoolbook reference" presets: known, clean, canonical classroom diagrams.
+  // We try these file titles first to avoid random/odd search hits.
+  if (q.includes('pythagor')) {
+    return [
+      'File:Pythagorean.svg', // classic right triangle with squares a,b,c
+      'File:Pythagorean-theorem.svg',
+    ]
+  }
+
+  return []
+}
+
+async function fetchImageInfoByTitle(fileTitle: string): Promise<{
+  url: string
+  descriptionUrl: string | null
+  attribution: { artist: string | null; credit: string | null; license: string | null; source: string }
+  title: string
+} | null> {
+  const infoUrl = new URL('https://commons.wikimedia.org/w/api.php')
+  infoUrl.searchParams.set('action', 'query')
+  infoUrl.searchParams.set('format', 'json')
+  infoUrl.searchParams.set('origin', '*')
+  infoUrl.searchParams.set('prop', 'imageinfo')
+  infoUrl.searchParams.set('titles', fileTitle)
+  infoUrl.searchParams.set('iiprop', 'url|extmetadata|mime|mediatype')
+  infoUrl.searchParams.set('iiurlwidth', '1200')
+
+  const infoRes = await fetch(infoUrl.toString(), {
+    headers: { 'User-Agent': 'Anima/1.0 (wikimedia-imageinfo)' },
+    cache: 'no-store',
+  })
+  if (!infoRes.ok) return null
+
+  const infoJson = (await infoRes.json()) as any
+  const pages = infoJson?.query?.pages || {}
+  const page = Object.values(pages)[0] as any
+  const ii = (page?.imageinfo?.[0] || null) as WikimediaImageInfo | null
+
+  // Skip document containers (PDF/DjVu)
+  const mime = (ii?.mime || '').toLowerCase()
+  const mediatype = (ii?.mediatype || '').toLowerCase()
+  if (mime.includes('pdf') || mediatype === 'document') return null
+
+  const url = (ii as any)?.thumburl || ii?.url
+  if (!url) return null
+
+  const ext = ii?.extmetadata || {}
+  const licenseShort = stripHtml(ext.LicenseShortName?.value || '')
+  const artist = stripHtml(ext.Artist?.value || '')
+  const credit = stripHtml(ext.Credit?.value || '')
+
+  return {
+    title: fileTitle,
+    url,
+    descriptionUrl: ii?.descriptionurl || null,
+    attribution: {
+      artist: artist || null,
+      credit: credit || null,
+      license: licenseShort || null,
+      source: 'Wikimedia Commons',
+    },
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -74,6 +141,25 @@ export async function POST(req: Request) {
     const limit = Math.min(5, Math.max(1, Number(body?.limit || 1)))
 
     if (!rawQuery) return NextResponse.json({ error: 'Missing query' }, { status: 400 })
+
+    // 0) Schoolbook presets: if we know the canonical file(s), use them directly.
+    const preferredTitles = preferredFileTitlesForQuery(rawQuery)
+    for (const t of preferredTitles) {
+      const hit = await fetchImageInfoByTitle(t)
+      if (hit) {
+        return NextResponse.json(
+          {
+            found: true,
+            query: rawQuery,
+            title: hit.title,
+            url: hit.url,
+            descriptionUrl: hit.descriptionUrl,
+            attribution: hit.attribution,
+          },
+          { status: 200 }
+        )
+      }
+    }
 
     // We bias toward Gray's Anatomy plates, but keep the search broad enough to actually find results.
     const qLower = rawQuery.toLowerCase()
@@ -151,52 +237,16 @@ export async function POST(req: Request) {
 
     // Try top-N candidates until we get a usable url.
     for (const fileTitle of ranked.slice(0, Math.max(limit, 5))) {
-      const infoUrl = new URL('https://commons.wikimedia.org/w/api.php')
-      infoUrl.searchParams.set('action', 'query')
-      infoUrl.searchParams.set('format', 'json')
-      infoUrl.searchParams.set('origin', '*')
-      infoUrl.searchParams.set('prop', 'imageinfo')
-      infoUrl.searchParams.set('titles', fileTitle)
-      infoUrl.searchParams.set('iiprop', 'url|extmetadata|mime|mediatype')
-      infoUrl.searchParams.set('iiurlwidth', '1200')
-
-      const infoRes = await fetch(infoUrl.toString(), {
-        headers: { 'User-Agent': 'Anima/1.0 (wikimedia-imageinfo)' },
-        cache: 'no-store',
-      })
-      if (!infoRes.ok) continue
-
-      const infoJson = (await infoRes.json()) as any
-      const pages = infoJson?.query?.pages || {}
-      const page = Object.values(pages)[0] as any
-      const ii = (page?.imageinfo?.[0] || null) as WikimediaImageInfo | null
-
-      // Skip document containers (PDF/DjVu) which often render as "black page scans"
-      const mime = (ii?.mime || '').toLowerCase()
-      const mediatype = (ii?.mediatype || '').toLowerCase()
-      if (mime.includes('pdf') || mediatype === 'document') continue
-
-      const url = (ii as any)?.thumburl || ii?.url
-      if (!url) continue
-
-      const ext = ii?.extmetadata || {}
-      const licenseShort = stripHtml(ext.LicenseShortName?.value || '')
-      const artist = stripHtml(ext.Artist?.value || '')
-      const credit = stripHtml(ext.Credit?.value || '')
-
+      const hit = await fetchImageInfoByTitle(fileTitle)
+      if (!hit) continue
       return NextResponse.json(
         {
           found: true,
           query: usedQuery,
-          title: fileTitle,
-          url,
-          descriptionUrl: ii?.descriptionurl || null,
-          attribution: {
-            artist: artist || null,
-            credit: credit || null,
-            license: licenseShort || null,
-            source: 'Wikimedia Commons',
-          },
+          title: hit.title,
+          url: hit.url,
+          descriptionUrl: hit.descriptionUrl,
+          attribution: hit.attribution,
         },
         { status: 200 }
       )
