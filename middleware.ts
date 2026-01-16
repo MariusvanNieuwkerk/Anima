@@ -9,12 +9,15 @@ const ROLE_HOME: Record<string, string> = {
 }
 
 const isPublicPath = (pathname: string) => {
+  // Homepage is always public (the "front door")
+  if (pathname === '/') return true
+  // Login is public
   if (pathname === '/login') return true
-  if (pathname.startsWith('/api/')) return true
-  if (pathname.startsWith('/_next/')) return true
-  if (pathname.startsWith('/favicon')) return true
   // Mobile QR upload bridge should stay accessible without login
   if (pathname.startsWith('/upload')) return true
+  // Static files
+  if (pathname.startsWith('/_next/')) return true
+  if (pathname.startsWith('/favicon')) return true
   return false
 }
 
@@ -80,7 +83,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/parent') ||
     pathname.startsWith('/teacher')
 
-  if (pathname === '/' || pathname === '/student' || pathname === '/parent' || pathname === '/teacher') {
+  if (pathname === '/student' || pathname === '/parent' || pathname === '/teacher') {
     const url = request.nextUrl.clone()
     url.pathname = home
     return NextResponse.redirect(url)
@@ -96,5 +99,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // Only protect role-based areas; homepage stays public.
+  matcher: ['/student/:path*', '/parent/:path*', '/teacher/:path*'],
 }
