@@ -10,6 +10,7 @@ import SideMenu from './SideMenu'
 import SettingsModal from './SettingsModal'
 import ParentDashboard from './ParentDashboard'
 import TeacherDashboard from './TeacherDashboard'
+import DebugBanner from './DebugBanner'
 import { supabase } from '../utils/supabase'
 import { getUserProfile, type UserProfile } from '../utils/auth'
 import { compressImage } from '../utils/imageUtils'
@@ -45,6 +46,7 @@ export default function Workspace() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isAttachMenuOpen, setIsAttachMenuOpen] = useState(false)
   const [isQRModalOpen, setIsQRModalOpen] = useState(false)
+  const [debugEnabled, setDebugEnabled] = useState(false)
   
   // Brain Settings - Initialiseer met defaults, useEffect laadt ze uit storage
   const [tutorMode, setTutorMode] = useState<TutorMode>('explorer')
@@ -131,6 +133,23 @@ export default function Workspace() {
     };
 
     initializeAuth();
+  }, []);
+
+  // Debug overlay toggle: enable with ?debug=1 (persisted in localStorage)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const fromQuery = params.get('debug')
+      if (fromQuery === '1') {
+        localStorage.setItem('anima_debug', '1')
+        setDebugEnabled(true)
+        return
+      }
+      const stored = localStorage.getItem('anima_debug')
+      setDebugEnabled(stored === '1')
+    } catch {
+      // ignore
+    }
   }, []);
 
   // --- 2. INIT SETTINGS ---
@@ -881,6 +900,14 @@ export default function Workspace() {
 
   return (
     <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 fixed inset-0 overflow-hidden">
+      <DebugBanner
+        enabled={debugEnabled}
+        tutorMode={tutorMode}
+        language={language}
+        age={age}
+        sessionId={sessionId}
+        userRole={userRole}
+      />
       <SideMenu 
         isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} 
         studentName={studentName} tutorMode={tutorMode} onTutorModeChange={setTutorMode}
