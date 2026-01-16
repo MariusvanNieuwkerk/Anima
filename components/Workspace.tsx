@@ -73,6 +73,7 @@ export default function Workspace() {
 
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [deepReadMode, setDeepReadMode] = useState(false)
   
   // Audio State
   const [isListening, setIsListening] = useState(false)
@@ -137,6 +138,34 @@ export default function Workspace() {
 
     initializeAuth();
   }, []);
+
+  // Parent control: Deep Read Mode (camera/uploads disabled for student)
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('deep_read_mode')
+          .eq('id', userId)
+          .single()
+
+        if (!mounted) return
+        if (!error && data) {
+          setDeepReadMode(data.deep_read_mode === true)
+        }
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Debug overlay toggle: enable with ?debug=1 (persisted in localStorage)
   useEffect(() => {
@@ -1106,8 +1135,9 @@ export default function Workspace() {
                 <InputDock 
                     input={input} setInput={setInput} onSend={handleSendMessage} onAttachClick={handleAttachClick} onMicClick={handleMicClick} isListening={isListening} isVoiceOn={isVoiceOn} onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }} 
                     hasAttachment={selectedImages.length > 0} 
-                    onFiles={ingestFiles}
+                    onFiles={deepReadMode ? undefined : ingestFiles}
                     inputRef={inputRef}
+                    attachLocked={deepReadMode}
                 />
                 {isAttachMenuOpen && (
                   <div ref={attachMenuDesktopRef} className="absolute bottom-14 left-0 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">
@@ -1137,8 +1167,9 @@ export default function Workspace() {
             isVoiceOn={isVoiceOn}
             onVoiceToggle={() => { unlockAudioContext(); unlockSpeechSynthesis(); setIsVoiceOn(!isVoiceOn); }}
             hasAttachment={selectedImages.length > 0}
-            onFiles={ingestFiles}
+            onFiles={deepReadMode ? undefined : ingestFiles}
             inputRef={inputRef}
+            attachLocked={deepReadMode}
           />
           {isAttachMenuOpen && (
             <div ref={attachMenuMobileRef} className="absolute bottom-14 left-4 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">

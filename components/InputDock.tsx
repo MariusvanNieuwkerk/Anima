@@ -1,4 +1,4 @@
-import { Paperclip, Mic, Send, Volume2, VolumeX } from 'lucide-react'
+import { Paperclip, Mic, Send, Volume2, VolumeX, Lock } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 interface InputDockProps {
@@ -8,6 +8,7 @@ interface InputDockProps {
   onAttachClick: () => void;
   onFiles?: (files: File[]) => void;
   inputRef?: React.RefObject<HTMLInputElement>;
+  attachLocked?: boolean;
   onMicClick?: () => void;
   isListening?: boolean;
   isVoiceOn?: boolean;
@@ -22,6 +23,7 @@ export default function InputDock({
   onAttachClick, 
   onFiles,
   inputRef,
+  attachLocked = false,
   onMicClick,
   isListening = false,
   isVoiceOn = false,
@@ -29,11 +31,12 @@ export default function InputDock({
   hasAttachment = false
 }: InputDockProps) {
   const [isDragOver, setIsDragOver] = useState(false)
+  const [showLockHint, setShowLockHint] = useState(false)
 
   const canAcceptDrop = useMemo(() => {
     // Desktop users: allow dropping screenshot files. Mobile drag events are rare.
-    return typeof onFiles === 'function'
-  }, [onFiles])
+    return typeof onFiles === 'function' && !attachLocked
+  }, [onFiles, attachLocked])
 
   const extractImageFiles = (filesLike: FileList | File[]) => {
     const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike || [])
@@ -78,16 +81,31 @@ export default function InputDock({
     >
       {/* Mobiel: Icoontjes rij boven */}
       <div className="flex items-center gap-2 md:hidden">
-        <button 
-          onClick={onAttachClick}
-          className={`p-2.5 rounded-2xl transition-all shadow-sm ${
-            hasAttachment 
-              ? 'bg-stone-200 text-stone-800' 
-              : 'text-stone-400 hover:bg-stone-200 hover:scale-110 active:scale-95 hover:shadow-md'
-          }`}
-        >
-          <Paperclip className="w-5 h-5" />
-        </button>
+        {attachLocked ? (
+          <button
+            type="button"
+            onClick={() => {
+              setShowLockHint(true)
+              window.setTimeout(() => setShowLockHint(false), 2000)
+            }}
+            title="Focus Modus aan: Typ je vraag."
+            className="p-2.5 rounded-2xl transition-all shadow-sm text-stone-400 hover:bg-stone-200 active:scale-95"
+            aria-label="Uploads vergrendeld (Diep-Lees Modus)"
+          >
+            <Lock className="w-5 h-5" />
+          </button>
+        ) : (
+          <button 
+            onClick={onAttachClick}
+            className={`p-2.5 rounded-2xl transition-all shadow-sm ${
+              hasAttachment 
+                ? 'bg-stone-200 text-stone-800' 
+                : 'text-stone-400 hover:bg-stone-200 hover:scale-110 active:scale-95 hover:shadow-md'
+            }`}
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+        )}
 
         {onMicClick && (
           <button 
@@ -129,16 +147,31 @@ export default function InputDock({
       </div>
 
       {/* Desktop: Paperclip */}
-            <button
-        onClick={onAttachClick}
-        className={`hidden md:block p-2 md:p-2.5 rounded-2xl transition-all ${
-          hasAttachment
-            ? 'bg-stone-200 text-stone-800'
-            : 'text-stone-400 hover:bg-stone-200 hover:scale-110 active:scale-95'
-        }`}
-            >
-        <Paperclip className="w-6 h-6" />
-            </button>
+      {attachLocked ? (
+        <button
+          type="button"
+          onClick={() => {
+            setShowLockHint(true)
+            window.setTimeout(() => setShowLockHint(false), 2000)
+          }}
+          title="Focus Modus aan: Typ je vraag."
+          className="hidden md:block p-2 md:p-2.5 rounded-2xl transition-all text-stone-400 hover:bg-stone-200 active:scale-95"
+          aria-label="Uploads vergrendeld (Diep-Lees Modus)"
+        >
+          <Lock className="w-6 h-6" />
+        </button>
+      ) : (
+        <button
+          onClick={onAttachClick}
+          className={`hidden md:block p-2 md:p-2.5 rounded-2xl transition-all ${
+            hasAttachment
+              ? 'bg-stone-200 text-stone-800'
+              : 'text-stone-400 hover:bg-stone-200 hover:scale-110 active:scale-95'
+          }`}
+        >
+          <Paperclip className="w-6 h-6" />
+        </button>
+      )}
 
       {/* Input field */}
             <input
@@ -148,7 +181,7 @@ export default function InputDock({
               onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onSend()}
         onPaste={(e) => {
-          if (!onFiles) return
+          if (!onFiles || attachLocked) return
           const items = Array.from(e.clipboardData?.items || [])
           const imageItems = items.filter((it) => it.kind === 'file' && (it.type || '').startsWith('image/'))
           if (imageItems.length === 0) return
@@ -160,6 +193,12 @@ export default function InputDock({
         }}
         ref={inputRef}
       />
+
+      {showLockHint && (
+        <div className="md:hidden -mt-1 text-[11px] text-stone-400 px-2">
+          Focus Modus aan: Typ je vraag.
+        </div>
+      )}
       
       {/* Desktop: Overige icoontjes */}
       <div className="hidden md:flex items-center gap-1">
