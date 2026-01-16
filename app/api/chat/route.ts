@@ -645,6 +645,15 @@ export async function POST(req: Request) {
       return { endHHMM, optionLetter, options }
     }
 
+    const explicitlyAsksForFinalAnswer = (t: string) => {
+      const s = (t || '').toLowerCase()
+      // Only treat as explicit if the user asks for "the answer" / "which option" directly.
+      // (We do NOT treat the worksheet text itself as the user explicitly asking; by default we scaffold.)
+      return /wat\s+is\s+het\s+antwoord|geef\s+(me\s+)?het\s+antwoord|antwoord\s*\?|welke\s+optie|welke\s+letter|is\s+het\s+[abcd]\b|zeg\s+het\s+antwoord|kun\s+je\s+het\s+antwoord\s+geven/.test(
+        s
+      )
+    }
+
     const makeLowConfidenceMessage = () => {
       const amounts = ocrTranscript ? extractMoneyLike(ocrTranscript) : []
       const lang = String(userLanguage || 'nl')
@@ -679,18 +688,52 @@ export async function POST(req: Request) {
       const solved = solveDutchTimeWordProblem(ocrTranscript)
       if (solved?.endHHMM) {
         const lang = String(userLanguage || 'nl')
-        const msg =
-          lang === 'en'
+        const userWantsFinal = explicitlyAsksForFinalAnswer(lastMessageContent)
+
+        // Always stay scaffolded by default: guide method, avoid the final time/option unless explicitly requested.
+        const msg = (() => {
+          if (userWantsFinal) {
+            return lang === 'en'
+              ? [
+                  `Computed precisely from the text:`,
+                  `2 pm → 14:00. Add 5 hours 25 minutes.`,
+                  `End time: **${solved.endHHMM}**${solved.optionLetter ? ` (option ${solved.optionLetter})` : ''}.`,
+                ].join('\n')
+              : [
+                  `Precies uitgerekend uit de tekst:`,
+                  `2 uur ’s middags = 14:00. Tel 5 uur en 25 minuten erbij op.`,
+                  `Eindtijd: **${solved.endHHMM}**${solved.optionLetter ? ` (antwoord: ${solved.optionLetter})` : ''}.`,
+                ].join('\n')
+          }
+
+          // Scaffolded hint path (default)
+          // We can safely show the 24h conversion and the +hours intermediate, but not the final minutes result.
+          // Derive intermediate "after hours" from transcript if possible (we know total end).
+          const endH = parseInt(solved.endHHMM.slice(0, 2), 10)
+          const endM = parseInt(solved.endHHMM.slice(3, 5), 10)
+          const totalEnd = endH * 60 + endM
+          const durMin = parseDutchDurationMinutes(ocrTranscript) || 0
+          const startTotal = (totalEnd - durMin + 24 * 60) % (24 * 60)
+          const startHHMM = `${pad2(Math.floor(startTotal / 60))}:${pad2(startTotal % 60)}`
+          const hoursPart = Math.floor(durMin / 60)
+          const minsPart = durMin % 60
+          const afterHoursTotal = (startTotal + hoursPart * 60) % (24 * 60)
+          const afterHoursHHMM = `${pad2(Math.floor(afterHoursTotal / 60))}:${pad2(afterHoursTotal % 60)}`
+
+          return lang === 'en'
             ? [
-                `Let’s compute this precisely from the text.`,
-                `Start time: 2 pm → 14:00. Duration: 5 hours 25 minutes.`,
-                `End time: **${solved.endHHMM}**${solved.optionLetter ? ` (option ${solved.optionLetter})` : ''}.`,
+                `Let’s do it step by step (you finish the last step).`,
+                `1) Convert the start time to 24h time: 2 pm → ${startHHMM}.`,
+                `2) Add ${hoursPart} hours → ${afterHoursHHMM}.`,
+                `3) Now add the remaining ${minsPart} minutes. What time do you get? Which option matches that time?`,
               ].join('\n')
             : [
-                `We rekenen dit precies uit (zonder gokken).`,
-                `Start: **2 uur ’s middags = 14:00**. Duur: **5 uur 25 minuten**.`,
-                `Eindtijd: **${solved.endHHMM}**${solved.optionLetter ? ` (antwoord: ${solved.optionLetter})` : ''}.`,
+                `Stap voor stap (jij maakt ’m af).`,
+                `1) Zet de starttijd om naar 24-uurs tijd: 2 uur ’s middags → ${startHHMM}.`,
+                `2) Tel ${hoursPart} uur erbij → ${afterHoursHHMM}.`,
+                `3) Tel nu de laatste ${minsPart} minuten erbij. Welke tijd krijg je? Welke optie past daarbij?`,
               ].join('\n')
+        })()
 
         return new Response(
           JSON.stringify({
