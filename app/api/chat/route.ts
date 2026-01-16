@@ -499,10 +499,51 @@ export async function POST(req: Request) {
       return cloned
     }
 
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+    const isTransientModelError = (e: any) => {
+      const msg = String(e?.message || e || '').toLowerCase()
+      return (
+        msg.includes('unavailable') ||
+        msg.includes('overload') ||
+        msg.includes('timeout') ||
+        msg.includes('timed out') ||
+        msg.includes('econnreset') ||
+        msg.includes('socket') ||
+        msg.includes('fetch failed') ||
+        msg.includes('network') ||
+        msg.includes('429') ||
+        msg.includes('502') ||
+        msg.includes('503') ||
+        msg.includes('504') ||
+        msg.includes('rate')
+      )
+    }
+
     const runOnce = async (parts: any[]) => {
       const r = await chat.sendMessage(parts)
       const txt = (r as any)?.response?.text?.() ? (r as any).response.text() : (r as any)?.response?.text?.() || ''
       return String(txt || '')
+    }
+
+    const runOnceWithRetry = async (parts: any[], label: string, maxAttempts: number = 2) => {
+      let lastErr: any = null
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          if (attempt > 1) console.log(`[CHAT API] Retry ${attempt}/${maxAttempts} for ${label}`)
+          return await runOnce(parts)
+        } catch (e: any) {
+          lastErr = e
+          const transient = isTransientModelError(e)
+          console.warn(`[CHAT API] Model error (${label}) attempt ${attempt}/${maxAttempts}:`, {
+            message: e?.message || String(e),
+            transient,
+          })
+          if (!transient || attempt === maxAttempts) break
+          await sleep(700 * attempt)
+        }
+      }
+      throw lastErr || new Error('Model error')
     }
 
     // --- VISION READING ACCURACY (2-pass OCR for workbook / reading comprehension photos) ---
@@ -523,7 +564,7 @@ export async function POST(req: Request) {
         const ocrAddon =
           '\n\n[SYSTEEM OVERRIDE (OCR-ONLY): Je taak is NU alleen: lees de foto en schrijf de tekst exact over. GEEN uitleg, GEEN antwoord, GEEN aannames. Als iets onleesbaar is, schrijf [ONLEESBAAR]. Behoud regels/opsomming.\nOUTPUT: Geef ALLEEN geldige JSON in dit schema:\n{ "transcript": "....", "confidence": "high|medium|low" }\nRegels: transcript is letterlijk (geen verbeteringen), confidence=low als delen onleesbaar zijn.]'
         const ocrParts = partsCloneWithTextSuffix(userParts, ocrAddon)
-        const ocrRaw = await runOnce(ocrParts)
+        const ocrRaw = await runOnceWithRetry(ocrParts, 'ocr', 2)
         const ocrJsonText = extractJsonFromModelText(ocrRaw)
         if (ocrJsonText) {
           const o = JSON.parse(ocrJsonText)
@@ -642,7 +683,7 @@ export async function POST(req: Request) {
       return partsCloneWithTextSuffix(userParts, suffix)
     })()
 
-    let text = await runOnce(finalUserParts)
+    let text = await runOnceWithRetry(finalUserParts, 'final', 2)
 
     // Best-effort JSON extraction. If it fails, fall back to plain text in message.
     let payload: any = null
@@ -668,7 +709,7 @@ export async function POST(req: Request) {
       const strictAddon =
         "\n\n[SYSTEEM OVERRIDE (STRICT): Geef GEEN wedervragen. Voeg ALTIJD een SVG toe in een ```xml code block in 'message' (met <svg>...</svg> en single quotes). Antwoord als geldige JSON en niets anders.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictAddon)
-      const retryText = await runOnce(retryParts)
+      const retryText = await runOnceWithRetry(retryParts, 'svg_retry', 2)
 
       try {
         const jsonText2 = extractJsonFromModelText(retryText)
@@ -689,7 +730,7 @@ export async function POST(req: Request) {
       const strictSearch =
         "\n\n[SYSTEEM OVERRIDE (STRICT): Dit is een standaard concept-diagram. Voeg in 'message' EXACT één tag toe met een schoolboek-zoekterm. Voor Pythagoras: gebruik bij voorkeur: [SEARCH_DIAGRAM: Pythagorean theorem squares on sides diagram]. GEEN SVG/GEEN diagram object/GEEN visual_keyword. Antwoord als geldige JSON en niets anders.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictSearch)
-      const retryText = await runOnce(retryParts)
+      const retryText = await runOnceWithRetry(retryParts, 'curator_retry', 2)
       try {
         const jsonText2 = extractJsonFromModelText(retryText)
         if (jsonText2) {
@@ -709,7 +750,7 @@ export async function POST(req: Request) {
       const strictDiagram =
         "\n\n[SYSTEEM OVERRIDE (STRICT): Voor biologie/anatomie: geef GEEN vrije SVG. Geef een 'diagram' object met templateId ('human_organs_basic' of 'human_skeleton_basic') + highlights ids (bijv. heart, lung_left, lung_right, liver, stomach, intestines) + optionele labels. Antwoord als geldige JSON en niets anders. 'visual_keyword' moet null zijn.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictDiagram)
-      const retryText = await runOnce(retryParts)
+      const retryText = await runOnceWithRetry(retryParts, 'diagram_retry', 2)
       try {
         const jsonText2 = extractJsonFromModelText(retryText)
         if (jsonText2) {
@@ -729,7 +770,7 @@ export async function POST(req: Request) {
       const strictRemote =
         "\n\n[SYSTEEM OVERRIDE (STRICT): Geef een <remote-image query=\"...\" caption=\"...\" /> tag in 'message' (self-closing). GEEN SVG/GEEN diagram. Antwoord als geldige JSON en niets anders. visual_keyword moet null zijn.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictRemote)
-      const retryText = await runOnce(retryParts)
+      const retryText = await runOnceWithRetry(retryParts, 'remote_retry', 2)
       try {
         const jsonText2 = extractJsonFromModelText(retryText)
         if (jsonText2) {
@@ -749,7 +790,7 @@ export async function POST(req: Request) {
       const strictFlux =
         "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om hoe het eruit ziet (niet anatomisch). Zet 'visual_keyword' op een [GENERATE_IMAGE: ...] prompt (Engels, fotorealistisch, white background, no text). Antwoord als geldige JSON en niets anders. Geef GEEN remote-image en GEEN SVG/diagram.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictFlux)
-      const retryText = await runOnce(retryParts)
+      const retryText = await runOnceWithRetry(retryParts, 'flux_retry', 2)
       try {
         const jsonText2 = extractJsonFromModelText(retryText)
         if (jsonText2) {
@@ -777,16 +818,22 @@ export async function POST(req: Request) {
       cause: error?.cause || 'No cause'
     });
     
-    // Stuur een duidelijke error response terug
-    return new Response(
-      JSON.stringify({ 
-        error: "Backend error",
-        details: error?.message || "Er is een fout opgetreden bij het verwerken van je bericht."
-      }), 
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+    // If Gemini/model provider is temporarily unreachable, keep the UX stable with a valid JSON payload (no hard crash).
+    const msg = (() => {
+      const m = String(error?.message || '')
+      if (/unavailable|overload|timeout|timed out|fetch failed|econnreset|socket|429|502|503|504|rate/i.test(m)) {
+        return 'Ik heb heel even geen verbinding met mijn brein. Wacht 5–10 seconden en probeer opnieuw.'
       }
-    );
+      return 'Er ging iets mis. Probeer het zo nog eens.'
+    })()
+
+    return new Response(
+      JSON.stringify({
+        message: msg,
+        topic: 'Systeem',
+        action: 'none',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
   }
 }
