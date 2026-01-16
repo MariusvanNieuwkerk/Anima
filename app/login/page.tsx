@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/utils/supabase'
 
 export default function LoginPage() {
@@ -90,6 +91,13 @@ export default function LoginPage() {
               />
             </div>
 
+            {/* Wachtwoord vergeten */}
+            <div className="-mt-1 text-right">
+              <Link href="/forgot-password" className="text-xs text-stone-500 hover:text-stone-800">
+                Wachtwoord vergeten?
+              </Link>
+            </div>
+
             <button
               type="submit"
               disabled={isLoading}
@@ -103,6 +111,14 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
+
+            {/* Signup link */}
+            <div className="pt-2 text-center text-sm text-stone-600">
+              Nog geen account?{' '}
+              <Link href="/signup" className="font-semibold text-stone-800 hover:underline">
+                Meld je aan.
+              </Link>
+            </div>
           </form>
         </div>
       </div>
