@@ -74,8 +74,9 @@ function preferredFileTitlesForQuery(rawQuery: string): string[] {
   // We try these file titles first to avoid random/odd search hits.
   if (q.includes('pythagor')) {
     return [
-      'File:Pythagorean.svg', // classic right triangle with squares a,b,c
       'File:Pythagorean-theorem.svg',
+      'File:Pythagorean.svg', // fallback: classic right triangle with squares a,b,c
+      'File:Pythagoras theorem visual.svg',
     ]
   }
 
