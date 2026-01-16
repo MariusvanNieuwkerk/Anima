@@ -5,7 +5,6 @@ import { X, Zap, Compass, Sprout, RefreshCw, LogOut, Search, Baby, GraduationCap
 
 type TutorMode = 'focus' | 'explorer' | 'growth'
 type Language = 'nl' | 'en' | 'es' | 'de' | 'fr' | 'it' | 'pt' | 'zh' | 'ar' | 'hi'
-type EducationLevel = '6-12' | '13-17' | '18+'
 
 interface SideMenuProps {
   isOpen: boolean
@@ -15,8 +14,8 @@ interface SideMenuProps {
   onTutorModeChange: (mode: TutorMode) => void
   language: Language
   onLanguageChange: (lang: Language) => void
-  educationLevel: EducationLevel
-  onEducationLevelChange: (level: EducationLevel) => void
+  age: number
+  onAgeChange: (age: number) => void
   onStartNewSession: () => void
   onLogout: () => void
 }
@@ -71,38 +70,12 @@ export default function SideMenu({
   onTutorModeChange,
   language,
   onLanguageChange,
-  educationLevel,
-  onEducationLevelChange,
+  age,
+  onAgeChange,
   onStartNewSession,
   onLogout,
 }: SideMenuProps) {
   const [languageSearchQuery, setLanguageSearchQuery] = useState('')
-  
-  // Converteer educationLevel naar age voor de slider
-  const getAgeFromLevel = (level: EducationLevel): number => {
-    if (level === '6-12') return 10
-    if (level === '13-17') return 15
-    return 19 // 18+
-  }
-  
-  const [age, setAge] = useState(getAgeFromLevel(educationLevel))
-  
-  // Synchroniseer age met educationLevel wanneer prop verandert
-  useEffect(() => {
-    setAge(getAgeFromLevel(educationLevel))
-  }, [educationLevel])
-  
-  // Converteer age terug naar educationLevel
-  const handleAgeChange = (newAge: number) => {
-    setAge(newAge)
-    if (newAge <= 12) {
-      onEducationLevelChange('6-12')
-    } else if (newAge <= 17) {
-      onEducationLevelChange('13-17')
-    } else {
-      onEducationLevelChange('18+')
-    }
-  }
   
   // Bepaal icoon en label op basis van leeftijd
   const getAgeIcon = () => {
@@ -213,7 +186,7 @@ export default function SideMenu({
                   min="6" 
                   max="19" 
                   value={age} 
-                  onChange={(e) => handleAgeChange(parseInt(e.target.value))}
+                  onChange={(e) => onAgeChange(parseInt(e.target.value))}
                   className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-stone-800 focus:outline-none focus:ring-2 focus:ring-stone-400 focus:ring-offset-2"
                 />
                 <div className="flex justify-between text-[10px] text-stone-400 mt-2 font-medium px-1">

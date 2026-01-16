@@ -28,7 +28,6 @@ declare global {
 type TutorMode = 'focus' | 'explorer' | 'growth'
 type UserRole = 'student' | 'parent' | 'teacher'
 type Language = 'nl' | 'en' | 'es' | 'de' | 'fr' | 'it' | 'pt' | 'zh' | 'ar' | 'hi'
-type EducationLevel = '6-12' | '13-17' | '18+'
 
 type Message = {
   id: string
@@ -51,7 +50,6 @@ export default function Workspace() {
   const [tutorMode, setTutorMode] = useState<TutorMode>('explorer')
   const [userRole, setUserRole] = useState<UserRole>('student')
   const [language, setLanguage] = useState<Language>('nl')
-  const [educationLevel, setEducationLevel] = useState<EducationLevel>('13-17')
   const [age, setAge] = useState(10)
   const [studentName, setStudentName] = useState<string>('Rens')
   const [animaName, setAnimaName] = useState<string>('Anima')
@@ -887,7 +885,7 @@ export default function Workspace() {
         isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} 
         studentName={studentName} tutorMode={tutorMode} onTutorModeChange={setTutorMode}
         language={language} onLanguageChange={setLanguage}
-        educationLevel={educationLevel} onEducationLevelChange={setEducationLevel}
+        age={age} onAgeChange={setAge}
         onStartNewSession={handleStartNewSession} onLogout={handleLogout}
       />
       <SettingsModal 
