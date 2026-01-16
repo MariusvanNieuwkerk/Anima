@@ -116,6 +116,35 @@ export async function POST(req: Request) {
       - De app zoekt vervolgens de juiste Wikimedia Commons plaat en toont de bronvermelding automatisch.
       - Zet ` + "`visual_keyword`" + ` op null/weglaten en zet ` + "`diagram`" + ` op null/weglaten.
 
+    ### CURATOR / EXTERNAL DIAGRAM SEARCH (WIKIMEDIA COMMONS)
+    Doel: Voor **standaard wetenschappelijke diagrams** (die al bestaan) ga je NIET zelf tekenen, maar je laat de app een betrouwbare bron zoeken.
+
+    **SCOPE (Curator actief bij "CONCEPT" vragen):**
+    - Anatomie & Biologie (zoals besproken)
+    - Standaard Wiskundige Modellen (bv. "Pythagorean theorem proof diagram", "Fibonacci spiral")
+    - Natuurkunde & Scheikunde (bv. "visible light spectrum", "Bohr model atom", "circuit symbols")
+    - Economie & Aardrijkskunde (bv. "supply and demand curve", "water cycle diagram")
+
+    **OUTPUT FORMAT (Search term):**
+    - Geef in ` + "`message`" + ` een tag:
+      [SEARCH_DIAGRAM: <specific English term> diagram]
+      Voorbeelden:
+      - [SEARCH_DIAGRAM: Pythagorean theorem proof diagram]
+      - [SEARCH_DIAGRAM: Bohr model atom diagram]
+      - [SEARCH_DIAGRAM: supply and demand curve diagram]
+      - [SEARCH_DIAGRAM: water cycle diagram]
+    - De app vertaalt dit naar een Wikimedia Commons lookup en toont het plaatje met bronvermelding.
+    - Zet ` + "`visual_keyword`" + ` op null/weglaten (geen Flux) en teken geen vrije SVG.
+
+    **CRITICAL DISTINCTION: "CONCEPT" vs "SOM"**
+    - CONCEPT = algemeen standaardmodel (bestaat in databases) -> Curator search tag.
+    - SOM = uniek/specificiek voor deze leerling (moet exact kloppen) -> SVG (De Passer).
+      Voorbeelden SOM (SVG):
+      - "Teken de grafiek van y=2x+1"
+      - "Teken een driehoek met zijden 3,4,5 en label de hoeken"
+      - "Teken een trapezium met gegeven afmetingen uit het werkblad"
+    - Als je twijfelt: als er een formule/waarden/gegeven afmetingen in de prompt staan, is het meestal een SOM -> SVG.
+
     ### UNIVERSAL GEOMETRY ENGINE ###
 
     Wanneer je gevraagd wordt om een geometrische vorm te tekenen, volg je dit strikte algoritme:
@@ -198,6 +227,12 @@ export async function POST(req: Request) {
 
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
+
+    ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST, VISUAL SECOND
+    - De chat (message) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen).
+    - Elke visual (Wikimedia/Flux/SVG/Map) is **alleen ondersteunend**: 1 visueel anker, niet "de hele uitleg".
+    - Verwijs naar het beeld als ondersteuning ("Kijk naar ..."), maar leg het ook in woorden uit.
+    - Als je een Curator-tag of remote-image gebruikt: blijf in tekst uitleggen wat de leerling moet snappen.
     
     ### STRICT IMAGE PROMPTING RULES (ALLEEN VOOR FLUX / ` + "`visual_keyword`" + `) ###
 
@@ -375,12 +410,36 @@ export async function POST(req: Request) {
     }
 
     console.log(`[CHAT API] Gemini request gestart (non-stream, JSON contract)`)
-    const needsSvg = (() => {
-      const t = (lastMessageContent || '').toLowerCase()
-      return /pythagoras|meetkunde|driehoek|vierhoek|breuk|grafiek|functie|diagram|hoek|oppervlakte|omtrek|stelsel|assenstelsel|natuurkunde|kracht|stroomkring|spannings|weerstand|bio|biologie|anatomie|orgaan|skelet|spier|spieren|hersenen|hypofyse|hypothalamus|hart|long|longen|nier|nieren|lever|maag|darm|oog|oor|huid|bot|botten|dier|zoogdier|reptiel|vogel/.test(t)
+    // --- INTENT: concept diagram search vs unique exercise drawing ---
+    const lower = (lastMessageContent || '').toLowerCase()
+
+    const isSpecificExercise = (() => {
+      // Heuristic: numbers/formulas/explicit drawing tasks usually mean "SOM" -> SVG
+      return (
+        /teken\s+de\s+grafiek|teken\s+een\s+grafiek|grafiek\s+van\s+y\s*=|y\s*=\s*[-\d]/.test(lower) ||
+        /los\s+op|bereken|reken\s+uit|werk\s+uit/.test(lower) ||
+        /\b\d+(\.\d+)?\s*(cm|mm|m|km|°|graden)\b/.test(lower) ||
+        /\b\d+\s*(\/|\+|-|\*)\s*\d+\b/.test(lower)
+      )
     })()
 
-    const lower = (lastMessageContent || '').toLowerCase()
+    const isStandardDiagramConcept = (() => {
+      // Curator candidates: common, standardized diagrams that exist in Wikimedia
+      return /pythagoras|stelling\s+van\s+pythagoras|pythagorean|fibonacci|bohr|lichtspectrum|spectrum|vraag\s+en\s+aanbod|supply\s+and\s+demand|waterkringloop|water\s+cycle|stroomkring\s+symbolen|circuit\s+symbols/.test(
+        lower
+      )
+    })()
+
+    const wantsCuratorDiagram = isStandardDiagramConcept && !isSpecificExercise
+
+    const needsSvg = (() => {
+      // SVG is for unique/specific exercises (SOM) and precise plots.
+      if (wantsCuratorDiagram) return false
+      return (
+        isSpecificExercise &&
+        /meetkunde|driehoek|vierhoek|breuk|grafiek|functie|diagram|hoek|oppervlakte|omtrek|stelsel|assenstelsel/.test(lower)
+      )
+    })()
 
     const isBodyPartTopic = (() => {
       return /menselijk lichaam|lichaamsdeel|hand|vinger|vingers|voet|voeten|teen|tenen|enkel|knie|arm|been|elleboog|schouder|heup|ribben|schedel|oor|oog|neus|mond|keel|huid/.test(
@@ -453,8 +512,8 @@ export async function POST(req: Request) {
       payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
     }
 
-    // If we *expected* a diagram but got none, retry once with stricter instruction.
-    if (needsSvg && !hasSvgInMessage(payload.message) && !payload.map) {
+    // If we *expected* a drawn SVG (SOM) but got none, retry once with stricter instruction.
+    if (needsSvg && !hasSvgInMessage(payload.message) && !payload.map && !wantsCuratorDiagram) {
       const strictAddon =
         "\n\n[SYSTEEM OVERRIDE (STRICT): Geef GEEN wedervragen. Voeg ALTIJD een SVG toe in een ```xml code block in 'message' (met <svg>...</svg> en single quotes). Antwoord als geldige JSON en niets anders.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictAddon)
@@ -471,6 +530,26 @@ export async function POST(req: Request) {
         }
       } catch {
         // ignore retry failures
+      }
+    }
+
+    // If this is a standard concept diagram, force a SEARCH_DIAGRAM tag once.
+    if (wantsCuratorDiagram && !/\[SEARCH_DIAGRAM:/i.test(payload.message || '')) {
+      const strictSearch =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): Dit is een standaard concept-diagram. Voeg in 'message' EXACT één tag toe: [SEARCH_DIAGRAM: Pythagorean theorem proof diagram] of een equivalente specifieke Engelse term. GEEN SVG/GEEN diagram object/GEEN visual_keyword. Antwoord als geldige JSON en niets anders.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictSearch)
+      const retryText = await runOnce(retryParts)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && /\[SEARCH_DIAGRAM:/i.test(payload2.message || '')) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
       }
     }
 

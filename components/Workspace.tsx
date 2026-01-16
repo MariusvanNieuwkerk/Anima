@@ -668,25 +668,36 @@ export default function Workspace() {
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
 
       const parseRemoteImageTag = (text: string) => {
-        // Support: <remote-image src="..." caption="..." />
-        // Optional query fallback: <remote-image query="..." caption="..." />
+        // Support:
+        // - <remote-image src="..." caption="..." />
+        // - <remote-image query="..." caption="..." />
+        // - [SEARCH_DIAGRAM: <specific English term> diagram]
         const m = text.match(/<remote-image\s+([^>]*?)\/>/i)
-        if (!m) return { cleaned: text, spec: null as any }
+        const s = text.match(/\[SEARCH_DIAGRAM:\s*([^\]]+)\]/i)
+        if (!m && !s) return { cleaned: text, spec: null as any }
 
-        const attrs = m[1] || ''
-        const getAttr = (name: string) => {
-          const r = new RegExp(`${name}\\s*=\\s*"(.*?)"`, 'i')
-          const mm = attrs.match(r)
-          return mm?.[1] ? mm[1].trim() : null
+        // Prefer explicit remote-image tag if present; otherwise use SEARCH_DIAGRAM.
+        if (m) {
+          const attrs = m[1] || ''
+          const getAttr = (name: string) => {
+            const r = new RegExp(`${name}\\s*=\\s*"(.*?)"`, 'i')
+            const mm = attrs.match(r)
+            return mm?.[1] ? mm[1].trim() : null
+          }
+
+          const spec: any = {
+            src: getAttr('src') || undefined,
+            query: getAttr('query') || undefined,
+            caption: getAttr('caption') || undefined,
+          }
+
+          const cleaned = text.replace(m[0], '').trim()
+          return { cleaned, spec }
         }
 
-        const spec: any = {
-          src: getAttr('src') || undefined,
-          query: getAttr('query') || undefined,
-          caption: getAttr('caption') || undefined,
-        }
-
-        const cleaned = text.replace(m[0], '').trim()
+        const query = (s?.[1] || '').trim()
+        const spec: any = { query, caption: query }
+        const cleaned = text.replace(s![0], '').trim()
         return { cleaned, spec }
       }
 
@@ -719,7 +730,7 @@ export default function Workspace() {
           const wikiResp = await fetch('/api/wikimedia', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: q })
+            body: JSON.stringify({ query: q, limit: 5 })
           })
           const wikiJson = await wikiResp.json()
           if (wikiResp.ok && wikiJson?.found && wikiJson?.url) {
