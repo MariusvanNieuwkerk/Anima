@@ -228,6 +228,11 @@ export async function POST(req: Request) {
     TONE:
     - Helpful, encouraging, empowering. Zeg bv: "Laten we deze samen kraken."
 
+    SCAFFOLD DEPTH (BELANGRIJK):
+    - Voeg ALTIJD minimaal 1 extra tussenstap/checkpoint toe voordat de leerling de laatste stap doet.
+    - Als de som meerdere bewerkingen heeft (bijv. omzetten + optellen + minuten/overstap, of meerdere getallen), maak er 2 checkpoints van.
+    - Eindig met precies 1 micro-opdracht (één ding om nu te doen), niet “doe alles”.
+
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
 
@@ -694,18 +699,21 @@ export async function POST(req: Request) {
           const afterHoursTotal = (startTotal + hoursPart * 60) % (24 * 60)
           const afterHoursHHMM = `${pad2(Math.floor(afterHoursTotal / 60))}:${pad2(afterHoursTotal % 60)}`
 
+          // Split into 2–3 micro-tasks with blanks. Do NOT reveal the final end time or option.
           return lang === 'en'
             ? [
-                `Let’s do it step by step (you finish the last step).`,
-                `1) Convert the start time to 24h time: 2 pm → ${startHHMM}.`,
-                `2) Add ${hoursPart} hours → ${afterHoursHHMM}.`,
-                `3) Now add the remaining ${minsPart} minutes. What time do you get? Which option matches that time?`,
+                `Step by step (you fill it in):`,
+                `- **Mini-step 1**: 2 pm → **${startHHMM}** (24h time).`,
+                `- **Mini-step 2**: ${startHHMM} + ${hoursPart} hours = **__ : __**`,
+                `- **Mini-step 3**: Then add the last ${minsPart} minutes → **__ : __**`,
+                `Now look at the answer options: which one matches your final time?`,
               ].join('\n')
             : [
-                `Stap voor stap (jij maakt ’m af).`,
-                `1) Zet de starttijd om naar 24-uurs tijd: 2 uur ’s middags → ${startHHMM}.`,
-                `2) Tel ${hoursPart} uur erbij → ${afterHoursHHMM}.`,
-                `3) Tel nu de laatste ${minsPart} minuten erbij. Welke tijd krijg je? Welke optie past daarbij?`,
+                `Stap voor stap (jij vult het in):`,
+                `- **Mini-stap 1**: 2 uur ’s middags → **${startHHMM}** (24-uurs tijd).`,
+                `- **Mini-stap 2**: ${startHHMM} + ${hoursPart} uur = **__ : __**`,
+                `- **Mini-stap 3**: Tel dan de laatste ${minsPart} minuten erbij → **__ : __**`,
+                `Kijk nu naar de antwoordopties: welke past bij jouw eindtijd?`,
               ].join('\n')
         })()
 
