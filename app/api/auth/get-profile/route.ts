@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
             role: 'student',
             display_name: baseName,
             student_name: baseName,
+            image_credits: 10,
+            is_premium: false,
+            deep_read_mode: false,
             created_at: new Date().toISOString()
           })
           .select()

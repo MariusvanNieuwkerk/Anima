@@ -89,6 +89,11 @@ export async function POST(req: Request) {
       }
     }
 
+    // --- DEMO PREMIUM (testing) ---
+    // Enable by visiting /?demo=premium (sets cookie anima_demo_premium=1)
+    const cookieHeader = req.headers.get('cookie') || ''
+    const demoPremium = /(^|;\s*)anima_demo_premium=1(\s*;|$)/.test(cookieHeader)
+
     // --- CREDITS (Freemium) ---
     // Best-effort user lookup: if we can't find a user session server-side, allow free generation.
     let userId: string | null = null;
@@ -122,7 +127,7 @@ export async function POST(req: Request) {
       if (error || !profile) {
         console.warn('[CREDITS] Could not load profile, allowing free generation:', error?.message || 'no profile');
       } else {
-        isPremium = profile.is_premium === true;
+        isPremium = demoPremium || profile.is_premium === true;
         imageCredits = typeof profile.image_credits === 'number' ? profile.image_credits : null;
 
         if (!isPremium) {

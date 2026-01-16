@@ -12,9 +12,17 @@ type CreditState =
 
 export default function CreditBalance() {
   const [state, setState] = useState<CreditState>({ status: 'loading' })
+  const [demoPremium, setDemoPremium] = useState(false)
 
   useEffect(() => {
     let isMounted = true
+    try {
+      const cookieHit = typeof document !== 'undefined' && document.cookie.includes('anima_demo_premium=1')
+      const localHit = typeof window !== 'undefined' && localStorage.getItem('anima_demo_premium') === '1'
+      if (cookieHit || localHit) setDemoPremium(true)
+    } catch {
+      // ignore
+    }
 
     async function load() {
       try {
@@ -73,9 +81,9 @@ export default function CreditBalance() {
     )
   }
 
-  if (state.isPremium) {
+  if (demoPremium || state.isPremium) {
     return (
-      <div className={baseClass} title="Premium: onbeperkte visuals (fair use)">
+      <div className={baseClass} title={demoPremium ? 'Demo Premium: onbeperkte visuals (test)' : 'Premium: onbeperkte visuals (fair use)'}>
         <Sparkles className="h-4 w-4" strokeWidth={2} />
         <span>Premium</span>
         <span className="text-sm leading-none">∞</span>
