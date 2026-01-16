@@ -494,7 +494,50 @@ export async function POST(req: Request) {
       return String(txt || '')
     }
 
-    let text = await runOnce(userParts)
+    // --- VISION READING ACCURACY (2-pass OCR for workbook / reading comprehension photos) ---
+    const wantsPreciseReading = (() => {
+      if (images.length === 0) return false
+      const t = (lastMessageContent || '').toLowerCase()
+      // Typical signals: workbook page, reading comprehension, "read this", "what does it say", etc.
+      return /begrijpend|lees|lezen|werkboek|tekst|alinea|zinnen|vraag\s*\d+|opdracht|wat staat|haal uit de tekst|citeer|onderstreep/.test(
+        t
+      )
+    })()
+
+    let ocrTranscript: string | null = null
+    let ocrConfidence: 'high' | 'medium' | 'low' | null = null
+
+    if (wantsPreciseReading) {
+      try {
+        const ocrAddon =
+          '\n\n[SYSTEEM OVERRIDE (OCR-ONLY): Je taak is NU alleen: lees de foto en schrijf de tekst exact over. GEEN uitleg, GEEN antwoord, GEEN aannames. Als iets onleesbaar is, schrijf [ONLEESBAAR]. Behoud regels/opsomming.\nOUTPUT: Geef ALLEEN geldige JSON in dit schema:\n{ "transcript": "....", "confidence": "high|medium|low" }\nRegels: transcript is letterlijk (geen verbeteringen), confidence=low als delen onleesbaar zijn.]'
+        const ocrParts = partsCloneWithTextSuffix(userParts, ocrAddon)
+        const ocrRaw = await runOnce(ocrParts)
+        const ocrJsonText = extractJsonFromModelText(ocrRaw)
+        if (ocrJsonText) {
+          const o = JSON.parse(ocrJsonText)
+          if (typeof o?.transcript === 'string' && o.transcript.trim()) {
+            ocrTranscript = o.transcript.trim()
+            if (o.confidence === 'high' || o.confidence === 'medium' || o.confidence === 'low') {
+              ocrConfidence = o.confidence
+            }
+          }
+        }
+      } catch {
+        // ignore OCR failures; we'll fall back to normal single-pass
+      }
+    }
+
+    // Final pass: answer using transcript as ground truth (no guessing).
+    const finalUserParts = (() => {
+      if (!ocrTranscript) return userParts
+      const suffix =
+        `\n\n[EXACTE TEKST UIT DE FOTO (OCR)]\n${ocrTranscript}\n\n[SYSTEEM OVERRIDE (STRICT): Gebruik ALLEEN de OCR-tekst hierboven om de opdracht te beantwoorden. Als info ontbreekt of onleesbaar is, zeg precies welk stukje ontbreekt en vraag om een scherpere close-up van dat deel. GEEN gokken. Houd je aan de Scaffolded Guide: methode/aanpak eerst, geen eindantwoord tenzij expliciet gevraagd.]`
+      // Keep images attached so the model can cross-check, but transcript is the source of truth.
+      return partsCloneWithTextSuffix(userParts, suffix)
+    })()
+
+    let text = await runOnce(finalUserParts)
 
     // Best-effort JSON extraction. If it fails, fall back to plain text in message.
     let payload: any = null
