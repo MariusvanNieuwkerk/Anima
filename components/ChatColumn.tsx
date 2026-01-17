@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { Copy, Check } from 'lucide-react'
 import SvgDisplay from './SvgDisplay';
 import MapPane from './MapPane'
 import MarkdownMessage from './MarkdownMessage'
@@ -180,25 +181,36 @@ export default function ChatColumn({
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               <div
-                role={msg.content ? 'button' : undefined}
-                tabIndex={msg.content ? 0 : -1}
-                onClick={msg.content ? () => copyToClipboard(msg.id, msg.content) : undefined}
-                onKeyDown={
-                  msg.content
-                    ? (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          copyToClipboard(msg.id, msg.content)
-                        }
-                      }
-                    : undefined
-                }
-                className={`relative max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
+                className={`group relative max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
                   msg.role === 'user' 
                     ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 
                     : 'bg-stone-100 text-stone-800 rounded-tl-none border border-transparent hover:scale-[1.02] transition-transform'
                 }`}
               >
+              {msg.content ? (
+                <button
+                  type="button"
+                  aria-label="Kopieer bericht"
+                  title="Kopieer"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    copyToClipboard(msg.id, msg.content)
+                  }}
+                  className={[
+                    // On touch devices: always visible. On larger screens: show on hover/focus.
+                    'absolute top-2 right-2',
+                    'h-8 w-8 rounded-full border border-stone-200 bg-white/80 backdrop-blur',
+                    'flex items-center justify-center shadow-sm',
+                    'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100',
+                    'transition-opacity',
+                    'hover:bg-white hover:shadow',
+                    'text-stone-600 hover:text-stone-900',
+                  ].join(' ')}
+                >
+                  {copiedId === msg.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                </button>
+              ) : null}
+
               {copiedId === msg.id ? (
                 <div className="absolute -top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-stone-900 text-white shadow">
                   Gekopieerd
