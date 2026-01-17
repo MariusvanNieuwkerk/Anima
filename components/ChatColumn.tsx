@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useRef } from 'react'
 import SvgDisplay from './SvgDisplay';
 import MapPane from './MapPane'
+import MarkdownMessage from './MarkdownMessage'
 
 type Message = {
   id: string
@@ -44,15 +45,10 @@ export default function ChatColumn({
         return <SvgDisplay key={`${keyPrefix}-svg-${idx}`} content={chunk} />
       }
 
-      const paragraphs = chunk.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean)
       return (
-        <Fragment key={`${keyPrefix}-text-${idx}`}>
-          {paragraphs.map((p, pIndex) => (
-            <p key={`${keyPrefix}-p-${idx}-${pIndex}`} className="mb-2 last:mb-0 whitespace-pre-wrap">
-              {p}
-            </p>
-          ))}
-        </Fragment>
+        <div key={`${keyPrefix}-md-${idx}`} className="space-y-0">
+          <MarkdownMessage content={chunk} />
+        </div>
       )
     })
   }

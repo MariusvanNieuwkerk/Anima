@@ -109,20 +109,21 @@ export async function POST(req: Request) {
 
     ${adaptivePacing}
 
-    ### VISUAL STRATEGY: FLUX VS SVG (HYBRID ENGINE)
-    - Als de vraag gaat over **Wiskunde / Meetkunde / Breuken / Grafieken / Functies / Diagrammen**:
-      - Gebruik GEEN image tool en zet ` + "`visual_keyword`" + ` op null/weglaten.
-      - Je output moet een SVG zijn (voor rendering in de app).
-      - Je MAG een SVG ook ZONDER dat de gebruiker erom vraagt toevoegen als het de uitleg merkbaar duidelijker maakt (bijv. bij meetkunde, grafieken, breuken, krachten/diagrammen). Niet vragen "wil je een tekening?"—gewoon doen als het helpt.
-      - CRITICAL (JSON-SAFE): Plaats de SVG ALTIJD in een markdown code block met xml fences in de ` + "`message`" + ` string:
-        ` + "```xml" + `
-        <svg>...</svg>
-        ` + "```" + `
-      - CRITICAL (JSON-SAFE): Gebruik in de SVG ALTIJD **single quotes** voor alle attribute values (dus geen dubbele quotes) om JSON-escaping fouten te voorkomen.
-      - BELANGRIJK VOOR JSON: nieuwe regels in strings moeten als ` + "`\\n`" + ` (escaped) zodat het geldige JSON blijft.
-      - VISUAL MANDATE (meetkunde): Bij vragen over vormen/hoeken/oppervlakte is visuele output VERPLICHT. Je mag geen uitleg geven zonder bijbehorende SVG-constructie in ` + "`message`" + `.
-      - In je ` + "`message`" + `: geef een KORTE uitleg (1–4 zinnen) + daarna de SVG (in de xml code block).
-      - De SVG MOET het gevraagde diagram precies voorstellen (geen generieke vorm als er een specifieke situatie gevraagd wordt).
+    ### BELANGRIJK: LaTeX RENDERING (FORMULES) + SVG (ALLEEN DIAGRAMMEN)
+    - Voor **wiskunde / natuurkunde / scheikunde** geldt:
+      - Gebruik NOOIT image-generation tools voor **formules, vergelijkingen, sommen of uitwerkingen**.
+      - Gebruik ALTIJD **LaTeX** voor wiskundige expressies:
+        - Inline: $E = mc^2$
+        - Blok (op een nieuwe regel):
+          $$
+          x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+          $$
+      - Zet ` + "`visual_keyword`" + ` op null/weglaten voor formules.
+    - SVG is nog wel toegestaan maar **alleen** voor echte diagrammen/constructies zoals:
+      - Meetkunde (vormen/hoeken/oppervlakte), grafieken (assen/curve), breuken-diagrammen, vrije-lichaam diagrammen.
+      - VISUAL MANDATE (meetkunde): bij vormen/hoeken/oppervlakte is een SVG-diagram verplicht.
+      - SVG OUTPUT (JSON-safe): Plaats SVG altijd in een ` + "```xml" + ` code block in ` + "`message`" + ` en gebruik single quotes voor attributes.
+      - De SVG moet de specifieke situatie exact voorstellen.
 
     - Als de vraag gaat over **"hoe ziet X eruit?" (lichaamsdeel als uiterlijk/foto)**:
       - Dit is GEEN anatomie-plaat. Gebruik Flux (via ` + "`visual_keyword`" + `) om een **heldere foto/illustratie** te tonen.
@@ -293,11 +294,11 @@ export async function POST(req: Request) {
        "no text, no letters, no numbers, no labels, no writing."
        Reason: The image generator cannot render text correctly. All explanations must happen in the chat, not the image.
 
-    2. **VISUAL RECIPE (GEOMETRY ONLY):** Describe strictly the shapes, colors, and composition.
+    2. **VISUAL RECIPE (WHEN YOU USE FLUX):** Describe strictly shapes, colors, and composition.
        - Bad: "A diagram showing 3/4."
        - Good: "A minimalist flat vector icon of a single circle. The circle is divided into exactly 4 equal pie slices. 3 slices are filled with solid blue color. 1 slice is white. White background. Clean lines. High contrast. No text, no letters, no numbers, no labels, no writing."
 
-    3. **STYLE:** Use "Flat Vector Art" or "Minimalist Icon" style for math/science. Avoid "Photorealistic" for abstract concepts like fractions.
+    3. **STYLE:** Use "Flat Vector Art" or "Minimalist Icon" style for abstract concepts. Avoid photorealism for abstract diagrams.
 
     **YOUR TASK:**
     Translate the user's educational concept into a description of SHAPES ONLY.
