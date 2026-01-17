@@ -1,7 +1,6 @@
 'use client'
 
 import { Users, GraduationCap, Settings } from 'lucide-react'
-import CreditBalance from './CreditBalance'
 
 type TutorMode = 'focus' | 'explorer' | 'growth'
 
@@ -50,11 +49,6 @@ export default function DesktopSidebar({ animaName, tutorMode, onSettingsClick }
           )
         })}
       </nav>
-
-      {/* Credits */}
-      <div className="p-4 border-t border-stone-200 flex justify-center">
-        <CreditBalance />
-      </div>
     </aside>
   )
 }
