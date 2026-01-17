@@ -93,11 +93,15 @@ export default function ChatColumn({
   const scrollToBottom = () => {
     const el = scrollAreaRef.current
     if (!el) return
-    // Only auto-scroll when user is already near the bottom; otherwise don't hijack their reading position.
-    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    const nearBottom = distanceToBottom < 120
-    if (!nearBottom && messages.length > 2) return
-    el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+    // Always scroll the *chat container* to the bottom.
+    // This avoids the previous "stuck in the middle" behavior, while still not moving the page.
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+      // Some browsers/layouts need a second tick after images/fonts/layout settle.
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
+      })
+    })
   }
 
   useEffect(() => {
