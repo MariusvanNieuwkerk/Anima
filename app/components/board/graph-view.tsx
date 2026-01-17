@@ -48,7 +48,8 @@ export default function GraphView({ expressions }: { expressions: string[] }) {
 
   return (
     <div className="w-full h-full">
-      <Mafs zoom pan height={420} width="auto">
+      {/* NOTE: Use a numeric width to avoid Mafs' ResizeObserver path (can crash on some clients). */}
+      <Mafs zoom pan height={420} width={500}>
         <CartesianCoordinates />
         {fns.map((item, idx) => (
           <Plot.OfX key={`${item.expr}-${idx}`} y={item.fn} color={COLORS[idx % COLORS.length]} />
