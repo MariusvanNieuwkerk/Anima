@@ -575,6 +575,15 @@ export async function POST(req: Request) {
       return /kaart|map\b|toon\s+parijs|parijs|londen|amsterdam|rotterdam|land|stad|continent|rivier|locatie|waar\s+ligt|topografie/.test(lower)
     })()
 
+    const needsFormula = (() => {
+      // Formula/definition requests: show formula on board + LaTeX in chat.
+      // Keep broad but avoid graph/map being misrouted.
+      if (needsGraph || needsMap) return false
+      return /formule|definitie|vergelijking|reactievergelijking|abc-?formule|pythagoras|stelling|fotosynthese|photosynthesis/.test(
+        lower
+      )
+    })()
+
     const needsImage = (() => {
       // Broader intent: "toon/laat zien" often implies an image even without words like "plaatje/afbeelding".
       // Avoid triggering for graphing/math requests.
@@ -958,6 +967,37 @@ export async function POST(req: Request) {
         payload.map = { ...map, lat: center.lat, lng: center.lon } as any
         payload.action = 'show_map'
       }
+    }
+
+    // ROUTING ENFORCEMENT (SINGLE SOURCE OF TRUTH):
+    // Ensure that if a request falls into a routing bucket, the corresponding action is selected
+    // and conflicting visuals are cleared (prevents overlap/residue).
+    if (needsGraph) {
+      // Graph takes precedence for math plotting.
+      payload.action = 'show_graph'
+      delete payload.map
+      delete payload.image
+      // Keep formula only if explicitly asked; usually graphs should stand alone.
+      if (!needsFormula) delete payload.formula
+    } else if (needsMap) {
+      // Geography/location always maps to show_map.
+      payload.action = 'show_map'
+      delete payload.graph
+      delete payload.image
+      delete payload.formula
+      // If model gave an incomplete map, we'll still try to produce one via deterministic geocode above.
+    } else if (needsImage) {
+      // Visual appearance/anatomy/history/biology always maps to show_image.
+      payload.action = 'show_image'
+      delete payload.graph
+      delete payload.map
+      // Allow formula to coexist for special cases like photosynthesis.
+      if (!/fotosynthese|photosynthesis/i.test(lastMessageContent || '')) delete payload.formula
+    } else if (needsFormula) {
+      payload.action = 'display_formula'
+      delete payload.graph
+      delete payload.map
+      delete payload.image
     }
 
     // If we expected a graph but got none, retry once with a strict override.

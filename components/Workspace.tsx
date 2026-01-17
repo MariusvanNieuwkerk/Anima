@@ -43,8 +43,18 @@ type Message = {
   formula?: { latex: string; title?: string }
 }
 
-type BoardView = 'none' | 'graph' | 'image' | 'formula' | 'map'
-type BoardContent = { view: BoardView; data: any }
+type GraphSpec = { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
+type ImageSpec = { url: string; caption?: string; sourceUrl?: string; formula?: { latex: string; title?: string } }
+type FormulaSpec = { latex: string; title?: string }
+type MapSpecLike = any
+
+// Single source of truth for the Board (strict discriminated union).
+type BoardState =
+  | { mode: 'NONE' }
+  | { mode: 'GRAPH'; data: GraphSpec }
+  | { mode: 'IMAGE'; data: ImageSpec }
+  | { mode: 'FORMULA'; data: FormulaSpec }
+  | { mode: 'MAP'; data: MapSpecLike }
 
 export default function Workspace() {
   const [mobileView, setMobileView] = useState<'chat' | 'board'>('chat')
@@ -76,7 +86,7 @@ export default function Workspace() {
   // Vision State
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [hasNewImage, setHasNewImage] = useState(false)
-  const [boardContent, setBoardContent] = useState<BoardContent>({ view: 'none', data: null })
+  const [boardState, setBoardState] = useState<BoardState>({ mode: 'NONE' })
   const boardTopicRef = useRef<string | null>(null)
 
   const [input, setInput] = useState('')
@@ -469,7 +479,7 @@ export default function Workspace() {
     const msg = language === 'en' ? 'New session! How can I help?' : 'Nieuwe sessie! Waar kan ik je mee helpen?';
     setMessages([{ id: Date.now().toString(), role: 'assistant', content: msg }]);
     setSelectedImages([]);
-    setBoardContent({ view: 'none', data: null })
+    setBoardState({ mode: 'NONE' })
     setHasNewImage(false)
     
     // 4. Spreek
@@ -885,40 +895,40 @@ export default function Workspace() {
       );
 
       // BOARD STATE MANAGER: single source of truth (no more lingering old visuals).
-      const nextBoard: BoardContent = (() => {
+      const nextBoard: BoardState = (() => {
         // Composite: allow Image + Formula together (e.g. photosynthesis diagram + equation)
         if (imageSpec && (formulaSpec || latexForBoard)) {
           return {
-            view: 'image',
+            mode: 'IMAGE',
             data: { ...imageSpec, formula: formulaSpec || { latex: latexForBoard } },
           }
         }
 
         // Explicit tool-like actions first
-        if (action === 'plot_graph' || action === 'show_graph') return { view: 'graph', data: graphSpec }
-        if (action === 'show_image') return { view: 'image', data: imageSpec }
-        if (action === 'display_formula') return { view: 'formula', data: formulaSpec || { latex: latexForBoard } }
-        if (action === 'show_map') return { view: 'map', data: mapSpec }
+        if (action === 'plot_graph' || action === 'show_graph') return { mode: 'GRAPH', data: graphSpec }
+        if (action === 'show_image') return { mode: 'IMAGE', data: imageSpec }
+        if (action === 'display_formula') return { mode: 'FORMULA', data: formulaSpec || { latex: latexForBoard } }
+        if (action === 'show_map') return { mode: 'MAP', data: mapSpec }
 
         // Fallback: infer from payload fields (keeps backwards compatibility)
-        if (graphSpec) return { view: 'graph', data: graphSpec }
-        if (imageSpec) return { view: 'image', data: imageSpec }
-        if (formulaSpec) return { view: 'formula', data: formulaSpec }
-        if (mapSpec) return { view: 'map', data: mapSpec }
-        if (latexForBoard) return { view: 'formula', data: { latex: latexForBoard } }
-        return { view: 'none', data: null }
+        if (graphSpec) return { mode: 'GRAPH', data: graphSpec }
+        if (imageSpec) return { mode: 'IMAGE', data: imageSpec }
+        if (formulaSpec) return { mode: 'FORMULA', data: formulaSpec }
+        if (mapSpec) return { mode: 'MAP', data: mapSpec }
+        if (latexForBoard) return { mode: 'FORMULA', data: { latex: latexForBoard } }
+        return { mode: 'NONE' }
       })()
 
       // If topic changes and we didn't produce a new board item, wipe the board.
-      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.view === 'none') {
-        setBoardContent({ view: 'none', data: null })
+      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.mode === 'NONE') {
+        setBoardState({ mode: 'NONE' })
       } else {
-        setBoardContent(nextBoard)
+        setBoardState(nextBoard)
       }
       if (topic) boardTopicRef.current = topic
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (nextBoard.view !== 'none' || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && (nextBoard.mode !== 'NONE' || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 
@@ -1173,7 +1183,7 @@ export default function Workspace() {
             />
           ) : (
             // Mobile/tablet: board-only view (visuals only)
-            <VisualPane messages={messages as any} boardContent={boardContent as any} />
+            <VisualPane messages={messages as any} boardState={boardState as any} />
           )}
         </div>
       </main>
@@ -1185,7 +1195,7 @@ export default function Workspace() {
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
               <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
-              <VisualPane messages={messages as any} boardContent={boardContent as any} />
+              <VisualPane messages={messages as any} boardState={boardState as any} />
             </div>
 
             <div className="bg-gradient-to-t from-white/95 to-white/80 backdrop-blur-sm px-8 py-6">
