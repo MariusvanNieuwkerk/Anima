@@ -195,27 +195,30 @@ export async function POST(req: Request) {
       - ` + "`show_image`" + ` (Wikimedia/Wikipedia afbeelding)
       - ` + "`display_formula`" + ` (formule/reactievergelijking)
 
-    JE BENT EEN VISUELE TUTOR. GEBRUIK ALTIJD EEN TOOL BIJ DE VOLGENDE ONDERWERPEN:
+    JE BENT EEN VISUELE TUTOR (Blueprint V10). GEBRUIK TOOLS CLEAN & DOELGERICHT:
+    - Graphs/Formula’s zijn exact → daar is visual output vaak verplicht.
+    - Curator Images/Maps zijn ondersteunend → alleen als het écht helpt of expliciet gevraagd wordt.
+    - QUALITY GATE (BELANGRIJK): Als je géén betrouwbare afbeelding/kaart kunt vinden, zet dan GEEN ` + "`image`" + ` / ` + "`map`" + ` veld en zet ` + "`action`" + ` op ` + "`none`" + `. Liever geen visual dan een foute.
 
     1.  **AARDRIJKSKUNDE / LOCATIES:**
-        * Trigger: Vragen over steden, landen, topografie, 'waar ligt...'.
-        * Actie: Roep DIRECT ` + "`show_map`" + ` aan.
+        * Trigger: expliciete locatie-intent: "waar ligt…", "toon … op de kaart", "op de kaart", coördinaten, hoofdstad.
+        * Actie: Roep ` + "`show_map`" + ` aan (en alleen dan).
         * Voorbeeld: 'Waar ligt Washington?' -> ` + "`show_map({ lat: 38.9, lng: -77.0, zoom: 12, title: 'Washington D.C.' })`" + `.
 
     2.  **BIOLOGIE / KUNST / GESCHIEDENIS:**
-        * Trigger: Vragen over hoe iets eruit ziet, anatomie, dieren, kunstwerken, historische events.
-        * Actie: Roep DIRECT ` + "`show_image`" + ` aan.
+        * Trigger: expliciete visuele intent ("toon/laat zien/hoe ziet… eruit") OF het is anatomie/lichaamsdeel waar een plaat essentieel is.
+        * Actie: Roep ` + "`show_image`" + ` aan.
         * Voorbeeld: 'Hoe ziet een hart eruit?' -> ` + "`show_image({ query: 'Human Heart Anatomy' })`" + `.
 
     3.  **WISKUNDE (GRAFIEKEN):**
         * Trigger: Vragen om te tekenen, plotten, snijpunten, parabolen.
-        * Actie: Roep DIRECT ` + "`plot_graph`" + ` aan.
+        * Actie: Roep ALTIJD ` + "`plot_graph`" + ` aan. (Visual Mandate)
 
     4.  **WISKUNDE / NATUURKUNDE (FORMULES):**
         * Trigger: Vragen naar definities of formules (ABC, Pythagoras, Fotosynthese).
-        * Actie: Roep DIRECT ` + "`display_formula`" + ` aan voor het bord, EN gebruik LaTeX in je chat-antwoord.
+        * Actie: Roep ALTIJD ` + "`display_formula`" + ` aan voor het bord, EN gebruik LaTeX in je chat-antwoord.
 
-    REGEL: 'Show, Don't Just Tell'. Als een vraag in deze categorieën valt, is een tool-call VERPLICHT.
+    REGEL: 'Show, Don't Just Tell' geldt vooral voor grafieken en formules. Voor images/maps geldt de QUALITY GATE: liever geen visual dan een foute.
 
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
@@ -590,12 +593,13 @@ export async function POST(req: Request) {
     })()
 
     const needsImage = (() => {
-      // Broader intent: "toon/laat zien" often implies an image even without words like "plaatje/afbeelding".
-      // Avoid triggering for graphing/math requests.
-      if (needsGraph) return false
-      // Anatomy/body part requests should show an image by default (even without "toon/laat zien").
+      // Curator images (Wikimedia) per Blueprint V10:
+      // - Always for anatomy/body parts (high factual value).
+      // - Otherwise only if the user explicitly asks to see it ("toon/hoe ziet/laat zien/...").
+      // Never for graphs/maps.
+      if (needsGraph || needsMap) return false
       if (isBodyPartTopic || isExplicitAnatomy) return true
-      return /laat\s+(me\s+)?zien|toon\b|show\b|laat\s+.*zien|plaatje\s+van|afbeelding\s+van|picture\s+of|image\s+of/.test(lower)
+      return /hoe\s+ziet|laat\s+(me\s+)?zien|toon\b|show\b|plaatje|afbeelding|foto|picture|image/.test(lower)
     })()
 
     const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
@@ -1119,6 +1123,16 @@ export async function POST(req: Request) {
           delete payload.image
         }
       }
+    }
+
+    // FINAL QUALITY GATE: if an image/map action was selected but we don't have a usable payload,
+    // prefer showing nothing (Blueprint V10: liever geen visual dan een foute/lege).
+    if (payload.action === 'show_image' && !(payload.image && typeof payload.image.url === 'string' && payload.image.url.trim())) {
+      delete payload.image
+      payload.action = 'none'
+    }
+    if (payload.action === 'show_map' && !payload.map) {
+      payload.action = 'none'
     }
 
     return new Response(JSON.stringify(payload), {

@@ -905,10 +905,19 @@ export default function Workspace() {
         }
 
         // Explicit tool-like actions first
-        if (action === 'plot_graph' || action === 'show_graph') return { mode: 'GRAPH', data: graphSpec }
-        if (action === 'show_image') return { mode: 'IMAGE', data: imageSpec }
-        if (action === 'display_formula') return { mode: 'FORMULA', data: formulaSpec || { latex: latexForBoard } }
-        if (action === 'show_map') return { mode: 'MAP', data: mapSpec }
+        if (action === 'plot_graph' || action === 'show_graph') {
+          return graphSpec ? { mode: 'GRAPH', data: graphSpec } : { mode: 'NONE' }
+        }
+        if (action === 'show_image') {
+          return imageSpec ? { mode: 'IMAGE', data: imageSpec } : { mode: 'NONE' }
+        }
+        if (action === 'display_formula') {
+          const f = formulaSpec || (latexForBoard ? { latex: latexForBoard } : null)
+          return f ? { mode: 'FORMULA', data: f } : { mode: 'NONE' }
+        }
+        if (action === 'show_map') {
+          return mapSpec ? { mode: 'MAP', data: mapSpec } : { mode: 'NONE' }
+        }
 
         // Fallback: infer from payload fields (keeps backwards compatibility)
         if (graphSpec) return { mode: 'GRAPH', data: graphSpec }
