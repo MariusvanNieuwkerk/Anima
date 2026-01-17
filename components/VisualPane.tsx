@@ -9,6 +9,7 @@ import DiagramRenderer from './DiagramRenderer'
 import type { DiagramSpec } from './diagramTypes'
 import RemoteImageDisplay from './RemoteImageDisplay'
 import type { RemoteImageSpec } from './remoteImageTypes'
+import GraphView from '@/app/components/board/graph-view'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -16,6 +17,7 @@ type Message = {
   map?: MapSpec
   diagram?: DiagramSpec
   remoteImage?: RemoteImageSpec
+  graph?: { expressions: string[] }
 }
 
 function extractSvg(text: string): string | null {
@@ -41,6 +43,10 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       // Prefer assistant visuals (maps/diagrams), but also allow user-uploaded images as fallback.
+
+      if ((msg as any).graph && Array.isArray((msg as any).graph.expressions) && (msg as any).graph.expressions.length) {
+        return { kind: 'graph' as const, graph: (msg as any).graph as { expressions: string[] } }
+      }
 
       if ((msg as any).remoteImage && ((msg as any).remoteImage.src || (msg as any).remoteImage.query)) {
         return { kind: 'remoteImage' as const, remoteImage: (msg as any).remoteImage as RemoteImageSpec, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
@@ -68,6 +74,12 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
       style={{ backgroundImage: 'radial-gradient(#ccc 1px, transparent 1px)', backgroundSize: '24px 24px' }}
     >
       <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
+        {latest.kind === 'graph' && (latest as any).graph?.expressions?.length ? (
+          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
+            <GraphView expressions={(latest as any).graph.expressions} />
+          </div>
+        ) : null}
+
         {latest.kind === 'svg' && latest.svg && (
           <div className="w-full h-full flex items-center justify-center">
             <div className="w-full max-w-full max-h-full rounded-2xl shadow-lg bg-white p-4">

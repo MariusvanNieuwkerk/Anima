@@ -38,6 +38,7 @@ type Message = {
   map?: any
   diagram?: any
   remoteImage?: any
+  graph?: { expressions: string[] }
 }
 
 export default function Workspace() {
@@ -760,6 +761,10 @@ export default function Workspace() {
       const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
       const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
       const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
+      const graphSpec: any | null =
+        parsed?.graph && typeof parsed.graph === 'object' && Array.isArray((parsed.graph as any).expressions)
+          ? { expressions: (parsed.graph as any).expressions }
+          : null
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
 
       const parseRemoteImageTag = (text: string) => {
@@ -802,13 +807,13 @@ export default function Workspace() {
       setMessages(prev =>
         prev.map(msg =>
           msg.id === aiMessageId
-            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag }
+            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag, graph: graphSpec }
             : msg
         )
       );
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && (graphSpec || mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 

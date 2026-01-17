@@ -123,9 +123,10 @@ export async function POST(req: Request) {
       x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
       $$
 
-    ### BELANGRIJK: VISUALS UITGESCHAKELD (VOOR ALLE TOPICS)
-    - Geef GEEN SVG, GEEN kaarten, GEEN diagrammen, GEEN remote-image tags.
-    - Geef alles in tekst. Voor formules: LaTeX.
+    ### VISUALS BELEID (BELANGRIJK)
+    - Je kunt **GEEN afbeeldingen genereren** (geen plaatjes).
+    - Je mag wél **interactieve grafieken** tonen via een ` + "`graph`" + ` veld in JSON (zie "GRAPH ENGINE").
+    - Geef GEEN SVG, GEEN remote-image tags, GEEN kaarten.
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
     Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
@@ -166,11 +167,19 @@ export async function POST(req: Request) {
     - De chat (message) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen).
     - Er zijn geen visuals: alles moet in woorden/LaTeX gebeuren.
 
-    BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat (alleen tekst):
+    ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
+    - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
+      - Zet een ` + "`graph`" + ` object in JSON met ` + "`expressions`" + ` (array van strings).
+      - Gebruik formules in x, bijvoorbeeld: ` + "`x^2`" + `, ` + "`x + 2`" + `, ` + "`2*x - 3`" + `.
+      - GEEN SVG, geen plaatjes. Alleen ` + "`graph`" + ` data.
+      - Zet ` + "`action`" + ` op ` + "`show_graph`" + `.
+
+    BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat:
     {
       "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
+      "graph": { "expressions": ["x^2"] },
       "topic": "[Het specifieke onderwerp]",
-      "action": "none"
+      "action": "none | show_graph"
     }
     
     REGELS (ALGEMEEN):
@@ -288,6 +297,13 @@ export async function POST(req: Request) {
     const validatePayload = (p: any) => {
       if (!p || typeof p !== 'object') return { ok: false as const, error: 'Payload is not an object' }
       if (typeof p.message !== 'string' || !p.message.trim()) return { ok: false as const, error: 'Missing message string' }
+      if (p.graph != null) {
+        if (typeof p.graph !== 'object') return { ok: false as const, error: 'graph must be object or null/undefined' }
+        if (!Array.isArray(p.graph.expressions)) return { ok: false as const, error: 'graph.expressions must be an array' }
+        for (const e of p.graph.expressions) {
+          if (typeof e !== 'string' || !e.trim()) return { ok: false as const, error: 'graph.expressions[] must be non-empty strings' }
+        }
+      }
       if (p.map != null) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
         if (!Array.isArray(p.map.queries) || p.map.queries.length === 0) return { ok: false as const, error: 'map.queries must be a non-empty array' }
@@ -383,6 +399,11 @@ export async function POST(req: Request) {
       // NOTE: visuals are disabled; we handle these requests as text-only descriptions.
       const asksLooksLike = /hoe ziet|laat zien|toon|foto|afbeelding|plaat|image/.test(lower)
       return isBodyPartTopic && asksLooksLike && !isExplicitAnatomy && !wantsSchematicDiagram
+    })()
+
+    const needsGraph = (() => {
+      // Interactive graphs are allowed via JSON { graph: { expressions: [...] } }
+      return /grafiek|plot|plotten|functie|parabool|lijn\s+door|teken\s+de\s+grafiek|grafiek\s+van|y\s*=/.test(lower)
     })()
 
     const hasSvgInMessage = (m: string) => /<svg[\s\S]*?<\/svg>/i.test(m || '')
@@ -598,6 +619,26 @@ export async function POST(req: Request) {
     if (!validation.ok) {
       // Keep the user experience stable: return the raw model text as the message.
       payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
+    }
+
+    // If we expected a graph but got none, retry once with a strict override.
+    if (needsGraph && !payload.graph) {
+      const strictGraph =
+        "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een grafiek. Antwoord met geldige JSON en voeg een 'graph' object toe met: {\"expressions\": [\"...\"]}. Gebruik formules in x zoals \"x^2\" of \"x+2\". Zet action op \"show_graph\". GEEN SVG, geen plaatjes.]"
+      const retryParts = partsCloneWithTextSuffix(userParts, strictGraph)
+      const retryText = await runOnceWithRetry(retryParts, 'graph_retry', 2)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && payload2.graph) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
 
     return new Response(JSON.stringify(payload), {
