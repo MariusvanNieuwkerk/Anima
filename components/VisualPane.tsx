@@ -94,7 +94,7 @@ export default function VisualPane({
     >
       <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
         {content.view === 'graph' && (content as any).data?.expressions?.length ? (
-          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
+          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
             <InlineErrorBoundary>
               <GraphView expressions={(content as any).data.expressions} points={(content as any).data.points} />
             </InlineErrorBoundary>
@@ -102,7 +102,7 @@ export default function VisualPane({
         ) : null}
 
         {content.view === 'image' && (content as any).data?.url ? (
-          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
+          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
             <ImageView url={(content as any).data.url} caption={(content as any).data.caption} />
           </div>
         ) : null}
