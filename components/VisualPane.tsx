@@ -11,6 +11,7 @@ import RemoteImageDisplay from './RemoteImageDisplay'
 import type { RemoteImageSpec } from './remoteImageTypes'
 import GraphView from '@/app/components/board/graph-view'
 import InlineErrorBoundary from './InlineErrorBoundary'
+import ImageView from '@/app/components/board/image-view'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -19,6 +20,7 @@ type Message = {
   diagram?: DiagramSpec
   remoteImage?: RemoteImageSpec
   graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
+  image?: { url: string; caption?: string; sourceUrl?: string }
 }
 
 function extractSvg(text: string): string | null {
@@ -47,6 +49,10 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
 
       if ((msg as any).graph && Array.isArray((msg as any).graph.expressions) && (msg as any).graph.expressions.length) {
         return { kind: 'graph' as const, graph: (msg as any).graph as { expressions: string[] } }
+      }
+
+      if ((msg as any).image && typeof (msg as any).image.url === 'string' && (msg as any).image.url.trim()) {
+        return { kind: 'image' as const, image: (msg as any).image as { url: string; caption?: string; sourceUrl?: string } }
       }
 
       if ((msg as any).remoteImage && ((msg as any).remoteImage.src || (msg as any).remoteImage.query)) {
@@ -80,6 +86,12 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
             <InlineErrorBoundary>
               <GraphView expressions={(latest as any).graph.expressions} points={(latest as any).graph.points} />
             </InlineErrorBoundary>
+          </div>
+        ) : null}
+
+        {latest.kind === 'image' && (latest as any).image?.url ? (
+          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
+            <ImageView url={(latest as any).image.url} caption={(latest as any).image.caption} />
           </div>
         ) : null}
 

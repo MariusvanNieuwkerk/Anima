@@ -6,6 +6,7 @@ import {
   solveDutchTimeHoursOnly,
   solveDutchTimeWordProblem,
 } from './skills/timeDutch'
+import { searchWikimedia } from '@/app/lib/wiki'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -126,6 +127,7 @@ export async function POST(req: Request) {
     ### VISUALS BELEID (BELANGRIJK)
     - Je kunt **GEEN afbeeldingen genereren** (geen plaatjes).
     - Je mag wél **interactieve grafieken** tonen via een ` + "`graph`" + ` veld in JSON (zie "GRAPH ENGINE").
+    - Je mag wél **externe afbeeldingen** tonen via een ` + "`image`" + ` veld (zie "IMAGE ENGINE").
     - Geef GEEN SVG, GEEN remote-image tags, GEEN kaarten.
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
@@ -175,12 +177,20 @@ export async function POST(req: Request) {
       - GEEN SVG, geen plaatjes. Alleen ` + "`graph`" + ` data.
       - Zet ` + "`action`" + ` op ` + "`show_graph`" + `.
 
+    ### IMAGE ENGINE (WIKIPEDIA / WIKIMEDIA)
+    - Als de gebruiker vraagt om een afbeelding van een **fysiek object, dier, plaats, historisch event of kunstwerk**:
+      - Zet een ` + "`image`" + ` object in JSON met een ` + "`query`" + ` en optioneel ` + "`caption`" + `.
+      - Voorbeeld query: "human heart anatomy", "Rembrandt The Night Watch", "Roman Colosseum".
+      - NIET gebruiken voor wiskunde-grafieken (daarvoor is ` + "`graph`" + `).
+      - Zet ` + "`action`" + ` op ` + "`show_image`" + `.
+
     BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat:
     {
       "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
       "graph": { "expressions": ["x^2"], "points": [{"x":0,"y":0,"label":"top"}] },
+      "image": { "query": "human heart anatomy", "caption": "Menselijk hart" },
       "topic": "[Het specifieke onderwerp]",
-      "action": "none | show_graph"
+      "action": "none | show_graph | show_image"
     }
     
     REGELS (ALGEMEEN):
@@ -314,6 +324,14 @@ export async function POST(req: Request) {
           }
         }
       }
+      if (p.image != null) {
+        if (typeof p.image !== 'object') return { ok: false as const, error: 'image must be object or null/undefined' }
+        const hasUrl = typeof p.image.url === 'string' && p.image.url.trim()
+        const hasQuery = typeof p.image.query === 'string' && p.image.query.trim()
+        if (!hasUrl && !hasQuery) return { ok: false as const, error: 'image must include url or query' }
+        if (p.image.caption != null && typeof p.image.caption !== 'string') return { ok: false as const, error: 'image.caption must be string if present' }
+        if (p.image.sourceUrl != null && typeof p.image.sourceUrl !== 'string') return { ok: false as const, error: 'image.sourceUrl must be string if present' }
+      }
       if (p.map != null) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
         if (!Array.isArray(p.map.queries) || p.map.queries.length === 0) return { ok: false as const, error: 'map.queries must be a non-empty array' }
@@ -418,6 +436,12 @@ export async function POST(req: Request) {
 
     const wantsMarkedPoints = (() => {
       return /markeer|punt|punten|top|toppen|snijpunt|snijpunten|oorsprong|vertex/.test(lower)
+    })()
+
+    const needsImage = (() => {
+      return /laat.*plaatje|laat.*afbeelding|toon.*plaatje|toon.*afbeelding|plaatje\s+van|afbeelding\s+van|picture\s+of|image\s+of|show\s+me\s+a\s+picture/.test(
+        lower
+      )
     })()
 
     const extractGraphExpressions = (text: string): string[] => {
@@ -748,6 +772,64 @@ export async function POST(req: Request) {
 
       if (pts.length > 0) {
         payload.graph.points = pts
+      }
+    }
+
+    // Resolve Wikipedia/Wikimedia image queries server-side into a concrete URL.
+    if (payload.image && !payload.image.url && typeof payload.image.query === 'string') {
+      try {
+        const result = await searchWikimedia(payload.image.query)
+        if (result.found && result.url) {
+          payload.image = {
+            url: result.url,
+            caption: payload.image.caption || result.caption || result.title,
+            sourceUrl: result.pageUrl,
+          }
+          payload.action = payload.action || 'show_image'
+        } else {
+          // If not found, strip image to keep the UI stable.
+          delete payload.image
+        }
+      } catch {
+        delete payload.image
+      }
+    }
+
+    // If the user asked for an image but the model forgot, retry once to request an image query.
+    if (needsImage && !payload.image && !needsGraph) {
+      const strictImage =
+        '\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een afbeelding. Antwoord met geldige JSON en voeg een "image" object toe met {"query":"...","caption":"..."} (query in het Engels). Zet action op "show_image". GEEN graph, geen SVG, geen plaatjes genereren.]'
+      const retryParts = partsCloneWithTextSuffix(userParts, strictImage)
+      const retryText = await runOnceWithRetry(retryParts, 'image_retry', 2)
+      try {
+        const jsonText2 = extractJsonFromModelText(retryText)
+        if (jsonText2) {
+          const payload2 = JSON.parse(jsonText2)
+          const v2 = validatePayload(payload2)
+          if (v2.ok && payload2.image) {
+            payload = payload2
+          }
+        }
+      } catch {
+        // ignore
+      }
+      // Resolve if we got a query.
+      if (payload.image && !payload.image.url && typeof payload.image.query === 'string') {
+        try {
+          const result = await searchWikimedia(payload.image.query)
+          if (result.found && result.url) {
+            payload.image = {
+              url: result.url,
+              caption: payload.image.caption || result.caption || result.title,
+              sourceUrl: result.pageUrl,
+            }
+            payload.action = 'show_image'
+          } else {
+            delete payload.image
+          }
+        } catch {
+          delete payload.image
+        }
       }
     }
 
