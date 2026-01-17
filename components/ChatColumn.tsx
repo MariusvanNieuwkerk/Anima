@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import SvgDisplay from './SvgDisplay';
 import MapPane from './MapPane'
 import MarkdownMessage from './MarkdownMessage'
@@ -33,6 +33,7 @@ export default function ChatColumn({
 }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const isDataImage = (s: string) => /^data:image\//i.test(s || '')
 
@@ -104,6 +105,43 @@ export default function ChatColumn({
     })
   }
 
+  const copyToClipboard = async (id: string, text: string) => {
+    const t = String(text || '').trim()
+    if (!t) return
+
+    // If the user is selecting text, don't hijack the click.
+    try {
+      const selection = window.getSelection?.()?.toString?.() || ''
+      if (selection.trim().length > 0) return
+    } catch {
+      // ignore
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(t)
+      } else {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea')
+        ta.value = t
+        ta.style.position = 'fixed'
+        ta.style.top = '0'
+        ta.style.left = '0'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+
+      setCopiedId(id)
+      window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 900)
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     scrollToBottom()
   }, [messages, isTyping])
@@ -142,12 +180,30 @@ export default function ChatColumn({
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               <div
-                className={`max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
+                role={msg.content ? 'button' : undefined}
+                tabIndex={msg.content ? 0 : -1}
+                onClick={msg.content ? () => copyToClipboard(msg.id, msg.content) : undefined}
+                onKeyDown={
+                  msg.content
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          copyToClipboard(msg.id, msg.content)
+                        }
+                      }
+                    : undefined
+                }
+                className={`relative max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
                   msg.role === 'user' 
                     ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 
                     : 'bg-stone-100 text-stone-800 rounded-tl-none border border-transparent hover:scale-[1.02] transition-transform'
                 }`}
               >
+              {copiedId === msg.id ? (
+                <div className="absolute -top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-stone-900 text-white shadow">
+                  Gekopieerd
+                </div>
+              ) : null}
               {renderMaps && msg.map ? (
                 <div className={`${msg.content ? 'mb-3' : ''} h-[320px] max-w-[520px]`}>
                   <MapPane spec={msg.map} />
