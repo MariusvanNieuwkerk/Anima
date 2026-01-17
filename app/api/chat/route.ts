@@ -188,6 +188,7 @@ export async function POST(req: Request) {
 
     ### IMAGE ENGINE (WIKIPEDIA / WIKIMEDIA)
     - Als de gebruiker vraagt om een afbeelding van een **fysiek object, dier, plaats, historisch event of kunstwerk**:
+      - Ook als de gebruiker zegt: "toon/laat zien/show" zonder het woord "afbeelding".
       - Zet een ` + "`image`" + ` object in JSON met een ` + "`query`" + ` en optioneel ` + "`caption`" + `.
       - Voorbeeld query: "human heart anatomy", "Rembrandt The Night Watch", "Roman Colosseum".
       - NIET gebruiken voor wiskunde-grafieken (daarvoor is ` + "`graph`" + `).
@@ -488,10 +489,17 @@ export async function POST(req: Request) {
     })()
 
     const needsImage = (() => {
-      return /laat.*plaatje|laat.*afbeelding|toon.*plaatje|toon.*afbeelding|plaatje\s+van|afbeelding\s+van|picture\s+of|image\s+of|show\s+me\s+a\s+picture/.test(
-        lower
-      )
+      // Broader intent: "toon/laat zien" often implies an image even without words like "plaatje/afbeelding".
+      // Avoid triggering for graphing/math requests.
+      if (needsGraph) return false
+      return /laat\s+(me\s+)?zien|toon\b|show\b|laat\s+.*zien|plaatje\s+van|afbeelding\s+van|picture\s+of|image\s+of/.test(lower)
     })()
+
+    const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
+      const t = (text || '').toLowerCase()
+      if (t.includes('nachtwacht')) return { query: 'The Night Watch Rembrandt painting', caption: 'De Nachtwacht (Rembrandt)' }
+      return null
+    }
 
     const extractGraphExpressions = (text: string): string[] => {
       const t = String(text || '')
@@ -852,21 +860,29 @@ export async function POST(req: Request) {
 
     // If the user asked for an image but the model forgot, retry once to request an image query.
     if (needsImage && !payload.image && !needsGraph) {
+      // Deterministic preset (e.g., Dutch cultural terms) before asking the model again.
+      const preset = imageQueryPreset(lastMessageContent || '')
+      if (preset) {
+        payload.image = { query: preset.query, caption: preset.caption }
+      }
+
       const strictImage =
         '\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een afbeelding. Antwoord met geldige JSON en voeg een "image" object toe met {"query":"...","caption":"..."} (query in het Engels). Zet action op "show_image". GEEN graph, geen SVG, geen plaatjes genereren.]'
-      const retryParts = partsCloneWithTextSuffix(userParts, strictImage)
-      const retryText = await runOnceWithRetry(retryParts, 'image_retry', 2)
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && payload2.image) {
-            payload = payload2
+      if (!payload.image) {
+        const retryParts = partsCloneWithTextSuffix(userParts, strictImage)
+        const retryText = await runOnceWithRetry(retryParts, 'image_retry', 2)
+        try {
+          const jsonText2 = extractJsonFromModelText(retryText)
+          if (jsonText2) {
+            const payload2 = JSON.parse(jsonText2)
+            const v2 = validatePayload(payload2)
+            if (v2.ok && payload2.image) {
+              payload = payload2
+            }
           }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
       // Resolve if we got a query.
       if (payload.image && !payload.image.url && typeof payload.image.query === 'string') {
