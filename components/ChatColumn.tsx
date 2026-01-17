@@ -32,6 +32,7 @@ export default function ChatColumn({
   renderUploadThumbnails = true,
 }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   const isDataImage = (s: string) => /^data:image\//i.test(s || '')
 
@@ -90,7 +91,13 @@ export default function ChatColumn({
   }
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const el = scrollAreaRef.current
+    if (!el) return
+    // Only auto-scroll when user is already near the bottom; otherwise don't hijack their reading position.
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const nearBottom = distanceToBottom < 120
+    if (!nearBottom && messages.length > 2) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
   }
 
   useEffect(() => {
@@ -100,7 +107,15 @@ export default function ChatColumn({
   return (
     <div className="flex flex-col h-full bg-white rounded-3xl border border-stone-200 shadow-lg overflow-hidden">
       {/* Messages Area - IOS POLISH: overflow-y-auto met -webkit-overflow-scrolling voor soepel scrollen */}
-      <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 bg-stone-50/30" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-6 bg-stone-50/30"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          // Prevent browser scroll anchoring from jumping the page when content expands.
+          overflowAnchor: 'none',
+        }}
+      >
         {messages.map((msg) => (
           <div key={msg.id} className="space-y-2">
             {/* User-upload thumbnails shown inline in chat stream (between messages) */}
