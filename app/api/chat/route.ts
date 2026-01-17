@@ -127,6 +127,9 @@ export async function POST(req: Request) {
     - CRITICAL (LaTeX inline): gebruik **geen spaties direct binnen** de $-tekens.
       - Goed: $E=mc^2$
       - Fout: $ E = mc^2 $
+    - CRITICAL (Scheikunde reactievergelijkingen):
+      - Schrijf reactievergelijkingen ALTIJD als LaTeX in een blok met ` + "`$$...$$`" + `.
+      - Gebruik LaTeX subscripts (bijv. ` + "`CH_4`" + `, ` + "`O_2`" + `, ` + "`H_2O`" + `) en pijl ` + "`\\rightarrow`" + `.
 
     ### VISUALS BELEID (BELANGRIJK)
     - Je kunt **GEEN afbeeldingen genereren** (geen plaatjes).

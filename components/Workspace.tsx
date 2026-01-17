@@ -804,6 +804,30 @@ export default function Workspace() {
           if (inline.length >= 3) break
         }
         if (inline.length > 0) return `$$\n${inline.join('\\n')}\n$$`
+
+        // Chemistry fallback: if we see a reaction arrow, format the equation as LaTeX.
+        const hasArrow = /→|->/.test(t)
+        if (hasArrow) {
+          const eqMatch = t.match(/([A-Za-z0-9₀-₉()+\\s]+?)(?:→|->)([A-Za-z0-9₀-₉()+\\s]+)/)
+          if (eqMatch) {
+            const left = (eqMatch[1] || '').trim()
+            const right = (eqMatch[2] || '').trim()
+            const normalizeSubDigits = (s: string) =>
+              s.replace(/[₀₁₂₃₄₅₆₇₈₉]/g, (d) => '0123456789'['₀₁₂₃₄₅₆₇₈₉'.indexOf(d)] || d)
+            const toLatexFormula = (s: string) => {
+              let out = normalizeSubDigits(s)
+              out = out.replace(/\+/g, ' + ')
+              out = out.replace(/\s+/g, ' ').trim()
+              // Element subscripts: H2O -> H_{2}O, CO2 -> C O_{2}, etc.
+              out = out.replace(/([A-Z][a-z]?)(\d+)/g, '$1_{$2}')
+              // Parenthesis subscripts: (OH)2 -> (OH)_{2}
+              out = out.replace(/(\))(\d+)/g, '$1_{$2}')
+              return out
+            }
+            const latexEq = `${toLatexFormula(left)} \\rightarrow ${toLatexFormula(right)}`
+            return `$$\n${latexEq}\n$$`
+          }
+        }
         return null
       }
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
