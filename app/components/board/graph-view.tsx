@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Mafs, CartesianCoordinates, Plot, Theme } from 'mafs'
+import { Mafs, Coordinates, Plot, Theme } from 'mafs'
 import { compile } from 'mathjs'
 
 export type GraphSpec = {
@@ -50,7 +50,7 @@ export default function GraphView({ expressions }: { expressions: string[] }) {
     <div className="w-full h-full">
       {/* NOTE: Use a numeric width to avoid Mafs' ResizeObserver path (can crash on some clients). */}
       <Mafs zoom pan height={420} width={500}>
-        <CartesianCoordinates />
+        <Coordinates.Cartesian />
         {fns.map((item, idx) => (
           <Plot.OfX key={`${item.expr}-${idx}`} y={item.fn} color={COLORS[idx % COLORS.length]} />
         ))}
