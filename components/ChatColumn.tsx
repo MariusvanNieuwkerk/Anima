@@ -35,6 +35,7 @@ export default function ChatColumn({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activeCopyId, setActiveCopyId] = useState<string | null>(null)
 
   const isDataImage = (s: string) => /^data:image\//i.test(s || '')
 
@@ -137,10 +138,24 @@ export default function ChatColumn({
       }
 
       setCopiedId(id)
-      window.setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 900)
+      window.setTimeout(() => {
+        setCopiedId((prev) => (prev === id ? null : prev))
+        setActiveCopyId((prev) => (prev === id ? null : prev))
+      }, 900)
     } catch {
       // ignore
     }
+  }
+
+  const armCopyForMessage = (id: string) => {
+    // If the user is selecting text, don't toggle the copy UI.
+    try {
+      const selection = window.getSelection?.()?.toString?.() || ''
+      if (selection.trim().length > 0) return
+    } catch {
+      // ignore
+    }
+    setActiveCopyId((prev) => (prev === id ? null : id))
   }
 
   useEffect(() => {
@@ -181,6 +196,7 @@ export default function ChatColumn({
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
             >
               <div
+                onClick={msg.content ? () => armCopyForMessage(msg.id) : undefined}
                 className={`group relative max-w-[85%] p-4 md:p-5 rounded-3xl text-sm md:text-base leading-relaxed shadow-md hover:shadow-lg transition-shadow ${
                   msg.role === 'user' 
                     ? 'bg-white border border-stone-200 text-stone-800 rounded-tr-none hover:scale-[1.02] transition-transform' 
@@ -201,7 +217,7 @@ export default function ChatColumn({
                     'absolute top-2 right-2',
                     'h-8 w-8 rounded-full border border-stone-200 bg-white/80 backdrop-blur',
                     'flex items-center justify-center shadow-sm',
-                    'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100',
+                    activeCopyId === msg.id ? 'opacity-100' : 'opacity-0 pointer-events-none',
                     'transition-opacity',
                     'hover:bg-white hover:shadow',
                     'text-stone-600 hover:text-stone-900',
