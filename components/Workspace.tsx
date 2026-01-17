@@ -42,6 +42,12 @@ type Message = {
   image?: { url: string; caption?: string; sourceUrl?: string }
 }
 
+type BoardState =
+  | { kind: 'graph'; graph: NonNullable<Message['graph']> }
+  | { kind: 'image'; image: NonNullable<Message['image']> }
+  | { kind: 'formula'; latex: string }
+  | { kind: 'empty' }
+
 export default function Workspace() {
   const [mobileView, setMobileView] = useState<'chat' | 'board'>('chat')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -72,6 +78,8 @@ export default function Workspace() {
   // Vision State
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [hasNewImage, setHasNewImage] = useState(false)
+  const [boardState, setBoardState] = useState<BoardState>({ kind: 'empty' })
+  const boardTopicRef = useRef<string | null>(null)
 
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -463,6 +471,8 @@ export default function Workspace() {
     const msg = language === 'en' ? 'New session! How can I help?' : 'Nieuwe sessie! Waar kan ik je mee helpen?';
     setMessages([{ id: Date.now().toString(), role: 'assistant', content: msg }]);
     setSelectedImages([]);
+    setBoardState({ kind: 'empty' })
+    setHasNewImage(false)
     
     // 4. Spreek
     speakText(msg);
@@ -759,6 +769,7 @@ export default function Workspace() {
       const parsed = await response.json();
 
       const finalChatMessage: string = typeof parsed?.message === 'string' ? parsed.message : 'Er ging iets mis bij het verwerken van het antwoord.'
+      const topic: string | null = typeof parsed?.topic === 'string' ? parsed.topic : null
       const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
       const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
       const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
@@ -778,6 +789,23 @@ export default function Workspace() {
               sourceUrl: typeof (parsed.image as any).sourceUrl === 'string' ? (parsed.image as any).sourceUrl : undefined,
             }
           : null
+
+      const extractLatexForBoard = (text: string): string | null => {
+        const t = String(text || '')
+        if (!t.trim()) return null
+        const block = t.match(/\$\$[\s\S]*?\$\$/)
+        if (block) return block[0]
+        const inline: string[] = []
+        const re = /\$([^$\n]+?)\$/g
+        let m: RegExpExecArray | null
+        while ((m = re.exec(t))) {
+          const inner = (m[1] || '').trim()
+          if (inner) inline.push(inner)
+          if (inline.length >= 3) break
+        }
+        if (inline.length > 0) return `$$\n${inline.join('\\n')}\n$$`
+        return null
+      }
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
 
       const parseRemoteImageTag = (text: string) => {
@@ -815,6 +843,7 @@ export default function Workspace() {
       }
 
       const { cleaned: messageWithoutRemote, spec: remoteFromTag } = parseRemoteImageTag(finalChatMessage)
+      const latexForBoard = extractLatexForBoard(messageWithoutRemote)
 
       // Update message immediately (no more brittle regex/stream parsing)
       setMessages(prev =>
@@ -825,8 +854,27 @@ export default function Workspace() {
         )
       );
 
+      // BOARD WIPER: ensure only one thing is active on the board at a time.
+      // Priority: graph > image > formula > empty.
+      const nextBoard: BoardState =
+        graphSpec
+          ? { kind: 'graph', graph: graphSpec }
+          : imageSpec
+            ? { kind: 'image', image: imageSpec }
+            : latexForBoard
+              ? { kind: 'formula', latex: latexForBoard }
+              : { kind: 'empty' }
+
+      // If topic changes and we didn't produce a new board item, wipe the board.
+      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.kind === 'empty') {
+        setBoardState({ kind: 'empty' })
+      } else {
+        setBoardState(nextBoard)
+      }
+      if (topic) boardTopicRef.current = topic
+
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (graphSpec || imageSpec || mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && (nextBoard.kind !== 'empty' || mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 
@@ -1081,7 +1129,7 @@ export default function Workspace() {
             />
           ) : (
             // Mobile/tablet: board-only view (visuals only)
-            <VisualPane messages={messages as any} />
+            <VisualPane messages={messages as any} boardState={boardState as any} />
           )}
         </div>
       </main>
@@ -1093,7 +1141,7 @@ export default function Workspace() {
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
               <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
-              <VisualPane messages={messages as any} />
+              <VisualPane messages={messages as any} boardState={boardState as any} />
             </div>
 
             <div className="bg-gradient-to-t from-white/95 to-white/80 backdrop-blur-sm px-8 py-6">

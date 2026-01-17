@@ -24,6 +24,13 @@ type Message = {
   image?: { url: string; caption?: string; sourceUrl?: string }
 }
 
+type BoardState =
+  | { kind: 'graph'; graph: NonNullable<Message['graph']> }
+  | { kind: 'image'; image: NonNullable<Message['image']> }
+  | { kind: 'formula'; latex: string }
+  | { kind: 'svg'; svg: string }
+  | { kind: 'empty' }
+
 function extractSvg(text: string): string | null {
   if (!text) return null
 
@@ -63,8 +70,16 @@ function extractLatexForBoard(text: string): string | null {
   return null
 }
 
-export default function VisualPane({ messages }: { messages: Message[] }) {
+export default function VisualPane({
+  messages,
+  boardState,
+}: {
+  messages: Message[]
+  boardState?: BoardState | null
+}) {
   const latest = useMemo(() => {
+    // If a boardState is provided, it is the source of truth (prevents "state persistence").
+    if (boardState) return boardState
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       // Prefer assistant visuals (maps/diagrams), but also allow user-uploaded images as fallback.
@@ -97,8 +112,8 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
         if (latex) return { kind: 'formula' as const, latex }
       }
     }
-    return { kind: 'empty' as const, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
-  }, [messages])
+    return { kind: 'empty' as const }
+  }, [messages, boardState])
 
   return (
     <div

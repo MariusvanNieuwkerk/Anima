@@ -4,7 +4,21 @@ import ReactMarkdown from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 
+function normalizeInlineLatex(input: string) {
+  const s = String(input || '')
+  // remark-math (micromark) is picky: `$ x $` often won't parse as math.
+  // Normalize only when the inner content looks like math.
+  return s.replace(/\$\s+([^$\n]+?)\s+\$/g, (full, inner) => {
+    const t = String(inner || '').trim()
+    if (!t) return full
+    // If it doesn't look like math, keep as-is.
+    if (!/[\\^_=()+\-*/]|[a-zA-Z]/.test(t)) return full
+    return `$${t}$`
+  })
+}
+
 export default function MarkdownMessage({ content }: { content: string }) {
+  const normalized = normalizeInlineLatex(content)
   return (
     <ReactMarkdown
       remarkPlugins={[remarkMath]}
@@ -24,7 +38,7 @@ export default function MarkdownMessage({ content }: { content: string }) {
         ),
       }}
     >
-      {content}
+      {normalized}
     </ReactMarkdown>
   )
 }

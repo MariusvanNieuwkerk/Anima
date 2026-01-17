@@ -123,6 +123,9 @@ export async function POST(req: Request) {
       $$
       x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
       $$
+    - CRITICAL (LaTeX inline): gebruik **geen spaties direct binnen** de $-tekens.
+      - Goed: $E=mc^2$
+      - Fout: $ E = mc^2 $
 
     ### VISUALS BELEID (BELANGRIJK)
     - Je kunt **GEEN afbeeldingen genereren** (geen plaatjes).
@@ -168,6 +171,12 @@ export async function POST(req: Request) {
     ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST (TEXT ONLY)
     - De chat (message) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen).
     - Er zijn geen visuals: alles moet in woorden/LaTeX gebeuren.
+
+    ### NO JSON LEAKAGE (CRITICAL)
+    - Geef NOOIT JSON of code-structuren terug in je tekstuele ` + "`message`" + `.
+    - ` + "`message`" + ` is ALLEEN natuurlijke taal (met LaTeX waar nodig).
+    - Zet data voor board/visuals ALLEEN in de JSON-velden (` + "`graph`" + `, ` + "`image`" + `, etc.), niet als tekst.
+    - Als je van onderwerp verandert (bijv. wiskunde -> geschiedenis): ga ervan uit dat het bord gewist moet worden en zet alleen het nieuwe relevante veld (bijv. ` + "`image`" + ` voor geschiedenis, ` + "`graph`" + ` voor grafieken).
 
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
@@ -303,6 +312,46 @@ export async function POST(req: Request) {
       }
 
       return null
+    }
+
+    const sanitizeMessageForDisplay = (raw: string): string => {
+      let t = String(raw || '').trim()
+      if (!t) return ''
+
+      // Strip fenced JSON blocks if the model accidentally echoed them inside `message`.
+      t = t.replace(/```json[\s\S]*?```/gi, '').trim()
+
+      // If the message itself is a JSON object, try to extract its `message` field.
+      const looksJson = t.startsWith('{') && t.endsWith('}')
+      if (looksJson) {
+        try {
+          const parsed = JSON.parse(t)
+          if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) {
+            return String(parsed.message).trim()
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // If it contains common JSON keys, try to extract embedded object and use its `message`.
+      if (/"(message|graph|image|topic|action)"\s*:/.test(t) && t.includes('{') && t.includes('}')) {
+        const first = t.indexOf('{')
+        const last = t.lastIndexOf('}')
+        if (first !== -1 && last !== -1 && last > first) {
+          const slice = t.slice(first, last + 1)
+          try {
+            const parsed = JSON.parse(slice)
+            if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) {
+              return String(parsed.message).trim()
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      return t
     }
 
     const validatePayload = (p: any) => {
@@ -723,6 +772,12 @@ export async function POST(req: Request) {
     if (!validation.ok) {
       // Keep the user experience stable: return the raw model text as the message.
       payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
+    }
+
+    // Always sanitize message to prevent JSON/code leakage in the chat bubble.
+    if (payload?.message && typeof payload.message === 'string') {
+      const cleaned = sanitizeMessageForDisplay(payload.message)
+      payload.message = cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
     // If we expected a graph but got none, retry once with a strict override.
