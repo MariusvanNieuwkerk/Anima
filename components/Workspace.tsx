@@ -43,18 +43,13 @@ type Message = {
   formula?: { latex: string; title?: string }
 }
 
-type GraphSpec = { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
-type ImageSpec = { url: string; caption?: string; sourceUrl?: string; formula?: { latex: string; title?: string } }
-type FormulaSpec = { latex: string; title?: string }
-type MapSpecLike = any
-
-// Single source of truth for the Board (strict discriminated union).
-type BoardState =
-  | { mode: 'NONE' }
-  | { mode: 'GRAPH'; data: GraphSpec }
-  | { mode: 'IMAGE'; data: ImageSpec }
-  | { mode: 'FORMULA'; data: FormulaSpec }
-  | { mode: 'MAP'; data: MapSpecLike }
+// Clean-slate Board state (single active view) — discriminated union.
+type BoardMode =
+  | { type: 'IDLE' }
+  | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
+  | { type: 'IMAGE'; data: { url: string; title: string } }
+  | { type: 'GRAPH'; data: { expressions: string[] } }
+  | { type: 'FORMULA'; data: { latex: string } }
 
 export default function Workspace() {
   const [mobileView, setMobileView] = useState<'chat' | 'board'>('chat')
@@ -86,7 +81,7 @@ export default function Workspace() {
   // Vision State
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [hasNewImage, setHasNewImage] = useState(false)
-  const [boardState, setBoardState] = useState<BoardState>({ mode: 'NONE' })
+  const [boardMode, setBoardMode] = useState<BoardMode>({ type: 'IDLE' })
   const boardTopicRef = useRef<string | null>(null)
 
   const [input, setInput] = useState('')
@@ -479,7 +474,7 @@ export default function Workspace() {
     const msg = language === 'en' ? 'New session! How can I help?' : 'Nieuwe sessie! Waar kan ik je mee helpen?';
     setMessages([{ id: Date.now().toString(), role: 'assistant', content: msg }]);
     setSelectedImages([]);
-    setBoardState({ mode: 'NONE' })
+    setBoardMode({ type: 'IDLE' })
     setHasNewImage(false)
     
     // 4. Spreek
@@ -894,50 +889,76 @@ export default function Workspace() {
         )
       );
 
-      // BOARD STATE MANAGER: single source of truth (no more lingering old visuals).
-      const nextBoard: BoardState = (() => {
-        // Composite: allow Image + Formula together (e.g. photosynthesis diagram + equation)
-        if (imageSpec && (formulaSpec || latexForBoard)) {
-          return {
-            mode: 'IMAGE',
-            data: { ...imageSpec, formula: formulaSpec || { latex: latexForBoard } },
-          }
-        }
-
-        // Explicit tool-like actions first
+      // BOARD MODE: clean slate (exactly one active view).
+      const nextBoard: BoardMode = (() => {
+        // Explicit actions first (treat action as “tool routing”).
         if (action === 'plot_graph' || action === 'show_graph') {
-          return graphSpec ? { mode: 'GRAPH', data: graphSpec } : { mode: 'NONE' }
+          const exprs: any[] = Array.isArray(graphSpec?.expressions) ? graphSpec.expressions : []
+          return exprs.length ? { type: 'GRAPH', data: { expressions: exprs } } : { type: 'IDLE' }
         }
         if (action === 'show_image') {
-          return imageSpec ? { mode: 'IMAGE', data: imageSpec } : { mode: 'NONE' }
+          if (!imageSpec?.url) return { type: 'IDLE' }
+          const title = (imageSpec.caption || (parsed?.image as any)?.title || 'Afbeelding').toString()
+          return { type: 'IMAGE', data: { url: imageSpec.url, title } }
         }
         if (action === 'display_formula') {
-          const f = formulaSpec || (latexForBoard ? { latex: latexForBoard } : null)
-          return f ? { mode: 'FORMULA', data: f } : { mode: 'NONE' }
+          const latex = (formulaSpec?.latex || latexForBoard || '').toString()
+          return latex.trim() ? { type: 'FORMULA', data: { latex } } : { type: 'IDLE' }
         }
         if (action === 'show_map') {
-          return mapSpec ? { mode: 'MAP', data: mapSpec } : { mode: 'NONE' }
+          // Accept both tool-style {lat,lng,zoom,title} and MapSpec {center:{lat,lon}, zoom, title}
+          const lat =
+            typeof (mapSpec as any)?.lat === 'number'
+              ? (mapSpec as any).lat
+              : typeof (mapSpec as any)?.center?.lat === 'number'
+                ? (mapSpec as any).center.lat
+                : null
+          const lng =
+            typeof (mapSpec as any)?.lng === 'number'
+              ? (mapSpec as any).lng
+              : typeof (mapSpec as any)?.center?.lon === 'number'
+                ? (mapSpec as any).center.lon
+                : null
+          const zoom = typeof (mapSpec as any)?.zoom === 'number' ? (mapSpec as any).zoom : 10
+          const title = typeof (mapSpec as any)?.title === 'string' ? (mapSpec as any).title : 'Kaart'
+          return lat != null && lng != null ? { type: 'MAP', data: { lat, lng, zoom, title } } : { type: 'IDLE' }
         }
 
-        // Fallback: infer from payload fields (keeps backwards compatibility)
-        if (graphSpec) return { mode: 'GRAPH', data: graphSpec }
-        if (imageSpec) return { mode: 'IMAGE', data: imageSpec }
-        if (formulaSpec) return { mode: 'FORMULA', data: formulaSpec }
-        if (mapSpec) return { mode: 'MAP', data: mapSpec }
-        if (latexForBoard) return { mode: 'FORMULA', data: { latex: latexForBoard } }
-        return { mode: 'NONE' }
+        // Fallback: infer from payload fields
+        if (graphSpec?.expressions?.length) return { type: 'GRAPH', data: { expressions: graphSpec.expressions } }
+        if (imageSpec?.url) return { type: 'IMAGE', data: { url: imageSpec.url, title: imageSpec.caption || 'Afbeelding' } }
+        if (formulaSpec?.latex) return { type: 'FORMULA', data: { latex: formulaSpec.latex } }
+        if (mapSpec) {
+          const lat =
+            typeof (mapSpec as any)?.lat === 'number'
+              ? (mapSpec as any).lat
+              : typeof (mapSpec as any)?.center?.lat === 'number'
+                ? (mapSpec as any).center.lat
+                : null
+          const lng =
+            typeof (mapSpec as any)?.lng === 'number'
+              ? (mapSpec as any).lng
+              : typeof (mapSpec as any)?.center?.lon === 'number'
+                ? (mapSpec as any).center.lon
+                : null
+          const zoom = typeof (mapSpec as any)?.zoom === 'number' ? (mapSpec as any).zoom : 10
+          const title = typeof (mapSpec as any)?.title === 'string' ? (mapSpec as any).title : 'Kaart'
+          return lat != null && lng != null ? { type: 'MAP', data: { lat, lng, zoom, title } } : { type: 'IDLE' }
+        }
+        if (latexForBoard) return { type: 'FORMULA', data: { latex: latexForBoard } }
+        return { type: 'IDLE' }
       })()
 
       // If topic changes and we didn't produce a new board item, wipe the board.
-      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.mode === 'NONE') {
-        setBoardState({ mode: 'NONE' })
+      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.type === 'IDLE') {
+        setBoardMode({ type: 'IDLE' })
       } else {
-        setBoardState(nextBoard)
+        setBoardMode(nextBoard)
       }
       if (topic) boardTopicRef.current = topic
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (nextBoard.mode !== 'NONE' || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && (nextBoard.type !== 'IDLE' || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 
@@ -1192,7 +1213,7 @@ export default function Workspace() {
             />
           ) : (
             // Mobile/tablet: board-only view (visuals only)
-            <VisualPane messages={messages as any} boardState={boardState as any} />
+            <VisualPane messages={messages as any} boardMode={boardMode as any} />
           )}
         </div>
       </main>
@@ -1204,7 +1225,7 @@ export default function Workspace() {
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
               <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
-              <VisualPane messages={messages as any} boardState={boardState as any} />
+              <VisualPane messages={messages as any} boardMode={boardMode as any} />
             </div>
 
             <div className="bg-gradient-to-t from-white/95 to-white/80 backdrop-blur-sm px-8 py-6">

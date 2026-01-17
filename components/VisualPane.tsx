@@ -24,12 +24,12 @@ type Message = {
   image?: { url: string; caption?: string; sourceUrl?: string }
 }
 
-type BoardState =
-  | { mode: 'NONE' }
-  | { mode: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
-  | { mode: 'IMAGE'; data: { url: string; caption?: string; sourceUrl?: string; formula?: { latex: string; title?: string } } }
-  | { mode: 'FORMULA'; data: { latex: string; title?: string } }
-  | { mode: 'MAP'; data: any }
+type BoardMode =
+  | { type: 'IDLE' }
+  | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
+  | { type: 'IMAGE'; data: { url: string; title: string } }
+  | { type: 'GRAPH'; data: { expressions: string[] } }
+  | { type: 'FORMULA'; data: { latex: string } }
 
 function extractSvg(text: string): string | null {
   if (!text) return null
@@ -72,24 +72,23 @@ function extractLatexForBoard(text: string): string | null {
 
 export default function VisualPane({
   messages,
-  boardState,
+  boardMode,
 }: {
   messages: Message[]
-  boardState?: BoardState | null
+  boardMode?: BoardMode | null
 }) {
-  const content = useMemo(() => {
-    // Centralized board content is the source of truth.
-    if (boardState) return boardState
-    // Fallback (should be rare): infer formula from latest assistant message.
+  const mode = useMemo(() => {
+    if (boardMode) return boardMode
+    // Fallback: infer formula from latest assistant message.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
       if (msg.role !== 'assistant') continue
       const latex = extractLatexForBoard(msg.content || '')
-      if (latex) return { mode: 'FORMULA' as const, data: { latex } }
+      if (latex) return { type: 'FORMULA' as const, data: { latex } }
       break
     }
-    return { mode: 'NONE' as const }
-  }, [messages, boardState])
+    return { type: 'IDLE' as const }
+  }, [messages, boardMode])
 
   return (
     <div
@@ -97,45 +96,52 @@ export default function VisualPane({
       style={{ backgroundImage: 'radial-gradient(#ccc 1px, transparent 1px)', backgroundSize: '24px 24px' }}
     >
       <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
-        {content.mode === 'GRAPH' && (content as any).data?.expressions?.length ? (
-          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
-            <InlineErrorBoundary>
-              <GraphView expressions={(content as any).data.expressions} points={(content as any).data.points} />
-            </InlineErrorBoundary>
-          </div>
-        ) : null}
-
-        {content.mode === 'IMAGE' && (content as any).data?.url ? (
-          <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
-            <div className="w-full h-full flex flex-col gap-3 overflow-auto">
-              <div className="flex-1 min-h-[240px]">
-                <ImageView url={(content as any).data.url} caption={(content as any).data.caption} />
-              </div>
-              {(content as any).data?.formula?.latex ? (
-                <div className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">
-                  <FormulaView latex={(content as any).data.formula.latex} title={(content as any).data.formula.title} />
+        {(() => {
+          switch (mode.type) {
+            case 'GRAPH': {
+              const exprs = (mode as any).data?.expressions
+              if (!Array.isArray(exprs) || exprs.length === 0) return null
+              return (
+                <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
+                  <InlineErrorBoundary>
+                    <GraphView expressions={exprs} />
+                  </InlineErrorBoundary>
                 </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {content.mode === 'FORMULA' && (content as any).data?.latex ? (
-          <FormulaView latex={(content as any).data.latex} title={(content as any).data.title} />
-        ) : null}
-
-        {content.mode === 'MAP' && (content as any).data ? (
-          <div className="w-full h-full">
-            <MapPane spec={(content as any).data} />
-          </div>
-        ) : null}
-
-        {content.mode === 'NONE' && (
-          <div className="text-stone-600 flex flex-col items-center gap-3">
-            <Pencil className="w-12 h-12" strokeWidth={1.5} />
-            <p className="font-serif italic text-stone-600">Ik wacht op je idee...</p>
-          </div>
-        )}
+              )
+            }
+            case 'IMAGE': {
+              const url = (mode as any).data?.url
+              if (!url) return null
+              return (
+                <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
+                  <ImageView url={url} caption={(mode as any).data?.title} />
+                </div>
+              )
+            }
+            case 'FORMULA': {
+              const latex = (mode as any).data?.latex
+              if (!latex) return null
+              return <FormulaView latex={latex} />
+            }
+            case 'MAP': {
+              const d = (mode as any).data
+              if (!d) return null
+              return (
+                <div className="w-full h-full">
+                  <MapPane spec={d} />
+                </div>
+              )
+            }
+            case 'IDLE':
+            default:
+              return (
+                <div className="text-stone-600 flex flex-col items-center gap-3">
+                  <Pencil className="w-12 h-12" strokeWidth={1.5} />
+                  <p className="font-serif italic text-stone-600">Ik wacht op je idee...</p>
+                </div>
+              )
+          }
+        })()}
       </div>
     </div>
   )

@@ -983,7 +983,7 @@ export async function POST(req: Request) {
     // and conflicting visuals are cleared (prevents overlap/residue).
     if (needsGraph) {
       // Graph takes precedence for math plotting.
-      payload.action = 'show_graph'
+      payload.action = 'plot_graph'
       delete payload.map
       delete payload.image
       // Keep formula only if explicitly asked; usually graphs should stand alone.
@@ -1000,8 +1000,8 @@ export async function POST(req: Request) {
       payload.action = 'show_image'
       delete payload.graph
       delete payload.map
-      // Allow formula to coexist for special cases like photosynthesis.
-      if (!/fotosynthese|photosynthesis/i.test(lastMessageContent || '')) delete payload.formula
+      // Clean slate: do not mix visuals.
+      delete payload.formula
     } else if (needsFormula) {
       payload.action = 'display_formula'
       delete payload.graph
@@ -1012,7 +1012,7 @@ export async function POST(req: Request) {
     // If we expected a graph but got none, retry once with a strict override.
     if (needsGraph && !payload.graph) {
       const strictGraph =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een grafiek. Antwoord met geldige JSON en voeg een 'graph' object toe met: {\"expressions\": [\"...\"]}. Gebruik formules in x zoals \"x^2\" of \"x+2\". Zet action op \"show_graph\". GEEN SVG, geen plaatjes.]"
+        "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een grafiek. Antwoord met geldige JSON en voeg een 'graph' object toe met: {\"expressions\": [\"...\"]}. Gebruik formules in x zoals \"x^2\" of \"x+2\". Zet action op \"plot_graph\". GEEN SVG, geen plaatjes.]"
       const retryParts = partsCloneWithTextSuffix(userParts, strictGraph)
       const retryText = await runOnceWithRetry(retryParts, 'graph_retry', 2)
       try {
@@ -1034,7 +1034,7 @@ export async function POST(req: Request) {
       const expressions = extractGraphExpressions(lastMessageContent || '')
       if (expressions.length > 0) {
         payload.graph = { expressions }
-        payload.action = 'show_graph'
+        payload.action = 'plot_graph'
       }
     }
 
