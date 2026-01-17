@@ -587,6 +587,9 @@ export async function POST(req: Request) {
     const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
       const t = (text || '').toLowerCase()
       if (t.includes('nachtwacht')) return { query: 'The Night Watch Rembrandt painting', caption: 'De Nachtwacht (Rembrandt)' }
+      if (t.includes('fotosynthese') || t.includes('photosynthesis')) {
+        return { query: 'photosynthesis diagram', caption: 'Fotosynthese (schema)' }
+      }
       // Anatomy presets: prefer canonical English terms for en.wikipedia queries
       const dict = anatomyCandidates(text || '')
       if (dict.canonical) return { query: dict.canonical, caption: (text || '').trim() }
