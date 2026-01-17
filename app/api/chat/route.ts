@@ -406,6 +406,72 @@ export async function POST(req: Request) {
       return /grafiek|plot|plotten|functie|parabool|lijn\s+door|teken\s+de\s+grafiek|grafiek\s+van|y\s*=/.test(lower)
     })()
 
+    const extractGraphExpressions = (text: string): string[] => {
+      const t = String(text || '')
+      if (!t.trim()) return []
+
+      // Common patterns:
+      // - "Teken de grafiek van x^2"
+      // - "Teken y = x^2"
+      // - "Plot x^2 en x+2"
+      // Try to capture segments after "van", "y =", or inside quotes.
+      const candidates: string[] = []
+
+      const quoted = t.match(/["“”']([^"“”']{1,80})["“”']/g)
+      if (quoted) {
+        for (const q of quoted) {
+          const inner = q.replace(/^["“”']|["“”']$/g, '').trim()
+          if (inner) candidates.push(inner)
+        }
+      }
+
+      const afterVan = t.match(/grafiek\s+van\s+(.+)$/i)
+      if (afterVan?.[1]) candidates.push(afterVan[1])
+
+      const afterYEq = t.match(/\by\s*=\s*([^\n\r;]+)$/i)
+      if (afterYEq?.[1]) candidates.push(afterYEq[1])
+
+      // Split candidate blocks into individual expressions.
+      const splitters = /(?:,|;|\ben\b|\band\b|\&)/
+      const expressions: string[] = []
+      for (const c of candidates) {
+        const parts = c
+          .split(splitters)
+          .map((s) => s.trim())
+          .filter(Boolean)
+        for (const p of parts) {
+          // Keep only plausible mathjs expressions: must contain x or a digit/operator combo
+          const cleaned = p
+            .replace(/\s+/g, ' ')
+            .replace(/^\s*(?:y\s*=\s*)/i, '')
+            .trim()
+          if (!cleaned) continue
+          if (!/[xX]/.test(cleaned) && !/[0-9]/.test(cleaned)) continue
+          // Remove trailing punctuation
+          const final = cleaned.replace(/[.?!]+$/g, '').trim()
+          if (final) expressions.push(final)
+        }
+      }
+
+      // Fallback: if nothing matched but the prompt contains x^... somewhere, capture the token-ish expression.
+      if (expressions.length === 0) {
+        const simple = t.match(/(?:y\s*=\s*)?([0-9xX+\-*/^().\s]{1,40})/)
+        const maybe = simple?.[1]?.trim()
+        if (maybe && /[xX]/.test(maybe)) expressions.push(maybe.replace(/^y\s*=\s*/i, '').trim())
+      }
+
+      // Deduplicate preserving order
+      const seen = new Set<string>()
+      const out: string[] = []
+      for (const e of expressions) {
+        const k = e.replace(/\s+/g, '')
+        if (seen.has(k)) continue
+        seen.add(k)
+        out.push(e)
+      }
+      return out.slice(0, 4)
+    }
+
     const hasSvgInMessage = (m: string) => /<svg[\s\S]*?<\/svg>/i.test(m || '')
 
     const partsCloneWithTextSuffix = (parts: any[], suffix: string) => {
@@ -638,6 +704,15 @@ export async function POST(req: Request) {
         }
       } catch {
         // ignore
+      }
+    }
+
+    // Final deterministic safety net: always attach a graph spec for graph requests.
+    if (needsGraph && !payload.graph) {
+      const expressions = extractGraphExpressions(lastMessageContent || '')
+      if (expressions.length > 0) {
+        payload.graph = { expressions }
+        payload.action = 'show_graph'
       }
     }
 
