@@ -85,6 +85,38 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
     return { url: String(url), descriptionUrl: typeof descriptionUrl === 'string' ? descriptionUrl : undefined }
   }
 
+  // 0) Deterministic presets for canonical, high-frequency requests.
+  // This avoids “nothing shows up” when search happens to return odd/no results.
+  const preferredFileTitlesForQuery = (q: string): string[] => {
+    const t = (q || '').toLowerCase()
+    // De Nachtwacht / The Night Watch (Rembrandt)
+    if (t.includes('nachtwacht') || (t.includes('night') && t.includes('watch') && t.includes('rembrandt'))) {
+      return [
+        'File:The Night Watch - HD.jpg',
+        'File:The Nightwatch by Rembrandt - Rijksmuseum.jpg',
+        'File:La ronda de noche, por Rembrandt van Rijn.jpg',
+      ]
+    }
+    return []
+  }
+
+  const preferred = preferredFileTitlesForQuery(raw)
+  for (const fileTitle of preferred) {
+    const info = await fetchImageInfoByTitle(fileTitle)
+    if (!info?.url) continue
+    const caption = fileTitle
+      .replace(/^File:/i, '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/_/g, ' ')
+    return {
+      found: true,
+      url: info.url,
+      title: fileTitle,
+      caption,
+      pageUrl: info.descriptionUrl,
+    }
+  }
+
   const candidates = (() => {
     const q = normalized
     const base: string[] = [q]
@@ -105,7 +137,7 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
     searchUrl.searchParams.set('origin', '*')
     searchUrl.searchParams.set('list', 'search')
     searchUrl.searchParams.set('srnamespace', '6') // File:
-    searchUrl.searchParams.set('srlimit', '12')
+    searchUrl.searchParams.set('srlimit', '20')
     searchUrl.searchParams.set('srsearch', q)
 
     const res = await fetch(searchUrl.toString(), {
@@ -126,6 +158,10 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
   if (!hits.length) return { found: false }
 
   const ranked = hits.sort((a, b) => scoreTitle(b, normalized) - scoreTitle(a, normalized))
+  // Quality gate: if the best match is weak, prefer returning no image over a wrong one.
+  const bestScore = ranked.length ? scoreTitle(ranked[0], normalized) : -999
+  if (bestScore < 20) return { found: false }
+
   for (const fileTitle of ranked.slice(0, 8)) {
     const info = await fetchImageInfoByTitle(fileTitle)
     if (!info?.url) continue
