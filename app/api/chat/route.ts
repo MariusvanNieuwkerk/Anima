@@ -171,13 +171,14 @@ export async function POST(req: Request) {
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
       - Zet een ` + "`graph`" + ` object in JSON met ` + "`expressions`" + ` (array van strings).
       - Gebruik formules in x, bijvoorbeeld: ` + "`x^2`" + `, ` + "`x + 2`" + `, ` + "`2*x - 3`" + `.
+      - Als je over specifieke punten praat (top, snijpunt, oorsprong): zet die in ` + "`graph.points`" + ` als {x,y,label}.
       - GEEN SVG, geen plaatjes. Alleen ` + "`graph`" + ` data.
       - Zet ` + "`action`" + ` op ` + "`show_graph`" + `.
 
     BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat:
     {
       "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
-      "graph": { "expressions": ["x^2"] },
+      "graph": { "expressions": ["x^2"], "points": [{"x":0,"y":0,"label":"top"}] },
       "topic": "[Het specifieke onderwerp]",
       "action": "none | show_graph"
     }
@@ -303,6 +304,15 @@ export async function POST(req: Request) {
         for (const e of p.graph.expressions) {
           if (typeof e !== 'string' || !e.trim()) return { ok: false as const, error: 'graph.expressions[] must be non-empty strings' }
         }
+        if (p.graph.points != null) {
+          if (!Array.isArray(p.graph.points)) return { ok: false as const, error: 'graph.points must be an array' }
+          for (const pt of p.graph.points) {
+            if (!pt || typeof pt !== 'object') return { ok: false as const, error: 'graph.points[] must be objects' }
+            if (typeof pt.x !== 'number' || typeof pt.y !== 'number') return { ok: false as const, error: 'graph.points[].x/.y must be numbers' }
+            if (pt.label != null && typeof pt.label !== 'string') return { ok: false as const, error: 'graph.points[].label must be string if present' }
+            if (pt.color != null && typeof pt.color !== 'string') return { ok: false as const, error: 'graph.points[].color must be string if present' }
+          }
+        }
       }
       if (p.map != null) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
@@ -404,6 +414,10 @@ export async function POST(req: Request) {
     const needsGraph = (() => {
       // Interactive graphs are allowed via JSON { graph: { expressions: [...] } }
       return /grafiek|plot|plotten|functie|parabool|lijn\s+door|teken\s+de\s+grafiek|grafiek\s+van|y\s*=/.test(lower)
+    })()
+
+    const wantsMarkedPoints = (() => {
+      return /markeer|punt|punten|top|toppen|snijpunt|snijpunten|oorsprong|vertex/.test(lower)
     })()
 
     const extractGraphExpressions = (text: string): string[] => {
@@ -713,6 +727,27 @@ export async function POST(req: Request) {
       if (expressions.length > 0) {
         payload.graph = { expressions }
         payload.action = 'show_graph'
+      }
+    }
+
+    // Deterministic point hints for common beginner requests (keeps UX consistent).
+    if (needsGraph && payload.graph && wantsMarkedPoints && !payload.graph.points) {
+      const exprs: string[] = Array.isArray(payload.graph.expressions) ? payload.graph.expressions : []
+      const pts: any[] = []
+
+      const mentionsOrigin = /oorsprong/.test(lower)
+      const mentionsTop = /top|vertex/.test(lower)
+
+      if (mentionsOrigin) {
+        pts.push({ x: 0, y: 0, label: '(0,0)' })
+      } else if (mentionsTop) {
+        // Special-case x^2: vertex at (0,0)
+        const hasXSquared = exprs.some((e) => /\bx\s*\^\s*2\b/i.test(String(e)))
+        if (hasXSquared) pts.push({ x: 0, y: 0, label: 'top' })
+      }
+
+      if (pts.length > 0) {
+        payload.graph.points = pts
       }
     }
 

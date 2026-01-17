@@ -38,7 +38,7 @@ type Message = {
   map?: any
   diagram?: any
   remoteImage?: any
-  graph?: { expressions: string[] }
+  graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
 }
 
 export default function Workspace() {
@@ -763,7 +763,10 @@ export default function Workspace() {
       const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
       const graphSpec: any | null =
         parsed?.graph && typeof parsed.graph === 'object' && Array.isArray((parsed.graph as any).expressions)
-          ? { expressions: (parsed.graph as any).expressions }
+          ? {
+              expressions: (parsed.graph as any).expressions,
+              points: Array.isArray((parsed.graph as any).points) ? (parsed.graph as any).points : undefined,
+            }
           : null
       const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
 

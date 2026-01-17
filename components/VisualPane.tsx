@@ -18,7 +18,7 @@ type Message = {
   map?: MapSpec
   diagram?: DiagramSpec
   remoteImage?: RemoteImageSpec
-  graph?: { expressions: string[] }
+  graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
 }
 
 function extractSvg(text: string): string | null {
@@ -78,7 +78,7 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
         {latest.kind === 'graph' && (latest as any).graph?.expressions?.length ? (
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
             <InlineErrorBoundary>
-              <GraphView expressions={(latest as any).graph.expressions} />
+              <GraphView expressions={(latest as any).graph.expressions} points={(latest as any).graph.points} />
             </InlineErrorBoundary>
           </div>
         ) : null}

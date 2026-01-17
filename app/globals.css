@@ -30,3 +30,20 @@
     background: #a8a29e;
   }
 }
+
+/* Mafs (interactive graphs) - Light "Stone & Paper" theme overrides */
+.mafs-light .MafsView {
+  --mafs-bg: #ffffff; /* paper */
+  --mafs-fg: #1c1917; /* stone-900 */
+
+  --mafs-origin-color: var(--mafs-fg);
+  --mafs-line-color: #d6d3d1; /* stone-300 */
+  --grid-line-subdivision-color: #e7e5e4; /* stone-200 */
+  --mafs-axis-stroke-width: 1.25px;
+
+  /* Accent colors (match Anima palette) */
+  --mafs-blue: #2563eb; /* blue-600 */
+  --mafs-red: #dc2626; /* red-600 */
+  --mafs-green: #16a34a; /* green-600 */
+  --mafs-pink: #db2777; /* pink-600 */
+}
