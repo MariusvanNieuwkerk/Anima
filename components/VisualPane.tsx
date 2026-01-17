@@ -10,6 +10,7 @@ import type { DiagramSpec } from './diagramTypes'
 import RemoteImageDisplay from './RemoteImageDisplay'
 import type { RemoteImageSpec } from './remoteImageTypes'
 import GraphView from '@/app/components/board/graph-view'
+import InlineErrorBoundary from './InlineErrorBoundary'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -76,7 +77,9 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
       <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
         {latest.kind === 'graph' && (latest as any).graph?.expressions?.length ? (
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
-            <GraphView expressions={(latest as any).graph.expressions} />
+            <InlineErrorBoundary>
+              <GraphView expressions={(latest as any).graph.expressions} />
+            </InlineErrorBoundary>
           </div>
         ) : null}
 
