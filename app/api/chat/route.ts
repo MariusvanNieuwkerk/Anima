@@ -891,6 +891,58 @@ export async function POST(req: Request) {
 
     // Follow-up text questions (without re-uploading the image) should still respect "’s middags" -> 24h.
     // This prevents regressions like treating 2pm as 2am in subsequent turns.
+    const isDutchTimeSession = (() => {
+      const msgs = Array.isArray(messages) ? messages.slice(-12) : []
+      const blob = msgs
+        .map((m: any) => String(m?.content || ''))
+        .join('\n')
+        .toLowerCase()
+      // Signals that we're in a time word-problem tutoring flow.
+      return /tijdrekenen|24-?uurs|\'s\s+middags|\'s\s+ochtends|\'s\s+avonds|mini-?stap|uur|uren|minuut|minuten|eindtijd|begintijd|kaars/.test(
+        blob
+      )
+    })()
+
+    const isShortAttempt = /^\s*\d{1,2}(:\d{2})?\s*$/.test(String(lastMessageContent || ''))
+    if (isDutchTimeSession && isShortAttempt) {
+      const lang = String(userLanguage || 'nl')
+      const t = String(lastMessageContent || '').trim()
+      const isHourOnly = /^\d{1,2}$/.test(t)
+      const msg =
+        lang === 'en'
+          ? isHourOnly
+            ? [
+                `Nice — you found the **hour** part.`,
+                `Now add the **minutes**: write the full time as **__ : __** (with minutes).`,
+                `Which option/letter matches your full time?`,
+              ].join('\n')
+            : [
+                `Good attempt. Let’s **verify the steps** (no final answer yet):`,
+                `- Convert the start time to 24h: 2 pm → **14:00**.`,
+                `- Add the hours → **__ : __**`,
+                `- Add the minutes → **__ : __**`,
+                `Which option/letter matches your result?`,
+              ].join('\n')
+          : isHourOnly
+            ? [
+                `Mooi — je hebt het **uur** al.`,
+                `Zet er nu de **minuten** bij: schrijf de hele tijd als **__ : __**.`,
+                `Welke antwoordoptie/letter past bij jouw volledige tijd?`,
+              ].join('\n')
+            : [
+                `Goede poging. We **checken de stappen** (nog geen eindantwoord):`,
+                `- Zet de starttijd om naar 24-uurs: 2 uur ’s middags → **14:00**.`,
+                `- Tel de uren erbij → **__ : __**`,
+                `- Tel de minuten erbij → **__ : __**`,
+                `Welke antwoordoptie/letter past bij jouw uitkomst?`,
+              ].join('\n')
+
+      return new Response(
+        JSON.stringify({ message: msg, action: 'none', topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
     const hoursOnly = solveDutchTimeHoursOnly(lastMessageContent)
     if (hoursOnly) {
       const lang = String(userLanguage || 'nl')

@@ -1224,7 +1224,7 @@ export default function Workspace() {
           <main className="flex-1 min-h-0 flex flex-col bg-stone-50 overflow-hidden">
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
-              <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
+              <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={true} />
               <VisualPane messages={messages as any} boardMode={boardMode as any} />
             </div>
 
