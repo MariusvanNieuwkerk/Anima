@@ -12,6 +12,7 @@ import type { RemoteImageSpec } from './remoteImageTypes'
 import GraphView from '@/app/components/board/graph-view'
 import InlineErrorBoundary from './InlineErrorBoundary'
 import ImageView from '@/app/components/board/image-view'
+import FormulaView from '@/app/components/board/formula-view'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -38,6 +39,27 @@ function extractSvg(text: string): string | null {
   const raw = text.match(/<svg[\s\S]*?<\/svg>/i)
   if (raw) return raw[0].trim()
 
+  return null
+}
+
+function extractLatexForBoard(text: string): string | null {
+  const t = String(text || '')
+  if (!t.trim()) return null
+
+  // Prefer block math
+  const block = t.match(/\$\$[\s\S]*?\$\$/)
+  if (block) return block[0]
+
+  // Otherwise collect inline math and promote to block
+  const inline: string[] = []
+  const re = /\$([^$\n]+?)\$/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(t))) {
+    const inner = (m[1] || '').trim()
+    if (inner) inline.push(inner)
+    if (inline.length >= 3) break
+  }
+  if (inline.length > 0) return `$$\n${inline.join('\\n')}\n$$`
   return null
 }
 
@@ -70,6 +92,9 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
       if (msg.role === 'assistant') {
         const svg = extractSvg(msg.content || '')
         if (svg) return { kind: 'svg' as const, svg, imageUrl: null as string | null }
+
+        const latex = extractLatexForBoard(msg.content || '')
+        if (latex) return { kind: 'formula' as const, latex }
       }
     }
     return { kind: 'empty' as const, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
@@ -93,6 +118,10 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
             <ImageView url={(latest as any).image.url} caption={(latest as any).image.caption} />
           </div>
+        ) : null}
+
+        {latest.kind === 'formula' && (latest as any).latex ? (
+          <FormulaView latex={(latest as any).latex} />
         ) : null}
 
         {latest.kind === 'svg' && latest.svg && (
