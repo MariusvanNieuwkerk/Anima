@@ -135,7 +135,7 @@ export default function ChatColumn({
                 </div>
               ) : null}
 
-              {renderImages && msg.images && msg.images.length > 0 && (
+              {renderImages && msg.role === 'user' && msg.images && msg.images.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${msg.content ? 'mb-2' : ''}`}>
                   {msg.images.map((img, index) => (
                     <img 

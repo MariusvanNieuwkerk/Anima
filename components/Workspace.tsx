@@ -642,31 +642,6 @@ export default function Workspace() {
     if (view === 'board') setHasNewImage(false)
   }
 
-  // Client-side helper to fetch a generated visual (Flux) via /api/visual
-  const fetchAnimaVisual = async (keyword: string, topic: string, userAge: number, activeCoach: string): Promise<string | null> => {
-    try {
-      const response = await fetch('/api/visual', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          keyword,
-          topic,
-          age: userAge,
-          coach: activeCoach
-        })
-      });
-
-      if (response.ok) {
-        const { url } = await response.json();
-        return url;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error fetching visual:', error);
-      return null;
-    }
-  }
-
   const handleSendMessage = async () => {
     if ((!input.trim() && selectedImages.length === 0) || !sessionId) return;
 
@@ -782,7 +757,6 @@ export default function Workspace() {
       const parsed = await response.json();
 
       const finalChatMessage: string = typeof parsed?.message === 'string' ? parsed.message : 'Er ging iets mis bij het verwerken van het antwoord.'
-      const visualKeyword: string | null = typeof parsed?.visual_keyword === 'string' ? parsed.visual_keyword : null
       const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
       const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
       const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
@@ -870,31 +844,6 @@ export default function Workspace() {
           }
         } catch {
           // ignore lookup failures
-        }
-      }
-
-      // Optional: fetch a Flux visual (only when requested by the model contract)
-      if (!mapSpec && !diagramSpec && visualKeyword && action === 'update_board' && imagesToSend.length === 0) {
-        try {
-          const visualResponse = await fetch('/api/visual', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: visualKeyword })
-          });
-
-          if (visualResponse.ok) {
-            const { url } = await visualResponse.json();
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === aiMessageId
-                  ? { ...msg, images: [url] }
-                  : msg
-              )
-            );
-            if (mobileView === 'chat') setHasNewImage(true)
-          }
-        } catch (visualError) {
-          console.error('Error fetching visual:', visualError);
         }
       }
 

@@ -13,7 +13,6 @@ import type { RemoteImageSpec } from './remoteImageTypes'
 type Message = {
   role: 'user' | 'assistant'
   content: string
-  images?: string[]
   map?: MapSpec
   diagram?: DiagramSpec
   remoteImage?: RemoteImageSpec
@@ -59,9 +58,6 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
         const svg = extractSvg(msg.content || '')
         if (svg) return { kind: 'svg' as const, svg, imageUrl: null as string | null }
       }
-
-      const img = (msg.images || []).find((u) => typeof u === 'string' && u.trim().length > 0)
-      if (img) return { kind: 'image' as const, svg: null as string | null, imageUrl: img }
     }
     return { kind: 'empty' as const, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
   }, [messages])
@@ -78,14 +74,6 @@ export default function VisualPane({ messages }: { messages: Message[] }) {
               <SvgDisplay content={latest.svg} />
             </div>
           </div>
-        )}
-
-        {latest.kind === 'image' && latest.imageUrl && (
-          <img
-            src={latest.imageUrl}
-            alt="Visual"
-            className="max-w-full max-h-full object-contain rounded-2xl shadow-lg bg-white p-4 animate-in fade-in zoom-in duration-500"
-          />
         )}
 
         {latest.kind === 'map' && (latest as any).map && (

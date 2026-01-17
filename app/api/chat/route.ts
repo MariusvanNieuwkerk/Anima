@@ -65,7 +65,7 @@ export async function POST(req: Request) {
           '- I Do / We Do / You Do: 1 zin uitleg (I Do), 1 zin samen stap (We Do), eindig met 1 mini-actie (You Do).',
           '- Interactie: na elke zin 1 simpele checkvraag (bijv. "Zie je de rode stip?").',
           "- Toon: enthousiast, warm, veel complimenten. Gebruik simpele metaforen (pizza/lego).",
-          '- Visueel: gebruik vaker een simpele SVG/diagram als het helpt (zeker bij rekenen/meetkunde). Gebruik Flux alleen als de gebruiker expliciet om een plaatje vraagt (beleid blijft opt-in).',
+          '- Visueel: je kunt GEEN afbeeldingen genereren. Als de gebruiker om een plaatje vraagt: leg uit dat je alleen tekst/LaTeX kunt geven en geef een korte beschrijving of stappenplan.',
         ].join('\n')
       }
       if (ageBand === 'teen') {
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
           '- I Do / We Do / You Do: korte methode (I Do), 1 gezamenlijke tussenstap (We Do), dan jij (You Do).',
           '- Interactie: daag uit ("Wat is de volgende stap?").',
           "- Toon: real talk. Niet neerbuigend. Erken dat school soms saai is. Vermijd te veel emoji’s.",
-          '- Visueel: SVG bij exacte vakken als het helpt; geen overbodige visuals.',
+          '- Visueel: je kunt GEEN afbeeldingen genereren. Gebruik LaTeX voor formules; leg de rest in woorden uit.',
         ].join('\n')
       }
       return [
@@ -84,19 +84,19 @@ export async function POST(req: Request) {
         '- I Do / We Do / You Do: conceptueel kader (I Do), snelle check op begrip (We Do), dan een gerichte oefenactie (You Do).',
         '- Interactie: conceptueel ("Snap je de logica hierachter?").',
         '- Toon: professioneel, efficiënt, academische partner.',
-        '- Visueel: alleen wanneer het echt iets toevoegt (diagram/SVG/map/curated).',
+        '- Visueel: je kunt GEEN afbeeldingen genereren. Gebruik LaTeX waar relevant; verder tekst/code.',
       ].join('\n')
     })()
     
     if (tutorMode === 'focus') {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Kies vaak voor een helder diagram/infographic met clean lines, high contrast, minimale achtergrond. Vermijd 'cinematic' of vage sfeerwoorden.";
+      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op duidelijke tekst en LaTeX waar relevant.";
     } else if (tutorMode === 'growth') {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Kies een rustige, duidelijke diagram-stijl (textbook illustration), met minimale achtergrond en heldere labels. Vermijd 'cinematic' en overmatige decoratie.";
+      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op warme, duidelijke tekst en LaTeX waar relevant.";
     } else {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "Je bent ook een Wetenschappelijk Illustrator. Als een visual nodig is: maak een Engelstalige prompt die ACCURAAT en DUIDELIJK is (1:1). Gebruik diagram/doorsnede/labelled textbook style als dat het concept beter uitlegt. Vermijd 'cinematic' en vage sfeerwoorden.";
+      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op heldere tekst en LaTeX waar relevant.";
     }
 
     const systemPrompt = `
@@ -109,143 +109,23 @@ export async function POST(req: Request) {
 
     ${adaptivePacing}
 
-    ### BELANGRIJK: LaTeX RENDERING (FORMULES) + SVG (ALLEEN DIAGRAMMEN)
-    - Voor **wiskunde / natuurkunde / scheikunde** geldt:
-      - Gebruik NOOIT image-generation tools voor **formules, vergelijkingen, sommen of uitwerkingen**.
-      - Gebruik ALTIJD **LaTeX** voor wiskundige expressies:
-        - Inline: $E = mc^2$
-        - Blok (op een nieuwe regel):
-          $$
-          x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
-          $$
-      - Zet ` + "`visual_keyword`" + ` op null/weglaten voor formules.
-    - SVG is nog wel toegestaan maar **alleen** voor echte diagrammen/constructies zoals:
-      - Meetkunde (vormen/hoeken/oppervlakte), grafieken (assen/curve), breuken-diagrammen, vrije-lichaam diagrammen.
-      - VISUAL MANDATE (meetkunde): bij vormen/hoeken/oppervlakte is een SVG-diagram verplicht.
-      - SVG OUTPUT (JSON-safe): Plaats SVG altijd in een ` + "```xml" + ` code block in ` + "`message`" + ` en gebruik single quotes voor attributes.
-      - De SVG moet de specifieke situatie exact voorstellen.
+    ### GEEN AFBEELDINGEN (BELANGRIJK)
+    - Je kunt **GEEN afbeeldingen genereren** (geen Flux/Replicate, geen DALL·E, geen plaatjes).
+    - Als de gebruiker om een afbeelding vraagt (bijv. "maak een plaatje van een kat"):
+      - Zeg kort: "Ik kan geen afbeeldingen genereren."
+      - Bied alternatief: een tekstuele beschrijving, stappenplan, of (als passend) voorbeeldcode.
 
-    - Als de vraag gaat over **"hoe ziet X eruit?" (lichaamsdeel als uiterlijk/foto)**:
-      - Dit is GEEN anatomie-plaat. Gebruik Flux (via ` + "`visual_keyword`" + `) om een **heldere foto/illustratie** te tonen.
-      - Maak een Engelstalige prompt die fotorealistisch/helder is (white background / studio / medical reference photo style).
-      - Geen tekst in beeld (NO TEXT RULE).
-      - Voorbeeld user: "Hoe ziet een voet eruit?" -> visual_keyword: [GENERATE_IMAGE: A clear photorealistic reference photo of a human foot, neutral pose, studio lighting, white background, no text...]
+    ### LaTeX (BELANGRIJK VOOR EXACTE VAKKEN)
+    - Voor **wiskunde / natuurkunde / scheikunde**: gebruik ALTIJD LaTeX voor formules.
+    - Inline: $E = mc^2$
+    - Blok (op een nieuwe regel):
+      $$
+      x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+      $$
 
-    - Als de vraag gaat over **Biologie / Anatomie (mens of dier) (botten/spieren/organen/doorsnede/labels/Gray)**:
-      - Gebruik GEEN Flux en teken GEEN vrije SVG.
-      - Gebruik de **REMOTE IMAGE ENGINE**: zet in ` + "`message`" + ` een tag:
-        <remote-image query="..." caption="..." />
-      - ` + "`query`" + ` moet Engels zijn en gericht op Gray's Anatomy (bv. "human skeleton", "hand bones", "pituitary gland", "heart anatomy").
-      - De app zoekt de juiste Wikimedia Commons plaat + bronvermelding.
-      - GEEN wedervragen zoals "Wil je een afbeelding?". Bij anatomie hoort standaard een afbeelding, tenzij de gebruiker expliciet "schematisch/diagram" vraagt.
-
-    - Als de vraag gaat over **Biologie / Anatomie** maar de gebruiker vraagt om een **schematisch diagram** of je wilt iets simpel uitleggen:
-      - Kies **DIAGRAM-FIRST (CURATED TEMPLATES)**: je tekent NIET vrij.
-      - Je geeft een ` + "`diagram`" + ` object terug dat een bestaande template kiest + highlights/labels toevoegt.
-      - Beschikbare templates (MENS): ` + "`human_organs_basic`" + `, ` + "`human_skeleton_basic`" + `
-      - ` + "`diagram`" + ` schema (voorbeeld):
-        "diagram": { "templateId": "human_organs_basic", "highlights": [{ "id": "heart", "color": "#ef4444" }] }
-      - IDs (organen): ` + "`lung_left, lung_right, heart, liver, stomach, intestines, torso`" + `
-      - IDs (skelet): ` + "`skull, spine, ribcage, pelvis, arm_left, arm_right, leg_left, leg_right`" + `
-
-    ### REMOTE IMAGE ENGINE (WIKIMEDIA / GRAY'S ANATOMY)
-    - Als de gebruiker expliciet vraagt om een **echte anatomie-plaat** (bijv. "Gray's Anatomy", "bron", "echte plaat", "historische anatomie plaat"):
-      - Gebruik GEEN Flux en teken GEEN SVG.
-      - Voeg in ` + "`message`" + ` een self-closing tag toe:
-        <remote-image query="..." caption="..." />
-      - ` + "`query`" + ` moet een korte zoekstring zijn (Engels), bv. "pituitary gland", "human skeleton", "heart anatomy".
-      - Gebruik bij voorkeur CANONICAL termen (bijv. "pituitary gland" i.p.v. "hypofyse", "kidney anatomy" i.p.v. "nier").
-      - De app zoekt vervolgens de juiste Wikimedia Commons plaat en toont de bronvermelding automatisch.
-      - Zet ` + "`visual_keyword`" + ` op null/weglaten en zet ` + "`diagram`" + ` op null/weglaten.
-
-    ### CURATOR / EXTERNAL DIAGRAM SEARCH (WIKIMEDIA COMMONS)
-    Doel: Voor **standaard wetenschappelijke diagrams** (die al bestaan) ga je NIET zelf tekenen, maar je laat de app een betrouwbare bron zoeken.
-
-    **SCOPE (Curator actief bij "CONCEPT" vragen):**
-    - Anatomie & Biologie (zoals besproken)
-    - Standaard Wiskundige Modellen (bv. "Pythagorean theorem proof diagram", "Fibonacci spiral")
-    - Natuurkunde & Scheikunde (bv. "visible light spectrum", "Bohr model atom", "circuit symbols")
-    - Economie & Aardrijkskunde (bv. "supply and demand curve", "water cycle diagram")
-
-    **OUTPUT FORMAT (Search term):**
-    - Geef in ` + "`message`" + ` een tag:
-      [SEARCH_DIAGRAM: <specific English term> diagram]
-    - Kies de **meest standaard 'schoolboek' versie** van een concept-diagram (didactic, clear, common).
-      - Vermijd obscure varianten ("inverse", "advanced proof", "historical scan") als er een simpel standaarddiagram bestaat.
-      - Voeg waar nuttig context toe in de zoekterm: "simple", "school", "right triangle", "with squares", "labeled".
-      Voorbeelden:
-      - [SEARCH_DIAGRAM: Pythagorean theorem squares on sides diagram]
-      - [SEARCH_DIAGRAM: Bohr model atom diagram]
-      - [SEARCH_DIAGRAM: supply and demand curve diagram]
-      - [SEARCH_DIAGRAM: water cycle diagram]
-    - De app vertaalt dit naar een Wikimedia Commons lookup en toont het plaatje met bronvermelding.
-    - Zet ` + "`visual_keyword`" + ` op null/weglaten (geen Flux) en teken geen vrije SVG.
-
-    **CRITICAL DISTINCTION: "CONCEPT" vs "SOM"**
-    - CONCEPT = algemeen standaardmodel (bestaat in databases) -> Curator search tag.
-    - SOM = uniek/specificiek voor deze leerling (moet exact kloppen) -> SVG (De Passer).
-      Voorbeelden SOM (SVG):
-      - "Teken de grafiek van y=2x+1"
-      - "Teken een driehoek met zijden 3,4,5 en label de hoeken"
-      - "Teken een trapezium met gegeven afmetingen uit het werkblad"
-    - Als je twijfelt: als er een formule/waarden/gegeven afmetingen in de prompt staan, is het meestal een SOM -> SVG.
-
-    ### UNIVERSAL GEOMETRY ENGINE ###
-
-    Wanneer je gevraagd wordt om een geometrische vorm te tekenen, volg je dit strikte algoritme:
-
-    **STEP 0: PARSE THE REQUEST (Diagram Spec)**
-    - Bepaal eerst WAT er precies getekend moet worden:
-      - Welke vorm(en)? (bijv. driehoek, trapezium, zeshoek, assenstelsel + grafiek)
-      - Welke eigenschappen? (bijv. rechte hoek, gelijke zijden, parallelle lijnen, symmetrie)
-      - Welke labels? (punten A,B,C; lengtes; hoekgrootte; aslabels)
-    - Als er details ontbreken, maak redelijke aannames en label ze duidelijk in het diagram (maar blijf simpel).
-
-    **STEP 1: IDENTIFY VERTICES (The "Points" Rule)**
-    - Identificeer de vorm en het vereiste aantal hoekpunten (vertices).
-      - Triangle = 3 vertices.
-      - Rectangle/Square = 4 vertices.
-      - Pentagon = 5 vertices.
-    - CRITICAL: Je MAG een vorm niet tekenen met minder vertices dan vereist.
-      (Bijv. een driehoek MOET 3 sets coördinaten hebben.)
-
-    **STEP 2: PLOT COORDINATES**
-    - Bereken de (x,y) coördinaten voor ALLE vertices eerst (mentaal) vóór je de SVG schrijft.
-    - Centreer de vorm in een ` + "`viewBox=\"0 0 300 300\"`" + `.
-    - Houd marge (bijv. 20–30px) zodat lijnen/labels niet worden afgesneden.
-
-    **STEP 3: GENERATE SVG WITH "CLOSE PATH"**
-    - Gebruik een ` + "`<path>`" + `.
-    - Start met ` + "`M`" + ` (Move naar punt 1).
-    - Gebruik ` + "`L`" + ` (Line naar punt 2, punt 3, ...).
-    - MANDATORY: Eindig elke polygon path met ` + "`Z`" + `.
-      - ` + "`Z`" + ` betekent: Close Path (terug naar het begin).
-      - Zonder ` + "`Z`" + ` is de vorm BROKEN/OPEN.
-
-    **STEP 4: ADD CONSTRAINT MARKERS (If requested)**
-    - Rechte hoek: teken een klein hoekvierkantje met ` + "`<path>`" + ` of ` + "`<rect>`" + ` bij de 90°-hoek.
-    - Gelijke zijden: teken 1 of 2 kleine streepjes (ticks) op de betreffende zijden.
-    - Parallelle lijnen: markeer met pijltjes/gelijke marker.
-
-    **Example Logic (Internal Monologue)**
-    - "User wants a triangle. That means 3 points: A, B, C. I will draw A->B, B->C, C->A. I will use 'Z' to close it."
-
-    **QUALITY CHECK (BEFORE YOU OUTPUT)**
-    - Check: klopt het aantal vertices?
-    - Check: is de vorm gesloten (Z aanwezig)?
-    - Check: zie je de gevraagde eigenschap? (bijv. rechte hoek-marker als het een rechthoekige driehoek is)
-    - Check: staan labels niet bovenop lijnen? (gebruik kleine offset)
-
-    **OUTPUT**
-    - Plaats de SVG ALTIJD in een ` + "```xml" + ` code block in de ` + "`message`" + ` (JSON-safe).
-    - Include labels (A, B, C) near the vertices using ` + "`<text>`" + ` elements.
-
-    - Als de vraag gaat over **Geschiedenis / Natuur / Biologie / Kunst / Context & sfeer**:
-      - Gebruik Flux ALLEEN als de gebruiker expliciet om een plaatje vraagt (bv. "maak een afbeelding", "teken", "laat zien", "kun je een plaatje maken?").
-      - Zet anders ` + "`visual_keyword`" + ` op null/weglaten (dus géén automatische visuals).
-      - Gebruik Flux NOOIT voor dingen die tekst/labels nodig hebben (kaarten, grafieken met aslabels, woorden in beeld). Kies dan SVG (als het schematisch is) of leg het uit met woorden.
-      - Format: zet ` + "`visual_keyword`" + ` op een string die start met:
-        [GENERATE_IMAGE: <your detailed English prompt>]
+    ### BELANGRIJK: VISUALS UITGESCHAKELD (VOOR ALLE TOPICS)
+    - Geef GEEN SVG, GEEN kaarten, GEEN diagrammen, GEEN remote-image tags.
+    - Geef alles in tekst. Voor formules: LaTeX.
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
     Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
@@ -282,58 +162,15 @@ export async function POST(req: Request) {
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
 
-    ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST, VISUAL SECOND
+    ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST (TEXT ONLY)
     - De chat (message) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen).
-    - Elke visual (Wikimedia/Flux/SVG/Map) is **alleen ondersteunend**: 1 visueel anker, niet "de hele uitleg".
-    - Verwijs naar het beeld als ondersteuning ("Kijk naar ..."), maar leg het ook in woorden uit.
-    - Als je een Curator-tag of remote-image gebruikt: blijf in tekst uitleggen wat de leerling moet snappen.
-    
-    ### STRICT IMAGE PROMPTING RULES (ALLEEN VOOR FLUX / ` + "`visual_keyword`" + `) ###
+    - Er zijn geen visuals: alles moet in woorden/LaTeX gebeuren.
 
-    1. **NO TEXT RULE:** The prompt MUST explicitly forbid text. Always include keywords:
-       "no text, no letters, no numbers, no labels, no writing."
-       Reason: The image generator cannot render text correctly. All explanations must happen in the chat, not the image.
-
-    2. **VISUAL RECIPE (WHEN YOU USE FLUX):** Describe strictly shapes, colors, and composition.
-       - Bad: "A diagram showing 3/4."
-       - Good: "A minimalist flat vector icon of a single circle. The circle is divided into exactly 4 equal pie slices. 3 slices are filled with solid blue color. 1 slice is white. White background. Clean lines. High contrast. No text, no letters, no numbers, no labels, no writing."
-
-    3. **STYLE:** Use "Flat Vector Art" or "Minimalist Icon" style for abstract concepts. Avoid photorealism for abstract diagrams.
-
-    **YOUR TASK:**
-    Translate the user's educational concept into a description of SHAPES ONLY.
-    Use keywords: "diagram," "flat vector," "white background," "minimalist," "educational illustration," plus the NO TEXT keywords above.
-    
-    ### MAP ENGINE (INTERACTIEVE KAARTEN MET OPENSTREETMAP)
-    - Als de vraag gaat over **landen/steden/rivieren/continenten**, of als de gebruiker expliciet vraagt om een kaart:
-      - Gebruik GEEN Flux en teken GEEN kaart als SVG.
-      - Lever een **interactieve kaart-spec** via het veld ` + "`map`" + ` in JSON, zodat de app echte (betrouwbare) kaartdata kan ophalen.
-      - Zet ` + "`visual_keyword`" + ` op null/weglaten.
-      - In ` + "`message`" + `: leg kort uit wat er op de kaart te zien is (1–3 zinnen).
-      - JSON schema (voorbeeld):
-        {
-          "message": "Hier zie je de locaties op de kaart.",
-          "map": {
-            "title": "Nederland",
-            "queries": [
-              { "query": "Amsterdam, Netherlands", "label": "Amsterdam" },
-              { "query": "Rotterdam, Netherlands", "label": "Rotterdam" }
-            ],
-            "zoom": 6
-          },
-          "topic": "Aardrijkskunde",
-          "action": "show_map"
-        }
-      - ` + "`queries[].query`" + ` moet een normale plaats/gebied zoekstring zijn (bijv. "Rhine river", "Germany", "Africa"). De app geocodeert dit via OpenStreetMap.
-
-    BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat. Combineer je pedagogische antwoord met de visuele metadata:
+    BELANGRIJK: Antwoord ALTIJD in het volgende JSON-formaat (alleen tekst):
     {
-      "message": "[Uitleg volgens jouw Coach-stijl]",
-      "visual_keyword": "[OPTIONEEL: ENGLISH image prompt voor generate_educational_image wanneer een visual helpt of wanneer de gebruiker expliciet om een visual vraagt; anders null of weglaten]",
-      "map": "[OPTIONEEL: map spec object voor interactieve kaarten; anders null of weglaten]",
-      "diagram": "[OPTIONEEL: diagram spec object voor curated anatomie/biologie templates; anders null of weglaten]",
+      "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
       "topic": "[Het specifieke onderwerp]",
-      "action": "update_board"
+      "action": "none"
     }
     
     REGELS (ALGEMEEN):
@@ -348,7 +185,6 @@ export async function POST(req: Request) {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash-exp",
       generationConfig: {
-        // @ts-expect-error - SDK typing may lag behind Gemini features
         responseMimeType: "application/json",
       },
     });
@@ -452,7 +288,6 @@ export async function POST(req: Request) {
     const validatePayload = (p: any) => {
       if (!p || typeof p !== 'object') return { ok: false as const, error: 'Payload is not an object' }
       if (typeof p.message !== 'string' || !p.message.trim()) return { ok: false as const, error: 'Missing message string' }
-      if (p.visual_keyword != null && typeof p.visual_keyword !== 'string') return { ok: false as const, error: 'visual_keyword must be string or null/undefined' }
       if (p.map != null) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
         if (!Array.isArray(p.map.queries) || p.map.queries.length === 0) return { ok: false as const, error: 'map.queries must be a non-empty array' }
@@ -545,7 +380,7 @@ export async function POST(req: Request) {
     })()
 
     const wantsAppearanceImage = (() => {
-      // “Hoe ziet X eruit / laat zien / toon / foto” about a body part, without anatomy keywords => Flux is appropriate.
+      // NOTE: visuals are disabled; we handle these requests as text-only descriptions.
       const asksLooksLike = /hoe ziet|laat zien|toon|foto|afbeelding|plaat|image/.test(lower)
       return isBodyPartTopic && asksLooksLike && !isExplicitAnatomy && !wantsSchematicDiagram
     })()
@@ -763,107 +598,6 @@ export async function POST(req: Request) {
     if (!validation.ok) {
       // Keep the user experience stable: return the raw model text as the message.
       payload = { message: text || 'Er ging iets mis bij het genereren van een antwoord.', action: 'none' }
-    }
-
-    // If we *expected* a drawn SVG (SOM) but got none, retry once with stricter instruction.
-    if (needsSvg && !hasSvgInMessage(payload.message) && !payload.map && !wantsCuratorDiagram) {
-      const strictAddon =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): Geef GEEN wedervragen. Voeg ALTIJD een SVG toe in een ```xml code block in 'message' (met <svg>...</svg> en single quotes). Antwoord als geldige JSON en niets anders.]"
-      const retryParts = partsCloneWithTextSuffix(userParts, strictAddon)
-      const retryText = await runOnceWithRetry(retryParts, 'svg_retry', 2)
-
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && hasSvgInMessage(payload2.message)) {
-            payload = payload2
-          }
-        }
-      } catch {
-        // ignore retry failures
-      }
-    }
-
-    // If this is a standard concept diagram, force a SEARCH_DIAGRAM tag once.
-    if (wantsCuratorDiagram && !/\[SEARCH_DIAGRAM:/i.test(payload.message || '')) {
-      const strictSearch =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): Dit is een standaard concept-diagram. Voeg in 'message' EXACT één tag toe met een schoolboek-zoekterm. Voor Pythagoras: gebruik bij voorkeur: [SEARCH_DIAGRAM: Pythagorean theorem squares on sides diagram]. GEEN SVG/GEEN diagram object/GEEN visual_keyword. Antwoord als geldige JSON en niets anders.]"
-      const retryParts = partsCloneWithTextSuffix(userParts, strictSearch)
-      const retryText = await runOnceWithRetry(retryParts, 'curator_retry', 2)
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && /\[SEARCH_DIAGRAM:/i.test(payload2.message || '')) {
-            payload = payload2
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // If we expected a curated anatomy diagram, retry once to force a diagram spec.
-    if (needsDiagram && !payload.diagram && !wantsRemoteAnatomyPlate) {
-      const strictDiagram =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): Voor biologie/anatomie: geef GEEN vrije SVG. Geef een 'diagram' object met templateId ('human_organs_basic' of 'human_skeleton_basic') + highlights ids (bijv. heart, lung_left, lung_right, liver, stomach, intestines) + optionele labels. Antwoord als geldige JSON en niets anders. 'visual_keyword' moet null zijn.]"
-      const retryParts = partsCloneWithTextSuffix(userParts, strictDiagram)
-      const retryText = await runOnceWithRetry(retryParts, 'diagram_retry', 2)
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && payload2.diagram) {
-            payload = payload2
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // If the user wants a real anatomy plate, force a remote-image tag once.
-    if (wantsRemoteAnatomyPlate && !/remote-image/i.test(payload.message || '')) {
-      const strictRemote =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): Geef een <remote-image query=\"...\" caption=\"...\" /> tag in 'message' (self-closing). GEEN SVG/GEEN diagram. Antwoord als geldige JSON en niets anders. visual_keyword moet null zijn.]"
-      const retryParts = partsCloneWithTextSuffix(userParts, strictRemote)
-      const retryText = await runOnceWithRetry(retryParts, 'remote_retry', 2)
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && /remote-image/i.test(payload2.message || '')) {
-            payload = payload2
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // If the user asked “what does it look like?” for a body part and we got no visual_keyword, retry once to force Flux.
-    if (wantsAppearanceImage && !payload.visual_keyword) {
-      const strictFlux =
-        "\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om hoe het eruit ziet (niet anatomisch). Zet 'visual_keyword' op een [GENERATE_IMAGE: ...] prompt (Engels, fotorealistisch, white background, no text). Antwoord als geldige JSON en niets anders. Geef GEEN remote-image en GEEN SVG/diagram.]"
-      const retryParts = partsCloneWithTextSuffix(userParts, strictFlux)
-      const retryText = await runOnceWithRetry(retryParts, 'flux_retry', 2)
-      try {
-        const jsonText2 = extractJsonFromModelText(retryText)
-        if (jsonText2) {
-          const payload2 = JSON.parse(jsonText2)
-          const v2 = validatePayload(payload2)
-          if (v2.ok && typeof payload2.visual_keyword === 'string' && payload2.visual_keyword.includes('[GENERATE_IMAGE:')) {
-            payload = payload2
-          }
-        }
-      } catch {
-        // ignore
-      }
     }
 
     return new Response(JSON.stringify(payload), {
