@@ -15,7 +15,28 @@ const MapPaneInner = dynamic(() => import('./MapPaneInner'), {
 })
 
 export default function MapPane({ spec }: { spec: MapSpec }) {
-  return <MapPaneInner spec={spec as any} />
+  const anySpec: any = spec as any
+  // Backwards/forwards compatibility:
+  // - Some callers may provide { lat, lng, zoom, title } (tool-style)
+  // - Our renderer expects MapSpec with { center: {lat, lon} } and optional markers/queries.
+  const normalized: MapSpec = (() => {
+    if (anySpec && typeof anySpec === 'object') {
+      const lat = typeof anySpec.lat === 'number' ? anySpec.lat : undefined
+      const lng = typeof anySpec.lng === 'number' ? anySpec.lng : undefined
+      if (lat != null && lng != null && !anySpec.center) {
+        return {
+          title: typeof anySpec.title === 'string' ? anySpec.title : undefined,
+          zoom: typeof anySpec.zoom === 'number' ? anySpec.zoom : 10,
+          center: { lat, lon: lng },
+          markers: [{ lat, lon: lng, label: typeof anySpec.title === 'string' ? anySpec.title : undefined }],
+          queries: [],
+        }
+      }
+    }
+    return spec as any
+  })()
+
+  return <MapPaneInner spec={normalized as any} />
 }
 
 

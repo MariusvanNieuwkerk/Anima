@@ -103,7 +103,16 @@ export default function VisualPane({
 
         {content.view === 'image' && (content as any).data?.url ? (
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
-            <ImageView url={(content as any).data.url} caption={(content as any).data.caption} />
+            <div className="w-full h-full flex flex-col gap-3 overflow-auto">
+              <div className="flex-1 min-h-[240px]">
+                <ImageView url={(content as any).data.url} caption={(content as any).data.caption} />
+              </div>
+              {(content as any).data?.formula?.latex ? (
+                <div className="rounded-2xl border border-stone-200 bg-white shadow-sm overflow-hidden">
+                  <FormulaView latex={(content as any).data.formula.latex} title={(content as any).data.formula.title} />
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

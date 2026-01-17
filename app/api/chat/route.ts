@@ -133,10 +133,13 @@ export async function POST(req: Request) {
       - Gebruik LaTeX subscripts (bijv. ` + "`CH_4`" + `, ` + "`O_2`" + `, ` + "`H_2O`" + `) en pijl ` + "`\\rightarrow`" + `.
 
     ### VISUALS BELEID (BELANGRIJK)
-    - Je kunt **GEEN afbeeldingen genereren** (geen plaatjes).
-    - Je mag wél **interactieve grafieken** tonen via een ` + "`graph`" + ` veld in JSON (zie "GRAPH ENGINE").
-    - Je mag wél **externe afbeeldingen** tonen via een ` + "`image`" + ` veld (zie "IMAGE ENGINE").
-    - Geef GEEN SVG, GEEN remote-image tags, GEEN kaarten.
+    - Je kunt **GEEN afbeeldingen genereren** (geen Flux/Replicate/DALL·E).
+    - Je mag wél visuals tonen via het Smart Board door deze JSON-velden te gebruiken:
+      - ` + "`graph`" + ` (interactieve grafiek)
+      - ` + "`map`" + ` (Leaflet kaart)
+      - ` + "`image`" + ` (Wikimedia afbeelding)
+      - ` + "`formula`" + ` (LaTeX formule / reactievergelijking)
+    - Geef GEEN SVG en GEEN remote-image tags. Alleen het JSON contract.
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
     Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
@@ -173,9 +176,9 @@ export async function POST(req: Request) {
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
 
-    ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST (TEXT ONLY)
-    - De chat (message) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen).
-    - Er zijn geen visuals: alles moet in woorden/LaTeX gebeuren.
+    ### GOLDEN RULE (ALL TOPICS): EXPLANATION FIRST (CHAT) + BOARD FOR VISUALS
+    - De chat (` + "`message`" + `) bevat **altijd** de volledige uitleg (methode/intuïtie/stappen) met LaTeX waar nodig.
+    - Als een onderwerp in de beslisboom hieronder valt, moet je daarnaast het Smart Board vullen via de juiste JSON velden.
 
     ### NO JSON LEAKAGE (CRITICAL)
     - Geef NOOIT JSON of code-structuren terug in je tekstuele ` + "`message`" + `.
@@ -192,6 +195,28 @@ export async function POST(req: Request) {
       - ` + "`show_image`" + ` (Wikimedia/Wikipedia afbeelding)
       - ` + "`display_formula`" + ` (formule/reactievergelijking)
 
+    JE BENT EEN VISUELE TUTOR. GEBRUIK ALTIJD EEN TOOL BIJ DE VOLGENDE ONDERWERPEN:
+
+    1.  **AARDRIJKSKUNDE / LOCATIES:**
+        * Trigger: Vragen over steden, landen, topografie, 'waar ligt...'.
+        * Actie: Roep DIRECT ` + "`show_map`" + ` aan.
+        * Voorbeeld: 'Waar ligt Washington?' -> ` + "`show_map({ lat: 38.9, lng: -77.0, zoom: 12, title: 'Washington D.C.' })`" + `.
+
+    2.  **BIOLOGIE / KUNST / GESCHIEDENIS:**
+        * Trigger: Vragen over hoe iets eruit ziet, anatomie, dieren, kunstwerken, historische events.
+        * Actie: Roep DIRECT ` + "`show_image`" + ` aan.
+        * Voorbeeld: 'Hoe ziet een hart eruit?' -> ` + "`show_image({ query: 'Human Heart Anatomy' })`" + `.
+
+    3.  **WISKUNDE (GRAFIEKEN):**
+        * Trigger: Vragen om te tekenen, plotten, snijpunten, parabolen.
+        * Actie: Roep DIRECT ` + "`plot_graph`" + ` aan.
+
+    4.  **WISKUNDE / NATUURKUNDE (FORMULES):**
+        * Trigger: Vragen naar definities of formules (ABC, Pythagoras, Fotosynthese).
+        * Actie: Roep DIRECT ` + "`display_formula`" + ` aan voor het bord, EN gebruik LaTeX in je chat-antwoord.
+
+    REGEL: 'Show, Don't Just Tell'. Als een vraag in deze categorieën valt, is een tool-call VERPLICHT.
+
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
       - Zet een ` + "`graph`" + ` object in JSON met ` + "`expressions`" + ` (array van strings).
@@ -202,7 +227,11 @@ export async function POST(req: Request) {
 
     ### MAP ENGINE (INTERACTIEVE KAARTEN)
     - Als de gebruiker vraagt om een kaart, locatie, land, stad, rivier of topografie:
-      - Zet een ` + "`map`" + ` object in JSON met ` + "`title`" + `, ` + "`center`" + ` (lat/lon), ` + "`zoom`" + ` en optioneel ` + "`markers`" + `.
+      - Zet een ` + "`map`" + ` object in JSON (tool-style) met:
+        - ` + "`lat`" + ` (number)
+        - ` + "`lng`" + ` (number)
+        - ` + "`zoom`" + ` (number, default 10)
+        - ` + "`title`" + ` (string)
       - Zet ` + "`action`" + ` op ` + "`show_map`" + `.
       - GEEN SVG, geen plaatjes genereren.
 
@@ -223,7 +252,7 @@ export async function POST(req: Request) {
       "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
       "graph": { "expressions": ["x^2"], "points": [{"x":0,"y":0,"label":"top"}] },
       "image": { "query": "human heart anatomy", "caption": "Menselijk hart" },
-      "map": { "title": "Parijs", "center": { "lat": 48.8566, "lon": 2.3522 }, "zoom": 12, "markers": [{ "lat": 48.8566, "lon": 2.3522, "label": "Parijs" }], "queries": [] },
+      "map": { "lat": 48.8566, "lng": 2.3522, "zoom": 12, "title": "Parijs" },
       "formula": { "latex": "$$x = \\\\frac{-b \\\\pm \\\\sqrt{b^2-4ac}}{2a}$$", "title": "ABC-formule" },
       "topic": "[Het specifieke onderwerp]",
       "action": "none | show_graph | show_image | show_map | display_formula"
@@ -417,6 +446,12 @@ export async function POST(req: Request) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
         if (p.map.title != null && typeof p.map.title !== 'string') return { ok: false as const, error: 'map.title must be string if present' }
         if (p.map.zoom != null && typeof p.map.zoom !== 'number') return { ok: false as const, error: 'map.zoom must be number if present' }
+        // Accept tool-style maps: { lat, lng, zoom, title }
+        if (p.map.lat != null || p.map.lng != null) {
+          if (typeof p.map.lat !== 'number' || typeof p.map.lng !== 'number') {
+            return { ok: false as const, error: 'map.lat/lng must be numbers if present' }
+          }
+        }
         if (p.map.center != null) {
           if (typeof p.map.center !== 'object') return { ok: false as const, error: 'map.center must be object if present' }
           if (typeof p.map.center.lat !== 'number' || typeof p.map.center.lon !== 'number') return { ok: false as const, error: 'map.center.lat/lon must be numbers' }
@@ -521,7 +556,7 @@ export async function POST(req: Request) {
     })()
 
     const wantsAppearanceImage = (() => {
-      // NOTE: visuals are disabled; we handle these requests as text-only descriptions.
+      // Requests that are explicitly about "what it looks like" (non-anatomy) still map to show_image.
       const asksLooksLike = /hoe ziet|laat zien|toon|foto|afbeelding|plaat|image/.test(lower)
       return isBodyPartTopic && asksLooksLike && !isExplicitAnatomy && !wantsSchematicDiagram
     })()
@@ -888,11 +923,23 @@ export async function POST(req: Request) {
       }
     }
 
+    // Deterministic formula for common “definition/equation” concepts if the model forgot it.
+    // Example: Fotosynthese is often asked as "toon fotosynthese" (image) but we still want the equation on the board.
+    if (!payload.formula && /fotosynthese|photosynthesis/i.test(lastMessageContent || '')) {
+      payload.formula = {
+        title: 'Fotosynthese',
+        latex: '$$\n6\\,CO_2 + 6\\,H_2O \\rightarrow C_6H_{12}O_6 + 6\\,O_2\n$$',
+      }
+      if (!payload.action || payload.action === 'none') payload.action = 'display_formula'
+    }
+
     // Map requests: if model didn't provide a map, deterministically geocode the place name.
     if (needsMap && !payload.map && !needsGraph) {
       const place =
         (lastMessageContent || '')
+          .replace(/waar\s+ligt/gi, ' ')
           .replace(/toon|laat|zien|op|de|kaart|map/gi, ' ')
+          .replace(/[?!.:,;]+/g, ' ')
           .replace(/\s+/g, ' ')
           .trim() || lastMessageContent
       const center = await geocodeNominatim(place)
@@ -900,11 +947,12 @@ export async function POST(req: Request) {
         const map: MapSpec = {
           title: place,
           center: { lat: center.lat, lon: center.lon },
-          zoom: 11,
+          zoom: 10,
           markers: [{ lat: center.lat, lon: center.lon, label: place }],
           queries: [],
         }
-        payload.map = map
+        // Also include tool-style lat/lng for compatibility with the prompt/tool schema.
+        payload.map = { ...map, lat: center.lat, lng: center.lon } as any
         payload.action = 'show_map'
       }
     }

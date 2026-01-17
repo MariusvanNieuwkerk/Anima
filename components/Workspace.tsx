@@ -886,6 +886,14 @@ export default function Workspace() {
 
       // BOARD STATE MANAGER: single source of truth (no more lingering old visuals).
       const nextBoard: BoardContent = (() => {
+        // Composite: allow Image + Formula together (e.g. photosynthesis diagram + equation)
+        if (imageSpec && (formulaSpec || latexForBoard)) {
+          return {
+            view: 'image',
+            data: { ...imageSpec, formula: formulaSpec || { latex: latexForBoard } },
+          }
+        }
+
         // Explicit tool-like actions first
         if (action === 'plot_graph' || action === 'show_graph') return { view: 'graph', data: graphSpec }
         if (action === 'show_image') return { view: 'image', data: imageSpec }
