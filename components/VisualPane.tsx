@@ -24,12 +24,8 @@ type Message = {
   image?: { url: string; caption?: string; sourceUrl?: string }
 }
 
-type BoardState =
-  | { kind: 'graph'; graph: NonNullable<Message['graph']> }
-  | { kind: 'image'; image: NonNullable<Message['image']> }
-  | { kind: 'formula'; latex: string }
-  | { kind: 'svg'; svg: string }
-  | { kind: 'empty' }
+type BoardView = 'none' | 'graph' | 'image' | 'formula' | 'map'
+type BoardContent = { view: BoardView; data: any }
 
 function extractSvg(text: string): string | null {
   if (!text) return null
@@ -72,48 +68,24 @@ function extractLatexForBoard(text: string): string | null {
 
 export default function VisualPane({
   messages,
-  boardState,
+  boardContent,
 }: {
   messages: Message[]
-  boardState?: BoardState | null
+  boardContent?: BoardContent | null
 }) {
-  const latest = useMemo(() => {
-    // If a boardState is provided, it is the source of truth (prevents "state persistence").
-    if (boardState) return boardState
+  const content = useMemo(() => {
+    // Centralized board content is the source of truth.
+    if (boardContent) return boardContent
+    // Fallback (should be rare): infer formula from latest assistant message.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      // Prefer assistant visuals (maps/diagrams), but also allow user-uploaded images as fallback.
-
-      if ((msg as any).graph && Array.isArray((msg as any).graph.expressions) && (msg as any).graph.expressions.length) {
-        return { kind: 'graph' as const, graph: (msg as any).graph as { expressions: string[] } }
-      }
-
-      if ((msg as any).image && typeof (msg as any).image.url === 'string' && (msg as any).image.url.trim()) {
-        return { kind: 'image' as const, image: (msg as any).image as { url: string; caption?: string; sourceUrl?: string } }
-      }
-
-      if ((msg as any).remoteImage && ((msg as any).remoteImage.src || (msg as any).remoteImage.query)) {
-        return { kind: 'remoteImage' as const, remoteImage: (msg as any).remoteImage as RemoteImageSpec, diagram: null as DiagramSpec | null, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
-      }
-
-      if ((msg as any).map && (msg as any).map.queries?.length) {
-        return { kind: 'map' as const, map: (msg as any).map as MapSpec, svg: null as string | null, imageUrl: null as string | null }
-      }
-
-      if ((msg as any).diagram && (msg as any).diagram.templateId) {
-        return { kind: 'diagram' as const, diagram: (msg as any).diagram as DiagramSpec, map: null as MapSpec | null, svg: null as string | null, imageUrl: null as string | null }
-      }
-
-      if (msg.role === 'assistant') {
-        const svg = extractSvg(msg.content || '')
-        if (svg) return { kind: 'svg' as const, svg, imageUrl: null as string | null }
-
-        const latex = extractLatexForBoard(msg.content || '')
-        if (latex) return { kind: 'formula' as const, latex }
-      }
+      if (msg.role !== 'assistant') continue
+      const latex = extractLatexForBoard(msg.content || '')
+      if (latex) return { view: 'formula' as const, data: { latex } }
+      break
     }
-    return { kind: 'empty' as const }
-  }, [messages, boardState])
+    return { view: 'none' as const, data: null }
+  }, [messages, boardContent])
 
   return (
     <div
@@ -121,53 +93,31 @@ export default function VisualPane({
       style={{ backgroundImage: 'radial-gradient(#ccc 1px, transparent 1px)', backgroundSize: '24px 24px' }}
     >
       <div className="flex-1 relative flex items-center justify-center p-6 overflow-hidden">
-        {latest.kind === 'graph' && (latest as any).graph?.expressions?.length ? (
+        {content.view === 'graph' && (content as any).data?.expressions?.length ? (
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
             <InlineErrorBoundary>
-              <GraphView expressions={(latest as any).graph.expressions} points={(latest as any).graph.points} />
+              <GraphView expressions={(content as any).data.expressions} points={(content as any).data.points} />
             </InlineErrorBoundary>
           </div>
         ) : null}
 
-        {latest.kind === 'image' && (latest as any).image?.url ? (
+        {content.view === 'image' && (content as any).data?.url ? (
           <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3">
-            <ImageView url={(latest as any).image.url} caption={(latest as any).image.caption} />
+            <ImageView url={(content as any).data.url} caption={(content as any).data.caption} />
           </div>
         ) : null}
 
-        {latest.kind === 'formula' && (latest as any).latex ? (
-          <FormulaView latex={(latest as any).latex} />
+        {content.view === 'formula' && (content as any).data?.latex ? (
+          <FormulaView latex={(content as any).data.latex} title={(content as any).data.title} />
         ) : null}
 
-        {latest.kind === 'svg' && latest.svg && (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="w-full max-w-full max-h-full rounded-2xl shadow-lg bg-white p-4">
-              <SvgDisplay content={latest.svg} />
-            </div>
-          </div>
-        )}
-
-        {latest.kind === 'map' && (latest as any).map && (
+        {content.view === 'map' && (content as any).data ? (
           <div className="w-full h-full">
-            <MapPane spec={(latest as any).map} />
+            <MapPane spec={(content as any).data} />
           </div>
-        )}
+        ) : null}
 
-        {latest.kind === 'remoteImage' && (latest as any).remoteImage?.src && (
-          <div className="w-full h-full">
-            <RemoteImageDisplay spec={(latest as any).remoteImage} />
-          </div>
-        )}
-
-        {latest.kind === 'diagram' && (latest as any).diagram && (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="w-full max-w-full max-h-full rounded-2xl shadow-lg bg-white p-4">
-              <DiagramRenderer spec={(latest as any).diagram} />
-            </div>
-          </div>
-        )}
-
-        {latest.kind === 'empty' && (
+        {content.view === 'none' && (
           <div className="text-stone-600 flex flex-col items-center gap-3">
             <Pencil className="w-12 h-12" strokeWidth={1.5} />
             <p className="font-serif italic text-stone-600">Ik wacht op je idee...</p>

@@ -40,13 +40,11 @@ type Message = {
   remoteImage?: any
   graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
   image?: { url: string; caption?: string; sourceUrl?: string }
+  formula?: { latex: string; title?: string }
 }
 
-type BoardState =
-  | { kind: 'graph'; graph: NonNullable<Message['graph']> }
-  | { kind: 'image'; image: NonNullable<Message['image']> }
-  | { kind: 'formula'; latex: string }
-  | { kind: 'empty' }
+type BoardView = 'none' | 'graph' | 'image' | 'formula' | 'map'
+type BoardContent = { view: BoardView; data: any }
 
 export default function Workspace() {
   const [mobileView, setMobileView] = useState<'chat' | 'board'>('chat')
@@ -78,7 +76,7 @@ export default function Workspace() {
   // Vision State
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [hasNewImage, setHasNewImage] = useState(false)
-  const [boardState, setBoardState] = useState<BoardState>({ kind: 'empty' })
+  const [boardContent, setBoardContent] = useState<BoardContent>({ view: 'none', data: null })
   const boardTopicRef = useRef<string | null>(null)
 
   const [input, setInput] = useState('')
@@ -471,7 +469,7 @@ export default function Workspace() {
     const msg = language === 'en' ? 'New session! How can I help?' : 'Nieuwe sessie! Waar kan ik je mee helpen?';
     setMessages([{ id: Date.now().toString(), role: 'assistant', content: msg }]);
     setSelectedImages([]);
-    setBoardState({ kind: 'empty' })
+    setBoardContent({ view: 'none', data: null })
     setHasNewImage(false)
     
     // 4. Spreek
@@ -790,6 +788,14 @@ export default function Workspace() {
             }
           : null
 
+      const formulaSpec: any | null =
+        parsed?.formula && typeof parsed.formula === 'object' && typeof (parsed.formula as any).latex === 'string'
+          ? {
+              latex: (parsed.formula as any).latex,
+              title: typeof (parsed.formula as any).title === 'string' ? (parsed.formula as any).title : undefined,
+            }
+          : null
+
       const extractLatexForBoard = (text: string): string | null => {
         const t = String(text || '')
         if (!t.trim()) return null
@@ -873,32 +879,38 @@ export default function Workspace() {
       setMessages(prev =>
         prev.map(msg =>
           msg.id === aiMessageId
-            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag, graph: graphSpec, image: imageSpec }
+            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag, graph: graphSpec, image: imageSpec, formula: formulaSpec }
             : msg
         )
       );
 
-      // BOARD WIPER: ensure only one thing is active on the board at a time.
-      // Priority: graph > image > formula > empty.
-      const nextBoard: BoardState =
-        graphSpec
-          ? { kind: 'graph', graph: graphSpec }
-          : imageSpec
-            ? { kind: 'image', image: imageSpec }
-            : latexForBoard
-              ? { kind: 'formula', latex: latexForBoard }
-              : { kind: 'empty' }
+      // BOARD STATE MANAGER: single source of truth (no more lingering old visuals).
+      const nextBoard: BoardContent = (() => {
+        // Explicit tool-like actions first
+        if (action === 'plot_graph' || action === 'show_graph') return { view: 'graph', data: graphSpec }
+        if (action === 'show_image') return { view: 'image', data: imageSpec }
+        if (action === 'display_formula') return { view: 'formula', data: formulaSpec || { latex: latexForBoard } }
+        if (action === 'show_map') return { view: 'map', data: mapSpec }
+
+        // Fallback: infer from payload fields (keeps backwards compatibility)
+        if (graphSpec) return { view: 'graph', data: graphSpec }
+        if (imageSpec) return { view: 'image', data: imageSpec }
+        if (formulaSpec) return { view: 'formula', data: formulaSpec }
+        if (mapSpec) return { view: 'map', data: mapSpec }
+        if (latexForBoard) return { view: 'formula', data: { latex: latexForBoard } }
+        return { view: 'none', data: null }
+      })()
 
       // If topic changes and we didn't produce a new board item, wipe the board.
-      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.kind === 'empty') {
-        setBoardState({ kind: 'empty' })
+      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.view === 'none') {
+        setBoardContent({ view: 'none', data: null })
       } else {
-        setBoardState(nextBoard)
+        setBoardContent(nextBoard)
       }
       if (topic) boardTopicRef.current = topic
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (nextBoard.kind !== 'empty' || mapSpec || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && (nextBoard.view !== 'none' || diagramSpec || remoteFromTag || hasSvg)) {
         setHasNewImage(true)
       }
 
@@ -1153,7 +1165,7 @@ export default function Workspace() {
             />
           ) : (
             // Mobile/tablet: board-only view (visuals only)
-            <VisualPane messages={messages as any} boardState={boardState as any} />
+            <VisualPane messages={messages as any} boardContent={boardContent as any} />
           )}
         </div>
       </main>
@@ -1165,7 +1177,7 @@ export default function Workspace() {
             <div className="flex-1 grid grid-cols-[minmax(0,1fr)_minmax(0,520px)] gap-8 p-8 max-w-7xl mx-auto w-full min-h-0">
               {/* Desktop: chat is text-only; visuals (images + SVG) live in the VisualPane */}
               <ChatColumn messages={messages} isTyping={isTyping} renderImages={false} renderSvgs={false} renderMaps={false} renderUploadThumbnails={false} />
-              <VisualPane messages={messages as any} boardState={boardState as any} />
+              <VisualPane messages={messages as any} boardContent={boardContent as any} />
             </div>
 
             <div className="bg-gradient-to-t from-white/95 to-white/80 backdrop-blur-sm px-8 py-6">

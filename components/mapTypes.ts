@@ -6,7 +6,10 @@ export type MapQuery = {
 
 export type MapSpec = {
   title?: string
-  queries: MapQuery[]
+  // If provided, the map can render directly without geocoding queries.
+  center?: { lat: number; lon: number }
+  markers?: Array<{ lat: number; lon: number; label?: string }>
+  queries?: MapQuery[]
   zoom?: number
 }
 

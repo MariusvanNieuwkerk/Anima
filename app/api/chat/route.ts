@@ -8,6 +8,7 @@ import {
 } from './skills/timeDutch'
 import { searchWikimedia } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
+import type { MapSpec } from '@/components/mapTypes'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -182,6 +183,15 @@ export async function POST(req: Request) {
     - Zet data voor board/visuals ALLEEN in de JSON-velden (` + "`graph`" + `, ` + "`image`" + `, etc.), niet als tekst.
     - Als je van onderwerp verandert (bijv. wiskunde -> geschiedenis): ga ervan uit dat het bord gewist moet worden en zet alleen het nieuwe relevante veld (bijv. ` + "`image`" + ` voor geschiedenis, ` + "`graph`" + ` voor grafieken).
 
+    ### SMART BOARD REGISSEUR (CRITICAL)
+    - Jij bent de regisseur van het Smart Board.
+    - Als het onderwerp verandert (wiskunde <-> aardrijkskunde <-> biologie): zet altijd een NIEUW board-veld en bijbehorende ` + "`action`" + `.
+    - Gebruik deze acties:
+      - ` + "`plot_graph`" + ` / ` + "`show_graph`" + ` (grafieken)
+      - ` + "`show_map`" + ` (kaart/locatie)
+      - ` + "`show_image`" + ` (Wikimedia/Wikipedia afbeelding)
+      - ` + "`display_formula`" + ` (formule/reactievergelijking)
+
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
       - Zet een ` + "`graph`" + ` object in JSON met ` + "`expressions`" + ` (array van strings).
@@ -189,6 +199,15 @@ export async function POST(req: Request) {
       - Als je over specifieke punten praat (top, snijpunt, oorsprong): zet die in ` + "`graph.points`" + ` als {x,y,label}.
       - GEEN SVG, geen plaatjes. Alleen ` + "`graph`" + ` data.
       - Zet ` + "`action`" + ` op ` + "`show_graph`" + `.
+
+    ### MAP ENGINE (INTERACTIEVE KAARTEN)
+    - Als de gebruiker vraagt om een kaart, locatie, land, stad, rivier of topografie:
+      - Zet een ` + "`map`" + ` object in JSON met ` + "`title`" + `, ` + "`center`" + ` (lat/lon), ` + "`zoom`" + ` en optioneel ` + "`markers`" + `.
+      - Zet ` + "`action`" + ` op ` + "`show_map`" + `.
+      - GEEN SVG, geen plaatjes genereren.
+
+    ### FORMULA ENGINE (BOARD)
+    - Als de gebruiker om een formule/reactievergelijking vraagt: zet ` + "`formula`" + ` in JSON met ` + "`latex`" + ` (een ` + "`$$...$$`" + ` blok) en zet ` + "`action`" + ` op ` + "`display_formula`" + `.
 
     ### IMAGE ENGINE (WIKIPEDIA / WIKIMEDIA)
     - Als de gebruiker vraagt om een afbeelding van een **fysiek object, dier, plaats, historisch event of kunstwerk**:
@@ -204,8 +223,10 @@ export async function POST(req: Request) {
       "message": "[Uitleg volgens jouw Coach-stijl, met LaTeX waar nodig]",
       "graph": { "expressions": ["x^2"], "points": [{"x":0,"y":0,"label":"top"}] },
       "image": { "query": "human heart anatomy", "caption": "Menselijk hart" },
+      "map": { "title": "Parijs", "center": { "lat": 48.8566, "lon": 2.3522 }, "zoom": 12, "markers": [{ "lat": 48.8566, "lon": 2.3522, "label": "Parijs" }], "queries": [] },
+      "formula": { "latex": "$$x = \\\\frac{-b \\\\pm \\\\sqrt{b^2-4ac}}{2a}$$", "title": "ABC-formule" },
       "topic": "[Het specifieke onderwerp]",
-      "action": "none | show_graph | show_image"
+      "action": "none | show_graph | show_image | show_map | display_formula"
     }
     
     REGELS (ALGEMEEN):
@@ -363,6 +384,11 @@ export async function POST(req: Request) {
     const validatePayload = (p: any) => {
       if (!p || typeof p !== 'object') return { ok: false as const, error: 'Payload is not an object' }
       if (typeof p.message !== 'string' || !p.message.trim()) return { ok: false as const, error: 'Missing message string' }
+      if (p.formula != null) {
+        if (typeof p.formula !== 'object') return { ok: false as const, error: 'formula must be object or null/undefined' }
+        if (typeof p.formula.latex !== 'string' || !p.formula.latex.trim()) return { ok: false as const, error: 'formula.latex must be a non-empty string' }
+        if (p.formula.title != null && typeof p.formula.title !== 'string') return { ok: false as const, error: 'formula.title must be string if present' }
+      }
       if (p.graph != null) {
         if (typeof p.graph !== 'object') return { ok: false as const, error: 'graph must be object or null/undefined' }
         if (!Array.isArray(p.graph.expressions)) return { ok: false as const, error: 'graph.expressions must be an array' }
@@ -389,10 +415,26 @@ export async function POST(req: Request) {
       }
       if (p.map != null) {
         if (typeof p.map !== 'object') return { ok: false as const, error: 'map must be object or null/undefined' }
-        if (!Array.isArray(p.map.queries) || p.map.queries.length === 0) return { ok: false as const, error: 'map.queries must be a non-empty array' }
-        for (const q of p.map.queries) {
-          if (!q || typeof q !== 'object' || typeof q.query !== 'string' || !q.query.trim()) {
-            return { ok: false as const, error: 'map.queries[].query must be a non-empty string' }
+        if (p.map.title != null && typeof p.map.title !== 'string') return { ok: false as const, error: 'map.title must be string if present' }
+        if (p.map.zoom != null && typeof p.map.zoom !== 'number') return { ok: false as const, error: 'map.zoom must be number if present' }
+        if (p.map.center != null) {
+          if (typeof p.map.center !== 'object') return { ok: false as const, error: 'map.center must be object if present' }
+          if (typeof p.map.center.lat !== 'number' || typeof p.map.center.lon !== 'number') return { ok: false as const, error: 'map.center.lat/lon must be numbers' }
+        }
+        if (p.map.markers != null) {
+          if (!Array.isArray(p.map.markers)) return { ok: false as const, error: 'map.markers must be array if present' }
+          for (const m of p.map.markers) {
+            if (!m || typeof m !== 'object') return { ok: false as const, error: 'map.markers[] must be objects' }
+            if (typeof m.lat !== 'number' || typeof m.lon !== 'number') return { ok: false as const, error: 'map.markers[].lat/lon must be numbers' }
+            if (m.label != null && typeof m.label !== 'string') return { ok: false as const, error: 'map.markers[].label must be string if present' }
+          }
+        }
+        if (p.map.queries != null) {
+          if (!Array.isArray(p.map.queries)) return { ok: false as const, error: 'map.queries must be array if present' }
+          for (const q of p.map.queries) {
+            if (!q || typeof q !== 'object' || typeof q.query !== 'string' || !q.query.trim()) {
+              return { ok: false as const, error: 'map.queries[].query must be a non-empty string' }
+            }
           }
         }
       }
@@ -493,6 +535,11 @@ export async function POST(req: Request) {
       return /markeer|punt|punten|top|toppen|snijpunt|snijpunten|oorsprong|vertex/.test(lower)
     })()
 
+    const needsMap = (() => {
+      // Map requests (geography/topography)
+      return /kaart|map\b|toon\s+parijs|parijs|londen|amsterdam|rotterdam|land|stad|continent|rivier|locatie|waar\s+ligt|topografie/.test(lower)
+    })()
+
     const needsImage = (() => {
       // Broader intent: "toon/laat zien" often implies an image even without words like "plaatje/afbeelding".
       // Avoid triggering for graphing/math requests.
@@ -509,6 +556,39 @@ export async function POST(req: Request) {
       const dict = anatomyCandidates(text || '')
       if (dict.canonical) return { query: dict.canonical, caption: (text || '').trim() }
       return null
+    }
+
+    const extractLatexBlock = (text: string): string | null => {
+      const t = String(text || '')
+      const block = t.match(/\$\$[\s\S]*?\$\$/)
+      if (block) return block[0]
+      const inline = t.match(/\$([^$\n]+?)\$/)
+      if (inline?.[1]) return `$$\n${inline[1].trim()}\n$$`
+      return null
+    }
+
+    const geocodeNominatim = async (query: string): Promise<{ lat: number; lon: number } | null> => {
+      const q = String(query || '').trim()
+      if (!q) return null
+      const url = new URL('https://nominatim.openstreetmap.org/search')
+      url.searchParams.set('format', 'jsonv2')
+      url.searchParams.set('q', q)
+      url.searchParams.set('limit', '1')
+      url.searchParams.set('addressdetails', '0')
+      const res = await fetch(url.toString(), {
+        headers: {
+          'User-Agent': 'Anima/1.0 (board-maps; server)',
+          Accept: 'application/json',
+        },
+        cache: 'no-store',
+      })
+      if (!res.ok) return null
+      const arr: any[] = await res.json().catch(() => [])
+      const top = arr?.[0]
+      const lat = top?.lat != null ? Number(top.lat) : NaN
+      const lon = top?.lon != null ? Number(top.lon) : NaN
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+      return { lat, lon }
     }
 
     const extractGraphExpressions = (text: string): string[] => {
@@ -796,6 +876,37 @@ export async function POST(req: Request) {
     if (payload?.message && typeof payload.message === 'string') {
       const cleaned = sanitizeMessageForDisplay(payload.message)
       payload.message = cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
+    }
+
+    // If we have LaTeX in the message and no explicit formula field, attach it for the board.
+    if (!payload.formula) {
+      const latex = extractLatexBlock(payload.message || '')
+      if (latex) {
+        payload.formula = { latex }
+        // Don't override explicit graph/image/map actions.
+        if (!payload.action || payload.action === 'none') payload.action = 'display_formula'
+      }
+    }
+
+    // Map requests: if model didn't provide a map, deterministically geocode the place name.
+    if (needsMap && !payload.map && !needsGraph) {
+      const place =
+        (lastMessageContent || '')
+          .replace(/toon|laat|zien|op|de|kaart|map/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim() || lastMessageContent
+      const center = await geocodeNominatim(place)
+      if (center) {
+        const map: MapSpec = {
+          title: place,
+          center: { lat: center.lat, lon: center.lon },
+          zoom: 11,
+          markers: [{ lat: center.lat, lon: center.lon, label: place }],
+          queries: [],
+        }
+        payload.map = map
+        payload.action = 'show_map'
+      }
     }
 
     // If we expected a graph but got none, retry once with a strict override.

@@ -58,6 +58,11 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
       try {
         setError(null)
         setResults(null)
+        // If center/markers are provided, we skip geocoding.
+        if (spec?.center && (!spec?.queries || spec.queries.length === 0)) {
+          if (!cancelled) setResults([])
+          return
+        }
         const qs = spec?.queries || []
         const out: GeocodeResult[] = []
         for (const q of qs) {
@@ -93,11 +98,12 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
   }, [])
 
   const centers = useMemo(() => {
+    if (spec?.center) return [spec.center as LatLng]
     if (!results) return []
     return results
       .filter((r: any) => r && r.found && r.center)
       .map((r: any) => r.center as LatLng)
-  }, [results])
+  }, [results, spec])
 
   const bounds = useMemo(() => {
     if (!results) return null
@@ -146,10 +152,10 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
           <FitTo bounds={bounds} />
 
           {results?.map((r, idx) => {
-            const q = spec.queries[idx]
+            const q = spec.queries?.[idx]
             if (!r || !(r as any).found) return null
             const rr = r as any
-            const label = q?.label || rr.display_name || q.query
+            const label = q?.label || rr.display_name || q?.query || rr.display_name
             const pos: [number, number] = [rr.center.lat, rr.center.lon]
 
             return (
@@ -161,14 +167,26 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
             )
           })}
 
+          {(spec?.markers || []).map((m, idx) => {
+            const pos: [number, number] = [m.lat, m.lon]
+            const label = m.label || spec?.title || 'Locatie'
+            return (
+              <Marker key={`m-${idx}`} position={pos}>
+                <Popup>
+                  <div className="text-sm font-medium">{label}</div>
+                </Popup>
+              </Marker>
+            )
+          })}
+
           {results?.map((r, idx) => {
-            const q = spec.queries[idx]
+            const q = spec.queries?.[idx]
             if (!r || !(r as any).found) return null
             const rr = r as any
             if (!rr.geojson) return null
             return (
               <GeoJSON
-                key={`geo-${q.query}-${idx}`}
+                key={`geo-${q?.query || idx}-${idx}`}
                 data={rr.geojson}
                 style={() => ({
                   color: '#0f172a',
