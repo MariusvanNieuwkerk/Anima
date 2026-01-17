@@ -7,6 +7,7 @@ import {
   solveDutchTimeWordProblem,
 } from './skills/timeDutch'
 import { searchWikimedia } from '@/app/lib/wiki'
+import { anatomyCandidates } from '@/utils/anatomyDictionary'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -189,6 +190,7 @@ export async function POST(req: Request) {
     ### IMAGE ENGINE (WIKIPEDIA / WIKIMEDIA)
     - Als de gebruiker vraagt om een afbeelding van een **fysiek object, dier, plaats, historisch event of kunstwerk**:
       - Ook als de gebruiker zegt: "toon/laat zien/show" zonder het woord "afbeelding".
+      - Voor **biologie/anatomie (menselijk lichaam, organen, botten)**: gebruik dit ook standaard als de gebruiker een lichaamsdeel noemt.
       - Zet een ` + "`image`" + ` object in JSON met een ` + "`query`" + ` en optioneel ` + "`caption`" + `.
       - Voorbeeld query: "human heart anatomy", "Rembrandt The Night Watch", "Roman Colosseum".
       - NIET gebruiken voor wiskunde-grafieken (daarvoor is ` + "`graph`" + `).
@@ -492,12 +494,17 @@ export async function POST(req: Request) {
       // Broader intent: "toon/laat zien" often implies an image even without words like "plaatje/afbeelding".
       // Avoid triggering for graphing/math requests.
       if (needsGraph) return false
+      // Anatomy/body part requests should show an image by default (even without "toon/laat zien").
+      if (isBodyPartTopic || isExplicitAnatomy) return true
       return /laat\s+(me\s+)?zien|toon\b|show\b|laat\s+.*zien|plaatje\s+van|afbeelding\s+van|picture\s+of|image\s+of/.test(lower)
     })()
 
     const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
       const t = (text || '').toLowerCase()
       if (t.includes('nachtwacht')) return { query: 'The Night Watch Rembrandt painting', caption: 'De Nachtwacht (Rembrandt)' }
+      // Anatomy presets: prefer canonical English terms for en.wikipedia queries
+      const dict = anatomyCandidates(text || '')
+      if (dict.canonical) return { query: dict.canonical, caption: (text || '').trim() }
       return null
     }
 
