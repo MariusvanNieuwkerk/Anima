@@ -528,7 +528,8 @@ export async function POST(req: Request) {
     })()
 
     const isBodyPartTopic = (() => {
-      return /menselijk lichaam|lichaamsdeel|hand|vinger|vingers|voet|voeten|teen|tenen|enkel|knie|arm|been|elleboog|schouder|heup|ribben|schedel|oor|oog|neus|mond|keel|huid/.test(
+      // IMPORTANT: use word boundaries for short tokens like "oor" to avoid false positives (e.g. "dOOR").
+      return /menselijk lichaam|lichaamsdeel|\bhand\b|\bvinger(s)?\b|\bvoet(en)?\b|\bteen(s)?\b|\benkel\b|\bknie\b|\barm(en)?\b|\bbeen(deren)?\b|\belleboog\b|\bschouder\b|\bheup\b|\brib(ben)?\b|\bschedel\b|\boor\b|\boren\b|\boog\b|\bogen\b|\bneus\b|\bmond\b|\bkeel\b|\bhuid\b/.test(
         lower
       )
     })()
@@ -571,8 +572,12 @@ export async function POST(req: Request) {
     })()
 
     const needsMap = (() => {
-      // Map requests (geography/topography)
-      return /kaart|map\b|toon\s+parijs|parijs|londen|amsterdam|rotterdam|land|stad|continent|rivier|locatie|waar\s+ligt|topografie/.test(lower)
+      // Map requests (geography/topography) – only when there is *location intent*.
+      // Avoid false positives like "Westland" (contains "land") when the user asks "bekend door/om".
+      if (/bekend\s+(door|om)\b/.test(lower)) return false
+      return /kaart|map\b|op\s+de\s+kaart|waar\s+ligt|locatie\s+van|co[oö]rdina(t|at)en|latitude|longitude|\blat\b|\blng\b|topografie|hoofdstad|capital/.test(
+        lower
+      )
     })()
 
     const needsFormula = (() => {
