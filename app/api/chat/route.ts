@@ -68,7 +68,7 @@ export async function POST(req: Request) {
           '- I Do / We Do / You Do: 1 zin uitleg (I Do), 1 zin samen stap (We Do), eindig met 1 mini-actie (You Do).',
           '- Interactie: na elke zin 1 simpele checkvraag (bijv. "Zie je de rode stip?").',
           "- Toon: enthousiast, warm, veel complimenten. Gebruik simpele metaforen (pizza/lego).",
-          '- Visueel: je kunt GEEN afbeeldingen genereren. Als de gebruiker om een plaatje vraagt: leg uit dat je alleen tekst/LaTeX kunt geven en geef een korte beschrijving of stappenplan.',
+          '- Visueel: je kunt GEEN afbeeldingen genereren (geen DALL·E/Flux), maar je kunt WEL bestaande afbeeldingen opzoeken via `show_image` (Wikimedia). Zeg dus niet “ik kan geen afbeeldingen”, maar: “Ik zoek het voor je op.” en vul het bord.',
         ].join('\n')
       }
       if (ageBand === 'teen') {
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
           '- I Do / We Do / You Do: korte methode (I Do), 1 gezamenlijke tussenstap (We Do), dan jij (You Do).',
           '- Interactie: daag uit ("Wat is de volgende stap?").',
           "- Toon: real talk. Niet neerbuigend. Erken dat school soms saai is. Vermijd te veel emoji’s.",
-          '- Visueel: je kunt GEEN afbeeldingen genereren. Gebruik LaTeX voor formules; leg de rest in woorden uit.',
+          '- Visueel: je kunt GEEN afbeeldingen genereren, maar je kunt WEL `show_image` (Wikimedia) en `show_map` (Leaflet) gebruiken wanneer passend. Gebruik LaTeX voor formules.',
         ].join('\n')
       }
       return [
@@ -87,19 +87,19 @@ export async function POST(req: Request) {
         '- I Do / We Do / You Do: conceptueel kader (I Do), snelle check op begrip (We Do), dan een gerichte oefenactie (You Do).',
         '- Interactie: conceptueel ("Snap je de logica hierachter?").',
         '- Toon: professioneel, efficiënt, academische partner.',
-        '- Visueel: je kunt GEEN afbeeldingen genereren. Gebruik LaTeX waar relevant; verder tekst/code.',
+        '- Visueel: je kunt GEEN afbeeldingen genereren, maar je kunt WEL `show_image` (Wikimedia) en `show_map` (Leaflet) gebruiken wanneer passend. Gebruik LaTeX waar relevant.',
       ].join('\n')
     })()
     
     if (tutorMode === 'focus') {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op duidelijke tekst en LaTeX waar relevant.";
+      visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph (grafiek), display_formula (LaTeX), show_map (Leaflet), show_image (Wikimedia) wanneer passend volgens routing table + quality gate.";
     } else if (tutorMode === 'growth') {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op warme, duidelijke tekst en LaTeX waar relevant.";
+      visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph, display_formula, show_map, show_image wanneer passend volgens routing table + quality gate.";
     } else {
       coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
-      visualStrategy = "GEEN VISUALS: je kunt geen afbeeldingen genereren. Focus op heldere tekst en LaTeX waar relevant.";
+      visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph, display_formula, show_map, show_image wanneer passend volgens routing table + quality gate.";
     }
 
     const systemPrompt = `
@@ -112,11 +112,13 @@ export async function POST(req: Request) {
 
     ${adaptivePacing}
 
-    ### GEEN AFBEELDINGEN (BELANGRIJK)
-    - Je kunt **GEEN afbeeldingen genereren** (geen Flux/Replicate, geen DALL·E, geen plaatjes).
-    - Als de gebruiker om een afbeelding vraagt (bijv. "maak een plaatje van een kat"):
-      - Zeg kort: "Ik kan geen afbeeldingen genereren."
-      - Bied alternatief: een tekstuele beschrijving, stappenplan, of (als passend) voorbeeldcode.
+    ### BELANGRIJK OVER AFBEELDINGEN (GENEREREN vs OPZOEKEN)
+    - Je kunt **GEEN afbeeldingen GENEREREN** (geen Flux/Replicate/DALL·E).
+    - Maar: je hebt wél toegang tot de tool "show_image" om **bestaande afbeeldingen op Wikimedia te ZOEKEN**.
+    - Als de gebruiker vraagt: "Toon de Mona Lisa":
+      - Zeg NIET: "Ik kan geen afbeeldingen genereren."
+      - Zeg WEL: "Ik zoek de Mona Lisa voor je op." en zet action op "show_image" met image.query = "Mona Lisa".
+    - QUALITY GATE: als je geen betrouwbare afbeelding vindt, toon dan geen afbeelding (action: "none") en geef alleen tekst.
 
     ### LaTeX (BELANGRIJK VOOR EXACTE VAKKEN)
     - Voor **wiskunde / natuurkunde / scheikunde**: gebruik ALTIJD LaTeX voor formules.
@@ -605,6 +607,7 @@ export async function POST(req: Request) {
     const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
       const t = (text || '').toLowerCase()
       if (t.includes('nachtwacht')) return { query: 'The Night Watch Rembrandt painting', caption: 'De Nachtwacht (Rembrandt)' }
+      if (t.includes('mona lisa') || t.includes('monalisa')) return { query: 'Mona Lisa', caption: 'Mona Lisa (Leonardo da Vinci)' }
       if (t.includes('fotosynthese') || t.includes('photosynthesis')) {
         return { query: 'photosynthesis diagram', caption: 'Fotosynthese (schema)' }
       }

@@ -32,6 +32,9 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
     // Prefer educational diagrams/schemas/cycles
     if (/(diagram|schema|cycle|process|pathway|reaction|equation)/.test(t)) score += 30
 
+    // Strongly penalize non-realistic “fallback” style assets
+    if (/(cartoon|clipart|icon|emoji|illustration|pictogram|puzzle|stick figure)/.test(t)) score -= 80
+
     // Penalize scans/docs/covers
     if (t.includes('.pdf') || t.includes('.djvu')) score -= 80
     if (/(cover|front cover|title page|scan|page)/.test(t)) score -= 35
@@ -49,6 +52,14 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
     if (qq.includes('photosynthesis')) {
       if (t.includes('photosynthesis')) score += 25
       if (/(diagram|cycle|process|pathway)/.test(t)) score += 20
+    }
+
+    // Art bias: Mona Lisa should prefer the canonical painting photo, not derivatives/crops
+    if (qq.includes('mona') && qq.includes('lisa')) {
+      if (t.includes('mona') && t.includes('lisa')) score += 25
+      if (t.includes('c2rmf')) score += 25
+      if (t.includes('retouched')) score += 10
+      if (/(headcrop|crop|sketch|student|derivative|parody)/.test(t)) score -= 30
     }
 
     return score
@@ -95,6 +106,13 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
         'File:The Night Watch - HD.jpg',
         'File:The Nightwatch by Rembrandt - Rijksmuseum.jpg',
         'File:La ronda de noche, por Rembrandt van Rijn.jpg',
+      ]
+    }
+    // Mona Lisa (Leonardo da Vinci)
+    if (t.includes('mona lisa') || t.includes('monalisa') || (t.includes('mona') && t.includes('lisa'))) {
+      return [
+        'File:Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg',
+        'File:Mona Lisa.jpg',
       ]
     }
     return []
