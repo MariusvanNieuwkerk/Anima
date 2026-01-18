@@ -35,6 +35,131 @@ function bboxToBounds(bbox: [string, string, string, string]) {
   ] as [[number, number], [number, number]]
 }
 
+function walkGeoJsonCoords(geojson: any, visit: (lon: number, lat: number) => void) {
+  const g = geojson
+  if (!g || typeof g !== 'object') return
+
+  const walk = (coords: any) => {
+    if (!coords) return
+    if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+      // [lon, lat]
+      visit(coords[0], coords[1])
+      return
+    }
+    if (Array.isArray(coords)) {
+      for (const c of coords) walk(c)
+    }
+  }
+
+  if (g.type === 'FeatureCollection' && Array.isArray(g.features)) {
+    for (const f of g.features) walkGeoJsonCoords(f, visit)
+    return
+  }
+  if (g.type === 'Feature' && g.geometry) {
+    walkGeoJsonCoords(g.geometry, visit)
+    return
+  }
+  if (g.coordinates) walk(g.coordinates)
+  if (g.geometries && Array.isArray(g.geometries)) {
+    for (const gg of g.geometries) walkGeoJsonCoords(gg, visit)
+  }
+}
+
+function boundsFromGeoJson(geojson: any): [[number, number], [number, number]] | null {
+  let minLat = Infinity
+  let maxLat = -Infinity
+  let minLon = Infinity
+  let maxLon = -Infinity
+  let any = false
+
+  walkGeoJsonCoords(geojson, (lon, lat) => {
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return
+    any = true
+    minLat = Math.min(minLat, lat)
+    maxLat = Math.max(maxLat, lat)
+    minLon = Math.min(minLon, lon)
+    maxLon = Math.max(maxLon, lon)
+  })
+
+  if (!any) return null
+  return [
+    [minLat, minLon],
+    [maxLat, maxLon],
+  ]
+}
+
+// Approximate polygon area using a simple shoelace formula in lon/lat space (good enough for ranking).
+function polygonRingArea(ring: Array<[number, number]>): number {
+  if (!Array.isArray(ring) || ring.length < 3) return 0
+  let sum = 0
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = ring[i]
+    const [x2, y2] = ring[i + 1]
+    sum += x1 * y2 - x2 * y1
+  }
+  return Math.abs(sum) / 2
+}
+
+function reduceGeoJsonIfGlobalSpan(geojson: any): any {
+  const b = boundsFromGeoJson(geojson)
+  if (!b) return geojson
+  const [[minLat, minLon], [maxLat, maxLon]] = b
+  const lonSpan = Math.abs(maxLon - minLon)
+  const latSpan = Math.abs(maxLat - minLat)
+
+  // If an outline spans huge ranges (e.g., France including overseas territories across the globe),
+  // prefer the largest polygon (mainland) so the map zooms to what students expect.
+  const isGlobalish = lonSpan > 160 || latSpan > 80
+  if (!isGlobalish) return geojson
+
+  if (geojson?.type === 'MultiPolygon' && Array.isArray(geojson.coordinates)) {
+    let bestIdx = -1
+    let bestArea = -1
+    for (let i = 0; i < geojson.coordinates.length; i++) {
+      const poly = geojson.coordinates[i]
+      const outer = Array.isArray(poly?.[0]) ? (poly[0] as Array<[number, number]>) : null
+      const area = outer ? polygonRingArea(outer) : 0
+      if (area > bestArea) {
+        bestArea = area
+        bestIdx = i
+      }
+    }
+    if (bestIdx >= 0) {
+      return { type: 'Polygon', coordinates: geojson.coordinates[bestIdx] }
+    }
+  }
+
+  // For FeatureCollections containing many polygons, keep the largest polygon feature.
+  if (geojson?.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+    let best: any = null
+    let bestArea = -1
+    for (const f of geojson.features) {
+      const g = f?.geometry
+      if (!g) continue
+      if (g.type === 'Polygon' && Array.isArray(g.coordinates)) {
+        const outer = Array.isArray(g.coordinates?.[0]) ? (g.coordinates[0] as Array<[number, number]>) : null
+        const area = outer ? polygonRingArea(outer) : 0
+        if (area > bestArea) {
+          bestArea = area
+          best = f
+        }
+      }
+      if (g.type === 'MultiPolygon') {
+        const reduced = reduceGeoJsonIfGlobalSpan(g)
+        const bb = boundsFromGeoJson(reduced)
+        const area = bb ? Math.abs((bb[1][0] - bb[0][0]) * (bb[1][1] - bb[0][1])) : 0
+        if (area > bestArea) {
+          bestArea = area
+          best = { ...f, geometry: reduced }
+        }
+      }
+    }
+    if (best) return { type: 'FeatureCollection', features: [best] }
+  }
+
+  return geojson
+}
+
 function FitTo({ bounds }: { bounds: [[number, number], [number, number]] | null }) {
   const map = useMap()
   useEffect(() => {
@@ -107,6 +232,13 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
 
   const bounds = useMemo(() => {
     if (!results) return null
+    // Prefer GeoJSON-derived bounds (more accurate), but reduce "global span" multipolygons first (e.g., overseas territories).
+    const withGeo = results.find((r: any) => r && r.found && r.geojson)?.geojson
+    if (withGeo) {
+      const reduced = reduceGeoJsonIfGlobalSpan(withGeo)
+      const gb = boundsFromGeoJson(reduced)
+      if (gb) return gb
+    }
     const b = results.find((r: any) => r && r.found && r.boundingbox)?.boundingbox as
       | [string, string, string, string]
       | null
@@ -184,10 +316,11 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
             if (!r || !(r as any).found) return null
             const rr = r as any
             if (!rr.geojson) return null
+            const reduced = reduceGeoJsonIfGlobalSpan(rr.geojson)
             return (
               <GeoJSON
                 key={`geo-${q?.query || idx}-${idx}`}
-                data={rr.geojson}
+                data={reduced}
                 style={(feature: any) => {
                   const type = String(feature?.geometry?.type || '').toLowerCase()
                   const isLine = type.includes('line')
