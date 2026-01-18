@@ -1055,7 +1055,28 @@ export async function POST(req: Request) {
     // Always sanitize message to prevent JSON/code leakage in the chat bubble.
     if (payload?.message && typeof payload.message === 'string') {
       const cleaned = autoWrapLatexOutsideMath(sanitizeMessageForDisplay(payload.message))
-      payload.message = cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
+
+      // Blueprint V10 enforcement (deterministic):
+      // - Anti-Sorry: don't start with apologies.
+      // - Instant responsiveness: avoid "even denken / momentje / wacht even" as filler.
+      const enforceBlueprintTone = (msg: string) => {
+        let m = String(msg || '').trim()
+        if (!m) return ''
+
+        // Remove common apology openers (NL + EN).
+        m = m.replace(
+          /^(?:sorry|mijn excuses|excuses|het spijt me|pardon|i'?m sorry|sorry about that|my apologies)\s*([,.:!—-]+\s*)?/i,
+          ''
+        )
+
+        // Remove filler phrases early in the message.
+        m = m.replace(/^(?:ok[ée]?\s*[,.:!—-]+\s*)?(?:even denken|wacht even|momentje)\s*([,.:!—-]+\s*)?/i, '')
+
+        return m.trim()
+      }
+
+      const toned = enforceBlueprintTone(cleaned)
+      payload.message = toned || cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
