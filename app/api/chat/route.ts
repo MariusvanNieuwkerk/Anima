@@ -1263,6 +1263,56 @@ export async function POST(req: Request) {
       payload.action = 'none'
     }
 
+    // FINAL ANTI-REPEAT SAFETY NET:
+    // If the model repeats the exact same assistant message as the previous assistant turn,
+    // replace it with a "continue" scaffold (prevents getting stuck in a loop).
+    const normalizeForRepeat = (s: string) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[“”"']/g, '')
+        // Keep common punctuation; drop other symbols (ASCII-safe; avoids unicode property escapes).
+        .replace(/[^a-z0-9\s:.,!?€$]/g, '')
+        .trim()
+
+    const lastAssistantInHistory = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 2; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role && m.role !== 'user') {
+          return String(m?.content || '')
+        }
+      }
+      return ''
+    })()
+
+    const nowMsg = typeof payload.message === 'string' ? payload.message : ''
+    if (lastAssistantInHistory && normalizeForRepeat(nowMsg) && normalizeForRepeat(nowMsg) === normalizeForRepeat(lastAssistantInHistory)) {
+      const lang = String(userLanguage || 'nl')
+      const userText = String(lastMessageContent || '').trim()
+      const isShortConfirm = /^(ja|ok(é)?|klopt|yes|yep|nope|nee)\b/i.test(userText)
+      const isShortNumber = /^\d+([.,]\d+)?$/.test(userText)
+
+      payload.message =
+        lang === 'en'
+          ? [
+              `Ok — let’s move to the **next step** (no repeating).`,
+              isShortNumber
+                ? `You wrote **${userText}**. What does that represent in the story (units: €, cent, km, hours…)?`
+                : `What is the **next micro-step** you should do according to the question text?`,
+              `Write just that next step (1 short line).`,
+            ].join('\n')
+          : [
+              `Oké — we gaan door met de **volgende stap** (geen herhaling).`,
+              isShortNumber
+                ? `Jij schreef **${userText}**. Waar staat dat getal voor in de som (eenheid: €, cent, km, uur…)?`
+                : isShortConfirm
+                  ? `Top. Wat is nu de **volgende micro-stap** volgens de tekst van de vraag?`
+                  : `Wat is nu de **volgende micro-stap** die je moet doen?`,
+              `Schrijf alleen die volgende stap (1 korte zin).`,
+            ].join('\n')
+    }
+
     return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
