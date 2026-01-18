@@ -14,6 +14,7 @@ interface InputDockProps {
   isVoiceOn?: boolean;
   onVoiceToggle?: () => void;
   hasAttachment?: boolean;
+  isSending?: boolean;
 }
 
 export default function InputDock({ 
@@ -28,7 +29,8 @@ export default function InputDock({
   isListening = false,
   isVoiceOn = false,
   onVoiceToggle,
-  hasAttachment = false
+  hasAttachment = false,
+  isSending = false
 }: InputDockProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const [showLockHint, setShowLockHint] = useState(false)
@@ -139,7 +141,7 @@ export default function InputDock({
 
         <button 
           onClick={onSend}
-          disabled={!input.trim() && !hasAttachment}
+          disabled={isSending || (!input.trim() && !hasAttachment)}
           className="p-2.5 bg-stone-800 text-white rounded-2xl hover:bg-stone-700 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 shadow-md hover:shadow-lg ml-auto"
         >
           <Send className="w-4 h-4" />
@@ -179,7 +181,11 @@ export default function InputDock({
         placeholder={isListening ? "Ik luister..." : (hasAttachment ? "Schrijf er iets bij..." : "Typ je vraag...")}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && onSend()}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return
+          if (isSending) return
+          onSend()
+        }}
         onPaste={(e) => {
           if (!onFiles || attachLocked) return
           const items = Array.from(e.clipboardData?.items || [])
@@ -234,7 +240,7 @@ export default function InputDock({
 
             <button
           onClick={onSend}
-          disabled={!input.trim() && !hasAttachment}
+          disabled={isSending || (!input.trim() && !hasAttachment)}
           className="p-2 md:p-2.5 bg-stone-800 text-white rounded-2xl hover:bg-stone-700 hover:scale-110 active:scale-95 transition-all disabled:opacity-50 shadow-md hover:shadow-lg"
             >
           <Send className="w-5 h-5" />

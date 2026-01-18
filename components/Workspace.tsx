@@ -86,6 +86,7 @@ export default function Workspace() {
 
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const sendLockRef = useRef(false)
   const [deepReadMode, setDeepReadMode] = useState(false)
   
   // Audio State
@@ -728,7 +729,10 @@ export default function Workspace() {
   }
 
   const handleSendMessage = async () => {
+    if (sendLockRef.current) return
+    if (isTyping) return
     if ((!input.trim() && selectedImages.length === 0) || !sessionId) return;
+    sendLockRef.current = true
 
     // iOS AUDIO UNLOCK: Activeer audio-engine DIRECT tijdens user interaction (klik)
     // Dit moet gebeuren VOORDAT de API call start, zodat iOS de klik als toestemming ziet
@@ -1124,6 +1128,7 @@ export default function Workspace() {
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: msg }]);
     } finally {
       setIsTyping(false);
+      sendLockRef.current = false
     }
   };
 
@@ -1307,6 +1312,8 @@ export default function Workspace() {
                     onFiles={deepReadMode ? undefined : ingestFiles}
                     inputRef={inputRef}
                     attachLocked={deepReadMode}
+                    isSending={isTyping}
+            isSending={isTyping}
                 />
                 {isAttachMenuOpen && (
                   <div ref={attachMenuDesktopRef} className="absolute bottom-14 left-0 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">

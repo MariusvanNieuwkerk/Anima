@@ -237,6 +237,10 @@ export async function POST(req: Request) {
 
     REGEL: 'Show, Don't Just Tell' geldt vooral voor grafieken en formules. Voor images/maps geldt de QUALITY GATE: liever geen visual dan een foute.
 
+    ### ANTI-REPEAT (CRITICAL UX)
+    - Herhaal NIET letterlijk je vorige antwoord.
+    - Als de gebruiker heel kort reageert met "ja/ok/klopt" (bevestiging), ga dan door met de VOLGENDE micro-stap in plaats van de vorige uitleg opnieuw te sturen.
+
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
       - Zet een ` + "`graph`" + ` object in JSON met ` + "`expressions`" + ` (array van strings).
