@@ -943,20 +943,27 @@ export async function POST(req: Request) {
 
     // Follow-up text questions (without re-uploading the image) should still respect "’s middags" -> 24h.
     // This prevents regressions like treating 2pm as 2am in subsequent turns.
-    const isDutchTimeSession = (() => {
+    const isDutchClockTimeSession = (() => {
       const msgs = Array.isArray(messages) ? messages.slice(-12) : []
       const blob = msgs
         .map((m: any) => String(m?.content || ''))
         .join('\n')
         .toLowerCase()
-      // Signals that we're in a time word-problem tutoring flow.
-      return /tijdrekenen|24-?uurs|\'s\s+middags|\'s\s+ochtends|\'s\s+avonds|mini-?stap|uur|uren|minuut|minuten|eindtijd|begintijd|kaars/.test(
-        blob
-      )
+      // IMPORTANT: This should ONLY trigger for clock-time problems (e.g. 14:00 + duration),
+      // NOT for generic “how many hours” word problems (travel, speed, etc.).
+      const hasClockMarkers =
+        /\b\d{1,2}:\d{2}\b/.test(blob) ||
+        /24-?uurs/.test(blob) ||
+        /tijdrekenen|tijdstip|klok|eindtijd|begintijd/.test(blob) ||
+        /\'s\s+(ochtends|middags|avonds|nachts)/.test(blob) ||
+        /kaars/.test(blob)
+      const hasOurTimeScaffold =
+        /mini-?stap/.test(blob) && (/__\s*:\s*__/.test(blob) || /14:00|19:25|24-?uurs/.test(blob))
+      return hasClockMarkers || hasOurTimeScaffold
     })()
 
     const isShortAttempt = /^\s*\d{1,2}(:\d{2})?\s*$/.test(String(lastMessageContent || ''))
-    if (isDutchTimeSession && isShortAttempt) {
+    if (isDutchClockTimeSession && isShortAttempt) {
       const lang = String(userLanguage || 'nl')
       const t = String(lastMessageContent || '').trim()
       const isHourOnly = /^\d{1,2}$/.test(t)
