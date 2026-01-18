@@ -110,7 +110,7 @@ export async function createChildAccount(input: {
         return {
           ok: false,
           error:
-            'Kon geen nieuw kind-account aanmaken. Meestal betekent dit: (1) SUPABASE_SERVICE_ROLE_KEY is ongeldig/werkt niet op deze deployment (redeploy in Vercel na toevoegen), of (2) de proxy-email bestaat al door een eerdere poging. Probeer een andere gebruikersnaam en check Vercel logs.',
+            'Kon geen nieuw kind-account aanmaken door een database-trigger in Supabase.\n\nMeest voorkomend: je `profiles` schema mist kolommen die de standaard “create profile on auth user” trigger verwacht (bij jou ontbrak `profiles.email`).\n\nFix:\n- Voer migratie `006_profiles_email.sql` uit in Supabase (SQL Editor)\n- Redeploy in Vercel\n- Probeer opnieuw met een nieuwe username',
         }
       }
       return { ok: false, error: raw }
