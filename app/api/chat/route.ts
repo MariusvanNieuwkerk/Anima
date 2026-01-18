@@ -396,8 +396,31 @@ export async function POST(req: Request) {
       let t = String(raw || '').trim()
       if (!t) return ''
 
-      // Strip fenced JSON blocks if the model accidentally echoed them inside `message`.
-      t = t.replace(/```json[\s\S]*?```/gi, '').trim()
+      // If the model accidentally echoed JSON inside the `message` (often as a fenced block),
+      // strip it deterministically. Students should NEVER see JSON/code.
+      //
+      // 1) Try to extract `message` from any fenced block that parses as JSON.
+      const fencedRe = /```[^\n]*\n?([\s\S]*?)```/g
+      let match: RegExpExecArray | null
+      while ((match = fencedRe.exec(t))) {
+        const inner = String(match[1] || '').trim()
+        if (inner.startsWith('{') && inner.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(inner)
+            if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) {
+              return String(parsed.message).trim()
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // 2) Remove any fenced blocks that *look* like JSON (even if not labeled ```json).
+      t = t
+        .replace(/```[^\n]*\n?\{[\s\S]*?\}\s*```/g, '')
+        .replace(/```json[\s\S]*?```/gi, '')
+        .trim()
 
       // If the message itself is a JSON object, try to extract its `message` field.
       const looksJson = t.startsWith('{') && t.endsWith('}')
