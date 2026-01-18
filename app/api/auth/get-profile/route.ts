@@ -73,21 +73,29 @@ export async function POST(req: NextRequest) {
           metaRole === 'parent' || metaRole === 'teacher' || metaRole === 'student' ? (metaRole as any) : 'student'
         
         // Maak automatisch een profile aan
-        const { data: newProfile, error: insertError } = await supabaseAdmin
-          .from('profiles')
-          .insert({
-            id: userId,
-            email: userEmail,
-            role,
-            display_name: baseName,
-            student_name: role === 'student' ? baseName : null,
-            parent_name: role === 'parent' ? baseName : null,
-            teacher_name: role === 'teacher' ? baseName : null,
-            deep_read_mode: false,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
+        const rowBase: any = {
+          id: userId,
+          role,
+          display_name: baseName,
+          student_name: role === 'student' ? baseName : null,
+          parent_name: role === 'parent' ? baseName : null,
+          teacher_name: role === 'teacher' ? baseName : null,
+          deep_read_mode: false,
+          created_at: new Date().toISOString()
+        }
+
+        // Some deployments don't have profiles.email yet → try insert with email, then retry without.
+        const attempt1 = await supabaseAdmin.from('profiles').insert({ ...rowBase, email: userEmail }).select().single();
+        let newProfile = attempt1.data
+        let insertError = attempt1.error
+        if (insertError) {
+          const msg = String(insertError.message || '')
+          if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)) {
+            const attempt2 = await supabaseAdmin.from('profiles').insert(rowBase).select().single()
+            newProfile = attempt2.data
+            insertError = attempt2.error
+          }
+        }
 
         if (insertError) {
           console.error('[GET-PROFILE] Fout bij aanmaken profile:', insertError);
@@ -112,7 +120,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    console.log(`[GET-PROFILE] Profile gevonden, role: ${profile.role}, email: ${profile.email}`);
+    console.log(`[GET-PROFILE] Profile gevonden, role: ${profile.role}`);
 
     return NextResponse.json({ profile });
   } catch (error) {

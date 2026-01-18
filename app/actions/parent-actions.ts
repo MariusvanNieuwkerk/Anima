@@ -91,13 +91,8 @@ export async function createChildAccount(input: {
     if (existingUserErr) return { ok: false, error: existingUserErr.message || 'Kon gebruikersnaam niet controleren.' }
     if (existingByUsername?.id) return { ok: false, error: 'Deze gebruikersnaam is al bezet.' }
 
-    const { data: existingByEmail, error: existingEmailErr } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle()
-    if (existingEmailErr) return { ok: false, error: existingEmailErr.message || 'Kon email niet controleren.' }
-    if (existingByEmail?.id) return { ok: false, error: 'Dit kind-account bestaat al (email is al gebruikt).' }
+    // NOTE: Some deployments don't have profiles.email yet. We do NOT pre-check proxy-email via profiles.
+    // If the auth email already exists, createUser will return a clear error.
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
@@ -107,6 +102,9 @@ export async function createChildAccount(input: {
     })
     if (createErr || !created?.user?.id) {
       const raw = String(createErr?.message || 'Kon kind-account niet aanmaken.')
+      if (/already|exists|registered|duplicate/i.test(raw)) {
+        return { ok: false, error: 'Deze gebruikersnaam bestaat al (proxy-email is al geregistreerd). Kies een andere.' }
+      }
       // Supabase sometimes returns a generic message; give an actionable hint.
       if (/database error creating new user/i.test(raw)) {
         return {
@@ -121,19 +119,24 @@ export async function createChildAccount(input: {
     const childId = created.user.id
 
     // Ensure a profile exists (admin bypasses RLS). Upsert keeps it safe if a trigger already created it.
-    const { error: upsertErr } = await admin.from('profiles').upsert(
-      {
-        id: childId,
-        email,
-        role: 'student',
-        username,
-        display_name: displayName,
-        student_name: displayName,
-      },
-      { onConflict: 'id' }
-    )
-    if (upsertErr) {
-      return { ok: false, error: upsertErr.message || 'Kon student-profiel niet opslaan.' }
+    const profileBase: any = {
+      id: childId,
+      role: 'student',
+      username,
+      display_name: displayName,
+      student_name: displayName,
+    }
+    // Try with email first (preferred), but fall back if the column doesn't exist.
+    const tryUpsert = async (row: any) => admin.from('profiles').upsert(row, { onConflict: 'id' })
+    const up1 = await tryUpsert({ ...profileBase, email })
+    if (up1.error) {
+      const msg = String(up1.error.message || '')
+      if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)) {
+        const up2 = await tryUpsert(profileBase)
+        if (up2.error) return { ok: false, error: up2.error.message || 'Kon student-profiel niet opslaan.' }
+      } else {
+        return { ok: false, error: up1.error.message || 'Kon student-profiel niet opslaan.' }
+      }
     }
 
     // Link parent -> child (use cookie client so RLS applies)
