@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LogOut, MessageCircle } from 'lucide-react'
 import { createBrowserClient } from '@supabase/ssr'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
+import AddChildForm from '@/components/parent/AddChildForm'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -132,6 +133,9 @@ export default function ParentDashboardPage() {
               Uitloggen
             </button>
           </header>
+
+          {/* Minimal test form: Roblox-model child creation */}
+          <AddChildForm />
 
           {/* Cards row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
