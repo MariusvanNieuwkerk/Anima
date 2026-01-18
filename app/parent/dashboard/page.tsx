@@ -21,6 +21,8 @@ export default function ParentDashboardPage() {
   const [deepReadMode, setDeepReadMode] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [parentName, setParentName] = useState<string>('Ouder')
+  const [children, setChildren] = useState<Array<{ id: string; displayName: string; username?: string | null }>>([])
 
   // Hardcoded “newsletter” data for now (as requested).
   const focusData = useMemo(
@@ -48,7 +50,7 @@ export default function ParentDashboardPage() {
 
         const { data, error: profileErr } = await supabase
           .from('profiles')
-          .select('deep_read_mode')
+          .select('deep_read_mode, display_name')
           .eq('id', userId)
           .single()
 
@@ -60,6 +62,39 @@ export default function ParentDashboardPage() {
         }
 
         setDeepReadMode(data?.deep_read_mode === true)
+        setParentName((data?.display_name as string) || 'Ouder')
+
+        // Load linked children (Roblox model): show first child instead of demo text.
+        try {
+          const { data: links } = await supabase
+            .from('family_links')
+            .select('child_id, created_at')
+            .eq('parent_id', userId)
+            .order('created_at', { ascending: true })
+
+          const childIds = Array.isArray(links) ? links.map((l: any) => l.child_id).filter(Boolean) : []
+          if (childIds.length > 0) {
+            const { data: kids } = await supabase
+              .from('profiles')
+              .select('id, display_name, username')
+              .in('id', childIds)
+
+            if (Array.isArray(kids)) {
+              setChildren(
+                kids.map((k: any) => ({
+                  id: String(k.id),
+                  displayName: String(k.display_name || 'Kind'),
+                  username: k.username ?? null,
+                }))
+              )
+            }
+          } else {
+            setChildren([])
+          }
+        } catch {
+          // If profiles RLS blocks this, keep UI stable with generic labels.
+          setChildren([])
+        }
         setIsLoading(false)
       } catch {
         if (!mounted) return
@@ -120,7 +155,9 @@ export default function ParentDashboardPage() {
           <header className="flex items-start justify-between gap-6">
             <div>
               <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-stone-900">
-                Hoi Marius, hier is de update van Rens.
+                {children.length > 0
+                  ? `Hoi ${parentName}, hier is de update van ${children[0].displayName}.`
+                  : `Hoi ${parentName}, hier is je ouderoverzicht.`}
               </h1>
               <div className="mt-2 text-stone-500">Maandag 12 januari</div>
             </div>
@@ -136,6 +173,21 @@ export default function ParentDashboardPage() {
 
           {/* Minimal test form: Roblox-model child creation */}
           <AddChildForm />
+
+          {/* Simple child list (for testing) */}
+          {children.length > 0 ? (
+            <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
+              <div className="text-stone-800 font-semibold mb-2">Kinderen</div>
+              <div className="space-y-2">
+                {children.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
+                    <div className="text-sm text-stone-800 font-medium">{c.displayName}</div>
+                    <div className="text-xs text-stone-500">{c.username ? `@${c.username}` : null}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* Cards row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -219,7 +271,7 @@ export default function ParentDashboardPage() {
               Tip voor aan tafel
             </div>
             <div className="mt-3 text-lg font-semibold text-stone-900">
-              Vraag Rens hoe hij die moeilijke som met breuken uiteindelijk toch heeft opgelost.
+              Vraag {children[0]?.displayName || 'je kind'} hoe hij/zij die moeilijke som met breuken uiteindelijk toch heeft opgelost.
             </div>
           </section>
 

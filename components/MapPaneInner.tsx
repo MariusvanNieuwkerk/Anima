@@ -23,6 +23,10 @@ type GeocodeResult =
       geojson: any | null
     }
 
+function isFound(r: GeocodeResult): r is Extract<GeocodeResult, { found: true }> {
+  return (r as any)?.found === true
+}
+
 function bboxToBounds(bbox: [string, string, string, string]) {
   // Nominatim returns [south, north, west, east]
   const south = Number(bbox[0])
@@ -233,17 +237,18 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
   const bounds = useMemo(() => {
     if (!results) return null
     // Prefer GeoJSON-derived bounds (more accurate), but reduce "global span" multipolygons first (e.g., overseas territories).
-    const withGeo = results.find((r: any) => r && r.found && r.geojson)?.geojson
-    if (withGeo) {
-      const reduced = reduceGeoJsonIfGlobalSpan(withGeo)
+    const withGeo = results.find(
+      (r): r is Extract<GeocodeResult, { found: true }> => isFound(r) && Boolean((r as any).geojson)
+    )
+    if (withGeo && withGeo.geojson) {
+      const reduced = reduceGeoJsonIfGlobalSpan(withGeo.geojson)
       const gb = boundsFromGeoJson(reduced)
       if (gb) return gb
     }
-    const b = results.find((r: any) => r && r.found && r.boundingbox)?.boundingbox as
-      | [string, string, string, string]
-      | null
-      | undefined
-    if (b) return bboxToBounds(b)
+    const withBox = results.find(
+      (r): r is Extract<GeocodeResult, { found: true }> => isFound(r) && Boolean((r as any).boundingbox)
+    )
+    if (withBox && withBox.boundingbox) return bboxToBounds(withBox.boundingbox)
     if (!centers.length) return null
     const lats = centers.map((c) => c.lat)
     const lons = centers.map((c) => c.lon)
@@ -285,13 +290,13 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
 
           {results?.map((r, idx) => {
             const q = spec.queries?.[idx]
-            if (!r || !(r as any).found) return null
-            const rr = r as any
+            if (!r || !isFound(r)) return null
+            const rr = r
             const label = q?.label || rr.display_name || q?.query || rr.display_name
             const pos: [number, number] = [rr.center.lat, rr.center.lon]
 
             return (
-              <Marker key={`${q.query}-${idx}`} position={pos}>
+              <Marker key={`${q?.query || rr.display_name || idx}-${idx}`} position={pos}>
                 <Popup>
                   <div className="text-sm font-medium">{label}</div>
                 </Popup>
@@ -313,8 +318,8 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
 
           {results?.map((r, idx) => {
             const q = spec.queries?.[idx]
-            if (!r || !(r as any).found) return null
-            const rr = r as any
+            if (!r || !isFound(r)) return null
+            const rr = r
             if (!rr.geojson) return null
             const reduced = reduceGeoJsonIfGlobalSpan(rr.geojson)
             return (

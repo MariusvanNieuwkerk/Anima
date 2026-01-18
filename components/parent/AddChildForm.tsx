@@ -70,13 +70,19 @@ export default function AddChildForm() {
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Rens"
+            placeholder="Roepnaam"
             className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-300"
           />
         </label>
       </div>
 
-      {error ? <div className="mt-3 text-sm text-red-700">{error}</div> : null}
+      {error ? (
+        <div className="mt-3 text-sm text-red-700">
+          {error === 'Database error creating new user'
+            ? 'Kon geen nieuw kind-account aanmaken. Check: bestaat de gebruikersnaam al, en staat SUPABASE_SERVICE_ROLE_KEY in Vercel env?'
+            : error}
+        </div>
+      ) : null}
       {success ? <div className="mt-3 text-sm text-emerald-700">{success}</div> : null}
 
       <div className="mt-4 flex items-center justify-end">

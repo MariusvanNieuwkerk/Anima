@@ -66,8 +66,8 @@ export async function compressImage(file: File): Promise<string> {
         }
         // Improve downscale quality for text-heavy photos (receipts/workbooks).
         ctx.imageSmoothingEnabled = true;
-        // @ts-expect-error - imageSmoothingQuality exists in modern browsers
-        ctx.imageSmoothingQuality = 'high';
+        // imageSmoothingQuality exists in modern browsers; cast to avoid TS lib mismatch.
+        (ctx as any).imageSmoothingQuality = 'high';
         
         // Teken de afbeelding op het canvas (resized)
         ctx.drawImage(img, 0, 0, width, height);

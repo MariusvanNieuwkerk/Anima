@@ -1210,7 +1210,6 @@ export default function Workspace() {
                     inputRef={inputRef}
                     attachLocked={deepReadMode}
                     isSending={isTyping}
-            isSending={isTyping}
                 />
                 {isAttachMenuOpen && (
                   <div ref={attachMenuDesktopRef} className="absolute bottom-14 left-0 bg-white rounded-2xl shadow-xl border border-stone-100 p-2 w-64 z-50 flex flex-col gap-1 animate-in slide-in-from-bottom-2 fade-in">
