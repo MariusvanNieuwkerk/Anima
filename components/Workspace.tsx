@@ -618,8 +618,21 @@ export default function Workspace() {
       console.log(`[WORKSPACE] Verwerken van ${imageFiles.length} afbeelding(en)...`)
       const results = await Promise.allSettled(
         imageFiles.map(async (file) => {
-          // HEIC/HEIF often fails in canvas-based compression in Chrome; fall back to raw data URL.
-          if (isHeicLike(file)) return await fileToDataUrl(file)
+          // HEIC/HEIF: convert to JPEG so the browser can render thumbnails (Chrome can't display HEIC).
+          if (isHeicLike(file)) {
+            try {
+              const mod: any = await import('heic2any')
+              const heic2any = mod?.default || mod
+              const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+              const blob = Array.isArray(converted) ? converted[0] : converted
+              const name = String((file as any)?.name || 'upload.heic').replace(/\.(heic|heif)$/i, '.jpg')
+              const jpegFile = new File([blob], name, { type: 'image/jpeg' })
+              return await compressImage(jpegFile)
+            } catch (e) {
+              // If conversion fails, do NOT add an un-renderable thumbnail.
+              throw new Error('HEIC_CONVERT_FAILED')
+            }
+          }
           try {
             return await compressImage(file)
           } catch {
@@ -643,8 +656,8 @@ export default function Workspace() {
       if (failedCount > 0 || ok.length === 0) {
         alert(
           ok.length === 0
-            ? "Ik kon deze foto('s) niet verwerken. Probeer een JPG of PNG (HEIC werkt soms niet in de browser)."
-            : `Ik kon ${failedCount} foto('s) niet verwerken. Tip: gebruik JPG/PNG (HEIC kan soms falen).`
+            ? "Ik kon deze foto('s) niet verwerken. Tip: gebruik JPG of PNG. (HEIC moet eerst worden omgezet.)"
+            : `Ik kon ${failedCount} foto('s) niet verwerken. Tip: gebruik JPG/PNG. (HEIC moet soms eerst worden omgezet.)`
         )
       }
     } catch (error) {
