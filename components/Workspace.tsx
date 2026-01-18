@@ -585,17 +585,68 @@ export default function Workspace() {
   // compress -> add to selectedImages -> show previews
   const ingestFiles = async (filesLike: FileList | File[]) => {
     const files = Array.isArray(filesLike) ? filesLike : Array.from(filesLike || [])
-    const imageFiles = files.filter((f) => (f as any)?.type?.startsWith?.('image/'))
+    const looksLikeImageByName = (name: string) => /\.(png|jpe?g|webp|gif|heic|heif)$/i.test(name || '')
+    const imageFiles = files.filter((f) => {
+      const t = String((f as any)?.type || '')
+      if (t.startsWith('image/')) return true
+      // Some browsers may provide an empty mimeType for certain images; fall back to extension.
+      return looksLikeImageByName((f as any)?.name || '')
+    })
     if (imageFiles.length === 0) return
 
     setIsAttachMenuOpen(false)
 
     try {
-      console.log(`[WORKSPACE] Comprimeren van ${imageFiles.length} afbeelding(en)...`)
-      const compressedResults = await Promise.all(imageFiles.map((file) => compressImage(file)))
-      console.log(`[WORKSPACE] ${compressedResults.length} afbeelding(en) gecomprimeerd`)
-      setSelectedImages((prev) => [...prev, ...compressedResults])
-      inputRef.current?.focus?.()
+      const fileToDataUrl = (file: File) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const res = reader.result
+            if (typeof res === 'string' && res.startsWith('data:')) resolve(res)
+            else reject(new Error('FileReader result is invalid'))
+          }
+          reader.onerror = () => reject(new Error('FileReader failed'))
+          reader.readAsDataURL(file)
+        })
+
+      const isHeicLike = (file: File) => {
+        const t = String(file?.type || '').toLowerCase()
+        const n = String((file as any)?.name || '').toLowerCase()
+        return t.includes('heic') || t.includes('heif') || n.endsWith('.heic') || n.endsWith('.heif')
+      }
+
+      console.log(`[WORKSPACE] Verwerken van ${imageFiles.length} afbeelding(en)...`)
+      const results = await Promise.allSettled(
+        imageFiles.map(async (file) => {
+          // HEIC/HEIF often fails in canvas-based compression in Chrome; fall back to raw data URL.
+          if (isHeicLike(file)) return await fileToDataUrl(file)
+          try {
+            return await compressImage(file)
+          } catch {
+            // Fallback: send original if compression fails (better than blocking upload).
+            return await fileToDataUrl(file)
+          }
+        })
+      )
+
+      const ok = results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && typeof r.value === 'string')
+        .map((r) => r.value)
+
+      const failedCount = results.filter((r) => r.status === 'rejected').length
+
+      if (ok.length > 0) {
+        setSelectedImages((prev) => [...prev, ...ok])
+        inputRef.current?.focus?.()
+      }
+
+      if (failedCount > 0 || ok.length === 0) {
+        alert(
+          ok.length === 0
+            ? "Ik kon deze foto('s) niet verwerken. Probeer een JPG of PNG (HEIC werkt soms niet in de browser)."
+            : `Ik kon ${failedCount} foto('s) niet verwerken. Tip: gebruik JPG/PNG (HEIC kan soms falen).`
+        )
+      }
     } catch (error) {
       console.error('[WORKSPACE] Error comprimeren van afbeeldingen:', error)
       alert("Er is een fout opgetreden bij het verwerken van de foto's. Probeer het opnieuw.")
@@ -609,33 +660,39 @@ export default function Workspace() {
 
     // IOS CAMERA FIX: Op iOS moet je eerst om camera permission vragen via getUserMedia
     // Dit voorkomt het zwarte beeld probleem
-    try {
-      // Vraag om camera permission met environment (achtercamera)
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment' // CAMERA CONSTRAINTS: Gebruik achtercamera
-        } 
-      });
-      // Stop de stream direct (we gebruiken alleen file input voor de foto)
-      stream.getTracks().forEach(track => track.stop());
-    } catch (error: any) {
-      // PERMISSION HANDLING: Toon nette error message
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert("Geef toegang tot je camera in de iOS instellingen. Ga naar Instellingen > Safari > Camera en zet dit aan.");
-        // Reset de file input
-        if (cameraInputRef.current) {
-          cameraInputRef.current.value = '';
+    const isIOS = (() => {
+      if (typeof navigator === 'undefined') return false
+      const ua = navigator.userAgent || ''
+      return /iPad|iPhone|iPod/i.test(ua)
+    })()
+
+    if (isIOS) {
+      try {
+        // Vraag om camera permission met environment (achtercamera)
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }, // CAMERA CONSTRAINTS: Gebruik achtercamera
+        })
+        // Stop de stream direct (we gebruiken alleen file input voor de foto)
+        stream.getTracks().forEach(track => track.stop());
+      } catch (error: any) {
+        // PERMISSION HANDLING: Toon nette error message
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          alert("Geef toegang tot je camera in de iOS instellingen. Ga naar Instellingen > Safari > Camera en zet dit aan.");
+          // Reset de file input
+          if (cameraInputRef.current) {
+            cameraInputRef.current.value = '';
+          }
+          return;
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          alert("Geen camera gevonden. Controleer je apparaat instellingen.");
+          if (cameraInputRef.current) {
+            cameraInputRef.current.value = '';
+          }
+          return;
+        } else {
+          console.error("Camera error:", error);
+          // Probeer toch door te gaan (misschien werkt file input wel)
         }
-        return;
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        alert("Geen camera gevonden. Controleer je apparaat instellingen.");
-        if (cameraInputRef.current) {
-          cameraInputRef.current.value = '';
-        }
-        return;
-      } else {
-        console.error("Camera error:", error);
-        // Probeer toch door te gaan (misschien werkt file input wel)
       }
     }
 
