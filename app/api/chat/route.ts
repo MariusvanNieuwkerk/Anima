@@ -123,6 +123,7 @@ export async function POST(req: Request) {
     ### LaTeX (BELANGRIJK VOOR EXACTE VAKKEN)
     - Voor **wiskunde / natuurkunde / scheikunde**: gebruik ALTIJD LaTeX voor formules.
     - Inline: $E = mc^2$
+    - Breuken: schrijf breuken ALTIJD als inline LaTeX, bijv. $\\frac{2}{3}$ (niet als "(\\frac{2}{3})").
     - Blok (op een nieuwe regel):
       $$
       x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
@@ -427,6 +428,53 @@ export async function POST(req: Request) {
       }
 
       return t
+    }
+
+    // Ensure common LaTeX commands render even if the model forgets $...$ fences.
+    // We only rewrite *outside* existing $...$ / $$...$$ math segments.
+    const autoWrapLatexOutsideMath = (text: string): string => {
+      const s = String(text || '')
+      if (!s.includes('\\frac')) return s
+
+      let out = ''
+      let i = 0
+      let mode: 'text' | 'inline' | 'block' = 'text'
+
+      const at = (idx: number) => s.slice(idx)
+      const isEscaped = (idx: number) => idx > 0 && s[idx - 1] === '\\'
+
+      while (i < s.length) {
+        // Detect $$ (block math)
+        if (!isEscaped(i) && at(i).startsWith('$$')) {
+          out += '$$'
+          i += 2
+          mode = mode === 'block' ? 'text' : mode === 'text' ? 'block' : mode
+          continue
+        }
+        // Detect $ (inline math)
+        if (!isEscaped(i) && s[i] === '$') {
+          out += '$'
+          i += 1
+          mode = mode === 'inline' ? 'text' : mode === 'text' ? 'inline' : mode
+          continue
+        }
+
+        if (mode === 'text') {
+          // Wrap \frac{a}{b} and \dfrac{a}{b}
+          const rest = at(i)
+          const m = rest.match(/^(\\(?:d)?frac)\{([^{}]{1,40})\}\{([^{}]{1,40})\}/)
+          if (m) {
+            out += `$${m[1]}{${m[2]}}{${m[3]}}$`
+            i += m[0].length
+            continue
+          }
+        }
+
+        out += s[i]
+        i += 1
+      }
+
+      return out
     }
 
     const validatePayload = (p: any) => {
@@ -999,7 +1047,7 @@ export async function POST(req: Request) {
 
     // Always sanitize message to prevent JSON/code leakage in the chat bubble.
     if (payload?.message && typeof payload.message === 'string') {
-      const cleaned = sanitizeMessageForDisplay(payload.message)
+      const cleaned = autoWrapLatexOutsideMath(sanitizeMessageForDisplay(payload.message))
       payload.message = cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
