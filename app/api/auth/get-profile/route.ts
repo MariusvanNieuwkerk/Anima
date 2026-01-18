@@ -63,16 +63,26 @@ export async function POST(req: NextRequest) {
 
         const userEmail = authUser.user.email || 'unknown@example.com';
         const baseName = userEmail.split('@')[0] || 'Student';
+
+        // Role selection:
+        // - Default to student
+        // - If auth user_metadata.role is set (via signup), honor it for first profile creation.
+        const metaRoleRaw = (authUser.user.user_metadata as any)?.role
+        const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw.toLowerCase() : null
+        const role: 'student' | 'parent' | 'teacher' =
+          metaRole === 'parent' || metaRole === 'teacher' || metaRole === 'student' ? (metaRole as any) : 'student'
         
-        // Maak automatisch een student profile aan
+        // Maak automatisch een profile aan
         const { data: newProfile, error: insertError } = await supabaseAdmin
           .from('profiles')
           .insert({
             id: userId,
             email: userEmail,
-            role: 'student',
+            role,
             display_name: baseName,
-            student_name: baseName,
+            student_name: role === 'student' ? baseName : null,
+            parent_name: role === 'parent' ? baseName : null,
+            teacher_name: role === 'teacher' ? baseName : null,
             deep_read_mode: false,
             created_at: new Date().toISOString()
           })

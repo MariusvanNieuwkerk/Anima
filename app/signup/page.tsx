@@ -22,6 +22,10 @@ export default function SignupPage() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          // Persist the chosen role in auth metadata so the server can create the correct profile on first login.
+          data: { role },
+        },
       })
 
       if (signUpError) {
@@ -29,8 +33,8 @@ export default function SignupPage() {
         return
       }
 
-      // If we have a session immediately, set profile role optimistically.
-      // If email confirmation is required, this will be null; role can be set after confirm.
+      // Ensure the profile exists (service role route auto-creates if missing).
+      // NOTE: Role is now derived from auth user_metadata.role on first profile creation.
       const userId = data?.user?.id
       if (userId) {
         try {
@@ -39,7 +43,6 @@ export default function SignupPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId }),
           })
-          await supabase.from('profiles').update({ role }).eq('id', userId)
         } catch {
           // ignore
         }
