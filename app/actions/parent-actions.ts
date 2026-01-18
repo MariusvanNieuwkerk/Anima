@@ -77,12 +77,27 @@ export async function createChildAccount(input: {
     if (profileErr) return { ok: false, error: 'Kon profiel niet laden.' }
     if (!parentProfile || parentProfile.role !== 'parent') return { ok: false, error: 'Alleen ouders mogen een kind toevoegen.' }
 
-    // Prevent username collisions (case-insensitive; we store lowercase)
-    const { data: existing } = await supabase.from('profiles').select('id').eq('username', username).maybeSingle()
-    if (existing?.id) return { ok: false, error: 'Deze gebruikersnaam is al bezet.' }
-
     const email = proxyEmailForUsername(username)
     const admin = createAdminClient()
+
+    // Prevent collisions (admin bypasses RLS, so this is the real source of truth).
+    // - username must be unique (case-insensitive index)
+    // - proxy email must not already exist
+    const { data: existingByUsername, error: existingUserErr } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .maybeSingle()
+    if (existingUserErr) return { ok: false, error: existingUserErr.message || 'Kon gebruikersnaam niet controleren.' }
+    if (existingByUsername?.id) return { ok: false, error: 'Deze gebruikersnaam is al bezet.' }
+
+    const { data: existingByEmail, error: existingEmailErr } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
+    if (existingEmailErr) return { ok: false, error: existingEmailErr.message || 'Kon email niet controleren.' }
+    if (existingByEmail?.id) return { ok: false, error: 'Dit kind-account bestaat al (email is al gebruikt).' }
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,
@@ -91,7 +106,16 @@ export async function createChildAccount(input: {
       user_metadata: { role: 'student', full_name: displayName },
     })
     if (createErr || !created?.user?.id) {
-      return { ok: false, error: createErr?.message || 'Kon kind-account niet aanmaken.' }
+      const raw = String(createErr?.message || 'Kon kind-account niet aanmaken.')
+      // Supabase sometimes returns a generic message; give an actionable hint.
+      if (/database error creating new user/i.test(raw)) {
+        return {
+          ok: false,
+          error:
+            'Kon geen nieuw kind-account aanmaken. Meestal betekent dit: (1) SUPABASE_SERVICE_ROLE_KEY is ongeldig/werkt niet op deze deployment (redeploy in Vercel na toevoegen), of (2) de proxy-email bestaat al door een eerdere poging. Probeer een andere gebruikersnaam en check Vercel logs.',
+        }
+      }
+      return { ok: false, error: raw }
     }
 
     const childId = created.user.id
@@ -115,6 +139,13 @@ export async function createChildAccount(input: {
     // Link parent -> child (use cookie client so RLS applies)
     const { error: linkErr } = await supabase.from('family_links').insert({ parent_id: user.id, child_id: childId })
     if (linkErr) {
+      // Roll back created auth user to avoid orphan accounts.
+      try {
+        await admin.auth.admin.deleteUser(childId)
+        await admin.from('profiles').delete().eq('id', childId)
+      } catch {
+        // ignore rollback errors
+      }
       return { ok: false, error: linkErr.message || 'Kon gezinslink niet opslaan.' }
     }
 
