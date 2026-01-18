@@ -21,7 +21,7 @@ type BoardMode =
   | { type: 'IDLE' }
   | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
   | { type: 'IMAGE'; data: { url: string; title: string } }
-  | { type: 'GRAPH'; data: { expressions: string[] } }
+  | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }
 
 function extractLatexForBoard(text: string): string | null {
@@ -76,10 +76,11 @@ export default function VisualPane({
             case 'GRAPH': {
               const exprs = (mode as any).data?.expressions
               if (!Array.isArray(exprs) || exprs.length === 0) return null
+              const pts = (mode as any).data?.points
               return (
                 <div className="w-full h-full rounded-2xl shadow-lg bg-white p-3 overflow-hidden">
                   <InlineErrorBoundary>
-                    <GraphView expressions={exprs} />
+                    <GraphView expressions={exprs} points={Array.isArray(pts) ? pts : undefined} />
                   </InlineErrorBoundary>
                 </div>
               )

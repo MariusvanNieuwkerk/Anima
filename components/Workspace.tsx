@@ -45,7 +45,7 @@ type BoardMode =
   | { type: 'IDLE' }
   | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
   | { type: 'IMAGE'; data: { url: string; title: string } }
-  | { type: 'GRAPH'; data: { expressions: string[] } }
+  | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }
 
 export default function Workspace() {
@@ -928,7 +928,8 @@ export default function Workspace() {
         // Explicit actions first (treat action as “tool routing”).
         if (action === 'plot_graph' || action === 'show_graph') {
           const exprs: any[] = Array.isArray(graphSpec?.expressions) ? graphSpec.expressions : []
-          return exprs.length ? { type: 'GRAPH', data: { expressions: exprs } } : { type: 'IDLE' }
+          const pts = Array.isArray(graphSpec?.points) ? graphSpec.points : undefined
+          return exprs.length ? { type: 'GRAPH', data: { expressions: exprs, points: pts } } : { type: 'IDLE' }
         }
         if (action === 'show_image') {
           if (!imageSpec?.url) return { type: 'IDLE' }
@@ -959,7 +960,8 @@ export default function Workspace() {
         }
 
         // Fallback: infer from payload fields
-        if (graphSpec?.expressions?.length) return { type: 'GRAPH', data: { expressions: graphSpec.expressions } }
+        if (graphSpec?.expressions?.length)
+          return { type: 'GRAPH', data: { expressions: graphSpec.expressions, points: graphSpec.points } }
         if (imageSpec?.url) return { type: 'IMAGE', data: { url: imageSpec.url, title: imageSpec.caption || 'Afbeelding' } }
         if (formulaSpec?.latex) return { type: 'FORMULA', data: { latex: formulaSpec.latex } }
         if (mapSpec) {

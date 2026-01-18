@@ -622,7 +622,10 @@ export async function POST(req: Request) {
       // Never for graphs/maps.
       if (needsGraph || needsMap) return false
       if (isBodyPartTopic || isExplicitAnatomy) return true
-      return /hoe\s+ziet|laat\s+(me\s+)?zien|toon\b|show\b|plaatje|afbeelding|foto|picture|image/.test(lower)
+      // IMPORTANT: use word boundaries so we don't match substrings like "foto" in "fotosynthese".
+      return /hoe\s+ziet|laat\s+(me\s+)?zien|toon\b|show\b|plaatje|afbeelding|\bfoto(?:'s)?\b|\bphoto(?:s)?\b|picture|\bimage\b/.test(
+        lower
+      )
     })()
 
     const imageQueryPreset = (text: string): { query: string; caption?: string } | null => {
@@ -1052,6 +1055,27 @@ export async function POST(req: Request) {
         latex: '$$\n6\\,CO_2 + 6\\,H_2O \\rightarrow C_6H_{12}O_6 + 6\\,O_2\n$$',
       }
       if (!payload.action || payload.action === 'none') payload.action = 'display_formula'
+    }
+
+    // Blueprint V10: If we have a formula for the board, ensure the chat also shows it as LaTeX
+    // (students shouldn't have to "look right" to see the key equation).
+    if (payload.formula && typeof payload.formula === 'object' && typeof payload.formula.latex === 'string') {
+      const normalizeLatexBlock = (s: string) => {
+        const t = String(s || '').trim()
+        if (!t) return ''
+        // If already a $$...$$ block, keep it.
+        if (t.includes('$$')) return t
+        // Otherwise wrap as block math.
+        return `$$\n${t}\n$$`
+      }
+      const latexBlock = normalizeLatexBlock(payload.formula.latex)
+      payload.formula.latex = latexBlock
+
+      const msg = String(payload.message || '').trim()
+      const hasAnyMath = /\$\$[\s\S]*?\$\$|\$[^$\n]+?\$/.test(msg)
+      if (!hasAnyMath && latexBlock) {
+        payload.message = `${msg}\n\n${latexBlock}`.trim()
+      }
     }
 
     // Map requests: if model didn't provide a map, deterministically geocode the place name.
