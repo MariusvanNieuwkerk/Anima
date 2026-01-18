@@ -18,22 +18,50 @@ function stripHtml(input: string): string {
   return (input || '').replace(/<[^>]*>/g, '').trim()
 }
 
-function scoreTitle(title: string, rawQuery: string): number {
+type CuratorKind = 'photo' | 'art' | 'anatomy' | 'diagram'
+
+function classifyQuery(rawQuery: string): CuratorKind {
+  const q = (rawQuery || '').toLowerCase()
+  if (/\bdiagram\b|\bschema\b|\bproof\b|\btheorem\b|\bchart\b|\bgraph\b/.test(q)) return 'diagram'
+  if (
+    /anatomie|anatomy|grays|gray's|gray\b|skelet|bot|botten|orgaan|organen|spier|spieren|zenuw|rib|schedel|hart|long|lever|nier|huid/.test(q)
+  )
+    return 'anatomy'
+  if (
+    /mona lisa|nachtwacht|rembrandt|leonardo|van gogh|vermeer|picasso|da vinci|schilderij|painting|artwork|masterpiece|sculpture|beeldhouwwerk/.test(
+      q
+    )
+  )
+    return 'art'
+  return 'photo'
+}
+
+function scoreTitle(title: string, rawQuery: string, kind: CuratorKind): number {
   const t = (title || '').toLowerCase()
   const q = (rawQuery || '').toLowerCase()
   let score = 0
 
-  // Prefer diagram-like assets and vector formats
-  if (t.includes('.svg')) score += 40
-  if (t.includes('diagram') || t.includes('proof') || t.includes('theorem') || t.includes('schema')) score += 20
-  if (q.includes('pythagorean') || q.includes('pythagoras')) {
-    if (t.includes('pythagorean')) score += 20
-    if (t.includes('square') || t.includes('squares')) score += 15
-    if (t.includes('right triangle')) score += 10
-    // "inverse" is often a less standard classroom diagram
-    if (t.includes('inverse')) score -= 20
-    // Avoid "Pythagoras tree" fractal results when the user wants the theorem diagram
-    if (t.includes('tree')) score -= 80
+  if (kind === 'diagram') {
+    // Prefer diagram-like assets and vector formats
+    if (t.includes('.svg')) score += 40
+    if (t.includes('diagram') || t.includes('proof') || t.includes('theorem') || t.includes('schema')) score += 20
+    if (q.includes('pythagorean') || q.includes('pythagoras')) {
+      if (t.includes('pythagorean')) score += 20
+      if (t.includes('square') || t.includes('squares')) score += 15
+      if (t.includes('right triangle')) score += 10
+      // "inverse" is often a less standard classroom diagram
+      if (t.includes('inverse')) score -= 20
+      // Avoid "Pythagoras tree" fractal results when the user wants the theorem diagram
+      if (t.includes('tree')) score -= 80
+    }
+  } else {
+    // Curator policy: factual only → prefer raster photos/plates, avoid SVG/diagrammy assets by default.
+    if (t.includes('.jpg') || t.includes('.jpeg')) score += 35
+    if (t.includes('.png')) score += 25
+    if (t.includes('.webp')) score += 20
+    if (t.includes('.gif')) score += 5
+    if (t.includes('.svg')) score -= 80
+    if (/(diagram|schema|chart|graph|infographic|vector)/.test(t)) score -= 60
   }
 
   // Strongly penalize document containers and scan-like formats
@@ -42,7 +70,10 @@ function scoreTitle(title: string, rawQuery: string): number {
 
   // Penalize likely scans/covers/backgrounds
   if (t.includes('cover') || t.includes('front') || t.includes('title page')) score -= 30
-  if (t.includes('scan') || t.includes('page') || t.includes('plate')) score -= 10
+  if (t.includes('scan') || t.includes('page')) score -= 10
+
+  // Avoid non-factual “assets”
+  if (/(cartoon|clipart|icon|emoji|pictogram|sticker|stick figure)/.test(t)) score -= 120
 
   // Basic query overlap
   const keywords = q
@@ -51,6 +82,13 @@ function scoreTitle(title: string, rawQuery: string): number {
     .filter((w) => w.length >= 4)
   const overlap = keywords.reduce((acc, w) => (t.includes(w) ? acc + 1 : acc), 0)
   score += overlap * 5
+
+  // Anatomy plates are a special case: “plate” is acceptable and often correct.
+  if (kind === 'anatomy') {
+    if (t.includes('plate')) score += 10
+    if (/(gray|grays|gray's)/.test(t)) score += 20
+    if (/(anatomy|dissection|muscle|skeleton|organ)/.test(t)) score += 10
+  }
 
   return score
 }
@@ -63,7 +101,8 @@ function likelyBadAsset(title: string): boolean {
     t.includes('title page') ||
     t.includes('front cover') ||
     t.includes('.pdf') ||
-    t.includes('.djvu')
+    t.includes('.djvu') ||
+    /(cartoon|clipart|icon|emoji|pictogram|sticker|stick figure)/.test(t)
   )
 }
 
@@ -88,6 +127,7 @@ async function fetchImageInfoByTitle(fileTitle: string): Promise<{
   descriptionUrl: string | null
   attribution: { artist: string | null; credit: string | null; license: string | null; source: string }
   title: string
+  mime: string
 } | null> {
   const infoUrl = new URL('https://commons.wikimedia.org/w/api.php')
   infoUrl.searchParams.set('action', 'query')
@@ -126,6 +166,7 @@ async function fetchImageInfoByTitle(fileTitle: string): Promise<{
     title: fileTitle,
     url,
     descriptionUrl: ii?.descriptionurl || null,
+    mime,
     attribution: {
       artist: artist || null,
       credit: credit || null,
@@ -140,6 +181,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const rawQuery = String(body?.query || '').trim()
     const limit = Math.min(5, Math.max(1, Number(body?.limit || 1)))
+    const kind = classifyQuery(rawQuery)
 
     if (!rawQuery) return NextResponse.json({ error: 'Missing query' }, { status: 400 })
 
@@ -179,9 +221,8 @@ export async function POST(req: Request) {
       ...synonymCandidates.map((s) => (grayHints ? s : `${s} Gray`)),
       ...synonymCandidates,
     ]
-    // For "standard diagram" lookups, prioritize vector/bitmap diagrams over scanned documents.
-    const diagramHint = /diagram|proof|theorem|model|spectrum|cycle|symbols|curve/i.test(rawQuery)
-    const filetypeCandidates = diagramHint
+    // For explicit diagram lookups, prioritize diagram file types. Otherwise, bias toward photos/plates.
+    const filetypeCandidates = kind === 'diagram'
       ? [
           `${rawQuery} simple school`,
           `${rawQuery} filetype:svg`,
@@ -233,13 +274,28 @@ export async function POST(req: Request) {
       .filter((t) => !likelyBadAsset(t))
 
     const ranked = (fileTitles.length ? fileTitles : hits.map((h) => h.title)).sort(
-      (a, b) => scoreTitle(b, rawQuery) - scoreTitle(a, rawQuery)
+      (a, b) => scoreTitle(b, rawQuery, kind) - scoreTitle(a, rawQuery, kind)
     )
 
     // Try top-N candidates until we get a usable url.
     for (const fileTitle of ranked.slice(0, Math.max(limit, 5))) {
       const hit = await fetchImageInfoByTitle(fileTitle)
       if (!hit) continue
+
+      // MIME/type gate: factual means raster only (no SVG) unless explicit diagram.
+      const isRaster =
+        hit.mime.startsWith('image/jpeg') || hit.mime.startsWith('image/png') || hit.mime.startsWith('image/webp') || hit.mime.startsWith('image/gif')
+      const isSvg = hit.mime.includes('svg')
+      if (kind !== 'diagram') {
+        if (isSvg) continue
+        if (!isRaster) continue
+      }
+
+      // Quality gate: prefer returning nothing over a wrong asset.
+      const s = scoreTitle(hit.title, rawQuery, kind)
+      const threshold = kind === 'photo' ? 45 : kind === 'art' ? 35 : kind === 'anatomy' ? 30 : 20
+      if (s < threshold) continue
+
       return NextResponse.json(
         {
           found: true,

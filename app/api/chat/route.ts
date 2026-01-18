@@ -266,8 +266,12 @@ export async function POST(req: Request) {
     - Als de gebruiker vraagt om een afbeelding van een **fysiek object, dier, plaats, historisch event of kunstwerk**:
       - Ook als de gebruiker zegt: "toon/laat zien/show" zonder het woord "afbeelding".
       - Voor **biologie/anatomie (menselijk lichaam, organen, botten)**: gebruik dit ook standaard als de gebruiker een lichaamsdeel noemt.
+      - CURATOR FILTER (Blueprint V10, STRICT):
+        - Doel: de leerling ziet het **echte object** (foto) of een **erkende illustratie/plaat** (bijv. museumfoto van een schilderij, Gray’s Anatomy plate).
+        - Vermijd: abstracte diagrammen, schema’s, charts, iconen, clipart, emojis, “vector/infographic”.
+        - Als de vraag eigenlijk om een proces/concept-schema vraagt (bv. fotosynthese) en er geen “echt object” is: vraag eerst om verduidelijking (foto/plaat van blad/chloroplast vs. schema). Toon anders niets.
       - Zet een ` + "`image`" + ` object in JSON met een ` + "`query`" + ` en optioneel ` + "`caption`" + `.
-      - Voorbeeld query: "human heart anatomy", "Rembrandt The Night Watch", "Roman Colosseum".
+      - Voorbeeld query (ENG, feitelijk): "Gray's Anatomy ear plate", "Mona Lisa painting photograph", "Eiffel Tower photograph", "Roman Colosseum photograph".
       - NIET gebruiken voor wiskunde-grafieken (daarvoor is ` + "`graph`" + `).
       - Zet ` + "`action`" + ` op ` + "`show_image`" + `.
 
@@ -1259,6 +1263,21 @@ export async function POST(req: Request) {
     }
     if (payload.action === 'show_map' && !payload.map) {
       payload.action = 'none'
+    }
+
+    // If the user asked for an image but we couldn't find a reliable factual match (Curator quality gate),
+    // explain briefly and ask a clarifying question (keeps the student oriented).
+    if (needsImage && payload.action === 'none') {
+      const lang = String(userLanguage || 'nl')
+      const asked = String(lastMessageContent || '').trim()
+      const alreadyMentions = typeof payload.message === 'string' && /geen.*(afbeelding|foto)|niets\s+gevonden|not\s+find/i.test(payload.message)
+      if (!alreadyMentions) {
+        const extra =
+          lang === 'en'
+            ? `\n\nI couldn’t find a **reliable factual photo / recognized plate** that matches your request.\nDo you mean a **photo** (real object) or a **school-style diagram**? (I only show photos/recognized plates.)`
+            : `\n\nIk kon geen **betrouwbare foto / erkende plaat** vinden die echt goed bij je vraag past.\nBedoel je een **foto** (echt object) of een **schoolboek-schema**? (Ik toon alleen foto’s/erkende platen.)`
+        payload.message = `${String(payload.message || '').trim()}${extra}`.trim()
+      }
     }
 
     // FINAL ANTI-REPEAT SAFETY NET:
