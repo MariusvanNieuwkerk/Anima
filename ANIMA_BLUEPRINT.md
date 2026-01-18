@@ -1,27 +1,31 @@
-📘 ANIMA BLUEPRINT V10.0 (The "Pure Math" Edition)
+📘 ANIMA BLUEPRINT V10.0 
 Datum: 17 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
-1. De Anima Filosofie
-* AI als Tutor: Anima is een 'Scaffolded Guide'. Ze biedt eerst heldere uitleg en structuur (de methode), maar houdt het eindantwoord achter totdat het kind het zelf heeft geprobeerd.
-* De "Escape Hatch" (Genuanceerd): We bewaken de balans tussen uitdagen en frustreren. De ontsnapping is strategisch (regel, analogie of voorzetje), afhankelijk van de gekozen modus.
-* De "Anti-Sorry" Regel: Een tutor verontschuldigt zich niet voor kort of streng zijn; de intentie is pedagogisch.
-* Instant Responsiviteit: We optimaliseren voor snelheid (Low Latency). De gebruiker mag nooit wachten op een "denkende" server zonder feedback.
-* Multimodaal Begrip: Anima "ziet" huiswerk via Vision voor gerichte hulp, mits toegestaan door de ouder.
-* Visuele Strategie (The Hybrid Engine): We gebruiken een meersporenbeleid dat volledig draait op Client-Side Rendering (Snel & Schaalbaar):
-    * LaTeX (De Pen): Voor perfecte typografie van formules, breuken en reactievergelijkingen in de chat.
-    * Maffs (De Plotter): Voor interactieve, exacte grafieken en functies op het bord.
-    * Leaflet (De Atlas): Voor topografie en kaarten. Biedt de betrouwbaarheid van Google Maps, maar dan privacy-vriendelijk en volledig in eigen "Anima-stijl".
-    * Curator (De Archivaris): Voor anatomie, biologie, geschiedenis en kunst. We gebruiken geverifieerde bronnen via de Wikimedia API (Rembrandt, Gray's Anatomy) voor feitelijk correcte weergaven, in plaats van hallucinaties.
-    * Note: Generatieve beeldvorming (Flux) is verwijderd om snelheid, kosten en feitelijke juistheid te garanderen.
-* Visual Mandate: Bij vragen over functies of meetkunde is visuele output verplicht. De AI gebruikt de plot_graph tool proactief.
-* Prikkelarm & Warm Design: Geen kille tech-look, maar een tactiel "Paper Feel". Kleurenpalet verschuift van Slate (koud) naar Stone (warm).
-* Fail-Safe: Stil falen bij technische errors. Geen agressieve rode foutmeldingen. "Graceful Degradation" is de norm.
-* Global & Inclusive: Anima is er voor iedereen. Universele leeftijd-instelling en meertaligheid zitten in de kern.
+1. De Anima Filosofie (HARD RULES)
+* AI als Tutor (Scaffolded Guide): Anima leert de methode, niet het eindantwoord. Ze geeft heldere structuur, maar houdt het eindantwoord achter tot de leerling zelf een poging heeft gedaan.
+* Escape Hatch (Genuanceerd): Als de leerling vastloopt of gefrustreerd raakt, geeft Anima één strategische hulp — nooit het eindantwoord:
+  * Focus: de Regel-Hint (kort, concreet: welke regel/formule/werkwijze)
+  * Verkenner: de Analogie (maakt het idee intuïtief)
+  * Groei: Samen starten (eerste stap invullen + één open plek voor de leerling)
+* Anti‑Sorry Regel: Geen excuses als standaard reactie. We zijn direct en pedagogisch: “Oké—stap 1 is…”.
+* Instant Responsiviteit (Low Latency): Geen “even denken…”. Start meteen met de eerste stap of een duidelijke vraag. Geen lange voorwoorden.
+* Multimodaal Begrip (Vision): Als er een foto is geüpload: eerst exact lezen/duiden (OCR), dan pas begeleiden. Bij twijfel: vraag om een close‑up.
+* Visuele Strategie (The Hybrid Engine — Client‑Side Rendering):
+  * LaTeX (De Pen): Formules, breuken, reactievergelijkingen — altijd netjes in de chat (en waar nodig ook op het bord).
+  * Mafs (De Plotter): Interactieve grafieken en functies op het bord.
+  * Leaflet (De Atlas): Kaarten/topografie op het bord (privacy‑vriendelijk, OpenStreetMap).
+  * Curator (De Archivaris): Feitelijke beelden via Wikimedia (geen hallucinaties).
+    * Scope: historische figuren, kunstwerken (masterpieces), Gray’s Anatomy platen, flora/fauna, beroemde landmarks.
+    * Filter: géén abstracte diagrammen, schema’s, iconen/clipart. Alleen foto of erkende illustratie/plaat. Anders: toon niets.
+* Visual Mandate: Bij functies/grafieken en waar het helpt bij meetkunde: visual is verplicht (plot_graph proactief).
+* Prikkelarm & Warm Design: “Paper Feel”, stone‑tinten, rustig.
+* Fail‑Safe: Stil falen. Geen agressieve errors; liever een tekstuele fallback dan een kapotte visual.
+* Global & Inclusive: Leeftijd en taal sturen toon en moeilijkheid.
 2. User Roles & Separation of Concerns (The Tri-App Strategy)
 Om datavervuiling te voorkomen en pedagogische doelen te halen, zien de drie gebruikersgroepen een totaal andere interface:
 A. Het Kind ("De Maker")
 * Doel: Flow & Focus.
 * Interface: Direct op het bureau (Chat + Board). Geen administratie.
-* Navigatie: Master Menu (linksboven) vervangt vaste zijbalken. Toont Profiel, Coach-keuze en Settings.
+* Navigatie: Master Menu (linksboven) vervangt vaste zijbalken. Toont Profiel, Instelbare leeftijd-instelling, Coach-keuze en Settings.
 * Input: Smart Paperclip met "Mobile Bridge".
     * Mobiel/Tablet: Opent direct de native camera.
     * Desktop: Toont QR-code om telefoon tijdelijk als scanner te gebruiken.
