@@ -11,29 +11,53 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
   const raw = String(query || '').trim()
   if (!raw) return { found: false }
 
-  // Prefer Wikimedia Commons (File namespace) so we can pick *diagrams* instead of random Wikipedia thumbnails.
-  // Also normalize a few common Dutch educational queries to canonical English terms.
-  const normalized = (() => {
-    const q = raw.toLowerCase()
-    if (q.includes('fotosynthese')) return 'photosynthesis diagram'
-    return raw
+  // Curator policy (Blueprint V10):
+  // - Prefer factual representations: photos, recognized artwork photos, recognized anatomy plates.
+  // - Avoid abstract diagrams and user-generated schema’s unless explicitly requested.
+  const rawLower = raw.toLowerCase()
+  const normalized = raw
+
+  type CuratorKind = 'photo' | 'art' | 'anatomy' | 'diagram'
+  const kind: CuratorKind = (() => {
+    if (/\bdiagram\b|\bschema\b|\bchart\b|\bgraph\b/.test(rawLower)) return 'diagram'
+    if (
+      /anatomie|anatomy|grays|gray's|gray\b|skelet|bot|botten|orgaan|organen|spier|spieren|zenuw|rib|schedel|hart|long|lever|nier|huid/.test(
+        rawLower
+      )
+    )
+      return 'anatomy'
+    if (
+      /mona lisa|nachtwacht|rembrandt|leonardo|van gogh|vermeer|picasso|da vinci|schilderij|painting|artwork|masterpiece|sculpture|beeldhouwwerk/.test(
+        rawLower
+      )
+    )
+      return 'art'
+    return 'photo'
   })()
 
-  const scoreTitle = (title: string, q: string): number => {
+  const scoreTitle = (title: string, q: string, k: CuratorKind): number => {
     const t = (title || '').toLowerCase()
     const qq = (q || '').toLowerCase()
     let score = 0
 
-    // Prefer vector diagrams
-    if (t.includes('.svg')) score += 60
-    if (t.includes('.png')) score += 25
-    if (t.includes('.jpg') || t.includes('.jpeg')) score += 10
-
-    // Prefer educational diagrams/schemas/cycles
-    if (/(diagram|schema|cycle|process|pathway|reaction|equation)/.test(t)) score += 30
+    // Format preference depends on kind.
+    if (k === 'diagram') {
+      if (t.includes('.svg')) score += 40
+      if (t.includes('.png')) score += 20
+      if (t.includes('.jpg') || t.includes('.jpeg')) score += 10
+      if (/(diagram|schema|cycle|process|pathway|reaction|equation)/.test(t)) score += 25
+    } else {
+      // photo / art / anatomy: prefer raster images, avoid SVG “diagrammy” assets by default.
+      if (t.includes('.jpg') || t.includes('.jpeg')) score += 35
+      if (t.includes('.png')) score += 25
+      if (t.includes('.webp')) score += 20
+      if (t.includes('.gif')) score += 5
+      if (t.includes('.svg')) score -= 80
+      if (/(diagram|schema|chart|graph|infographic|vector)/.test(t)) score -= 60
+    }
 
     // Strongly penalize non-realistic “fallback” style assets
-    if (/(cartoon|clipart|icon|emoji|illustration|pictogram|puzzle|stick figure)/.test(t)) score -= 80
+    if (/(cartoon|clipart|icon|emoji|pictogram|puzzle|stick figure)/.test(t)) score -= 120
 
     // Penalize scans/docs/covers
     if (t.includes('.pdf') || t.includes('.djvu')) score -= 80
@@ -48,18 +72,20 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
       if (t.includes(w)) score += 6
     }
 
-    // Special bias: photosynthesis should strongly prefer diagrams/cycles
-    if (qq.includes('photosynthesis')) {
-      if (t.includes('photosynthesis')) score += 25
-      if (/(diagram|cycle|process|pathway)/.test(t)) score += 20
-    }
-
     // Art bias: Mona Lisa should prefer the canonical painting photo, not derivatives/crops
-    if (qq.includes('mona') && qq.includes('lisa')) {
+    if (k === 'art' && qq.includes('mona') && qq.includes('lisa')) {
       if (t.includes('mona') && t.includes('lisa')) score += 25
       if (t.includes('c2rmf')) score += 25
       if (t.includes('retouched')) score += 10
       if (/(headcrop|crop|sketch|student|derivative|parody)/.test(t)) score -= 30
+    }
+
+    // Anatomy plates are usually illustrations/plates/engravings (acceptable).
+    if (k === 'anatomy') {
+      if (/(gray|grays|gray's)/.test(t)) score += 20
+      if (/(plate|anatomy|dissection|muscle|skeleton|organ)/.test(t)) score += 10
+      // Avoid modern clipart icons even if tagged “anatomy”.
+      if (/(icon|clipart|cartoon)/.test(t)) score -= 120
     }
 
     return score
@@ -93,7 +119,11 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
     const descriptionUrl = ii?.descriptionurl
     if (!url) return null
 
-    return { url: String(url), descriptionUrl: typeof descriptionUrl === 'string' ? descriptionUrl : undefined }
+    return {
+      url: String(url),
+      descriptionUrl: typeof descriptionUrl === 'string' ? descriptionUrl : undefined,
+      mime,
+    }
   }
 
   // 0) Deterministic presets for canonical, high-frequency requests.
@@ -138,12 +168,18 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
   const candidates = (() => {
     const q = normalized
     const base: string[] = [q]
-    // Encourage diagram-like results
-    base.unshift(`${q} diagram`)
-    base.unshift(`${q} schema`)
-    base.unshift(`${q} cycle`)
-    base.unshift(`${q} filetype:svg`)
-    base.unshift(`${q} svg`)
+    // For factual “real world” visuals, bias toward photo/commons file types.
+    if (kind === 'photo' || kind === 'art' || kind === 'anatomy') {
+      base.unshift(`${q} filetype:jpg`)
+      base.unshift(`${q} filetype:jpeg`)
+      base.unshift(`${q} filetype:png`)
+      base.unshift(`${q} photograph`)
+    } else {
+      // Only if explicitly requested.
+      base.unshift(`${q} diagram`)
+      base.unshift(`${q} schema`)
+      base.unshift(`${q} filetype:svg`)
+    }
     return Array.from(new Set(base.map((s) => s.trim()).filter(Boolean)))
   })()
 
@@ -175,14 +211,28 @@ export async function searchWikimedia(query: string): Promise<WikiImageResult> {
 
   if (!hits.length) return { found: false }
 
-  const ranked = hits.sort((a, b) => scoreTitle(b, normalized) - scoreTitle(a, normalized))
+  const ranked = hits.sort((a, b) => scoreTitle(b, normalized, kind) - scoreTitle(a, normalized, kind))
   // Quality gate: if the best match is weak, prefer returning no image over a wrong one.
-  const bestScore = ranked.length ? scoreTitle(ranked[0], normalized) : -999
-  if (bestScore < 20) return { found: false }
+  const bestScore = ranked.length ? scoreTitle(ranked[0], normalized, kind) : -999
+  const threshold = kind === 'photo' ? 45 : kind === 'art' ? 35 : kind === 'anatomy' ? 30 : 20
+  if (bestScore < threshold) return { found: false }
 
   for (const fileTitle of ranked.slice(0, 8)) {
     const info = await fetchImageInfoByTitle(fileTitle)
     if (!info?.url) continue
+
+    // MIME/type gate per policy.
+    const mime = String((info as any).mime || '')
+    const isRaster =
+      mime.startsWith('image/jpeg') || mime.startsWith('image/png') || mime.startsWith('image/webp') || mime.startsWith('image/gif')
+    const isSvg = mime.includes('svg')
+    if (kind !== 'diagram') {
+      // No SVGs for factual images unless explicitly requested.
+      if (isSvg) continue
+      // Prefer raster for “real world” and artwork/anatomy plates.
+      if (!isRaster) continue
+    }
+
     const caption = fileTitle.replace(/^File:/i, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ')
     return {
       found: true,

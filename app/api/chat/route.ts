@@ -674,9 +674,7 @@ export async function POST(req: Request) {
       const t = (text || '').toLowerCase()
       if (t.includes('nachtwacht')) return { query: 'The Night Watch Rembrandt painting', caption: 'De Nachtwacht (Rembrandt)' }
       if (t.includes('mona lisa') || t.includes('monalisa')) return { query: 'Mona Lisa', caption: 'Mona Lisa (Leonardo da Vinci)' }
-      if (t.includes('fotosynthese') || t.includes('photosynthesis')) {
-        return { query: 'photosynthesis diagram', caption: 'Fotosynthese (schema)' }
-      }
+      if (t.includes('fotosynthese') || t.includes('photosynthesis')) return { query: 'photosynthesis', caption: 'Fotosynthese' }
       // Anatomy presets: prefer canonical English terms for en.wikipedia queries
       const dict = anatomyCandidates(text || '')
       if (dict.canonical) return { query: dict.canonical, caption: (text || '').trim() }
