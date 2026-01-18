@@ -542,59 +542,13 @@ export async function POST(req: Request) {
           }
         }
       }
-      if (p.diagram != null) {
-        if (typeof p.diagram !== 'object') return { ok: false as const, error: 'diagram must be object or null/undefined' }
-        if (typeof p.diagram.templateId !== 'string' || !p.diagram.templateId.trim()) return { ok: false as const, error: 'diagram.templateId must be a string' }
-        if (p.diagram.highlights != null) {
-          if (!Array.isArray(p.diagram.highlights)) return { ok: false as const, error: 'diagram.highlights must be array' }
-          for (const h of p.diagram.highlights) {
-            if (!h || typeof h !== 'object' || typeof h.id !== 'string' || !h.id.trim()) return { ok: false as const, error: 'diagram.highlights[].id must be string' }
-          }
-        }
-        if (p.diagram.labels != null) {
-          if (!Array.isArray(p.diagram.labels)) return { ok: false as const, error: 'diagram.labels must be array' }
-          for (const l of p.diagram.labels) {
-            if (!l || typeof l !== 'object' || typeof l.text !== 'string') return { ok: false as const, error: 'diagram.labels[].text must be string' }
-            if (typeof l.x !== 'number' || typeof l.y !== 'number') return { ok: false as const, error: 'diagram.labels[].x/.y must be numbers' }
-          }
-        }
-      }
       if (p.topic != null && typeof p.topic !== 'string') return { ok: false as const, error: 'topic must be string or null/undefined' }
       if (p.action != null && typeof p.action !== 'string') return { ok: false as const, error: 'action must be string or null/undefined' }
       return { ok: true as const }
     }
 
     console.log(`[CHAT API] Gemini request gestart (non-stream, JSON contract)`)
-    // --- INTENT: concept diagram search vs unique exercise drawing ---
     const lower = (lastMessageContent || '').toLowerCase()
-
-    const isSpecificExercise = (() => {
-      // Heuristic: numbers/formulas/explicit drawing tasks usually mean "SOM" -> SVG
-      return (
-        /teken\s+de\s+grafiek|teken\s+een\s+grafiek|grafiek\s+van\s+y\s*=|y\s*=\s*[-\d]/.test(lower) ||
-        /los\s+op|bereken|reken\s+uit|werk\s+uit/.test(lower) ||
-        /\b\d+(\.\d+)?\s*(cm|mm|m|km|°|graden)\b/.test(lower) ||
-        /\b\d+\s*(\/|\+|-|\*)\s*\d+\b/.test(lower)
-      )
-    })()
-
-    const isStandardDiagramConcept = (() => {
-      // Curator candidates: common, standardized diagrams that exist in Wikimedia
-      return /pythagoras|stelling\s+van\s+pythagoras|pythagorean|fibonacci|bohr|lichtspectrum|spectrum|vraag\s+en\s+aanbod|supply\s+and\s+demand|waterkringloop|water\s+cycle|stroomkring\s+symbolen|circuit\s+symbols/.test(
-        lower
-      )
-    })()
-
-    const wantsCuratorDiagram = isStandardDiagramConcept && !isSpecificExercise
-
-    const needsSvg = (() => {
-      // SVG is for unique/specific exercises (SOM) and precise plots.
-      if (wantsCuratorDiagram) return false
-      return (
-        isSpecificExercise &&
-        /meetkunde|driehoek|vierhoek|breuk|grafiek|functie|diagram|hoek|oppervlakte|omtrek|stelsel|assenstelsel/.test(lower)
-      )
-    })()
 
     const isBodyPartTopic = (() => {
       // IMPORTANT: use word boundaries for short tokens like "oor" to avoid false positives (e.g. "dOOR").
@@ -610,26 +564,6 @@ export async function POST(req: Request) {
       )
     })()
 
-    const isAnatomy = isExplicitAnatomy
-
-    const wantsSchematicDiagram = (() => {
-      return /schematisch|schema|diagram/.test(lower)
-    })()
-
-    const needsDiagram = (() => {
-      return wantsSchematicDiagram && isExplicitAnatomy
-    })()
-
-    const wantsRemoteAnatomyPlate = (() => {
-      // Only when the user actually means anatomy (structure), not just appearance.
-      return isExplicitAnatomy && !wantsSchematicDiagram
-    })()
-
-    const wantsAppearanceImage = (() => {
-      // Requests that are explicitly about "what it looks like" (non-anatomy) still map to show_image.
-      const asksLooksLike = /hoe ziet|laat zien|toon|foto|afbeelding|plaat|image/.test(lower)
-      return isBodyPartTopic && asksLooksLike && !isExplicitAnatomy && !wantsSchematicDiagram
-    })()
 
     const needsGraph = (() => {
       // Interactive graphs are allowed via JSON { graph: { expressions: [...] } }
@@ -777,8 +711,6 @@ export async function POST(req: Request) {
       }
       return out.slice(0, 4)
     }
-
-    const hasSvgInMessage = (m: string) => /<svg[\s\S]*?<\/svg>/i.test(m || '')
 
     const partsCloneWithTextSuffix = (parts: any[], suffix: string) => {
       const cloned = parts.map((p) => ({ ...p }))

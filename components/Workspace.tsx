@@ -17,7 +17,6 @@ import { compressImage } from '../utils/imageUtils'
 import { unlockAudioContext, unlockSpeechSynthesis } from '../utils/audioUnlock'
 import { getBestVoice, waitForVoices } from '../utils/voiceSelector'
 import QRCodeDisplay from './QRCodeDisplay'
-import { anatomyCandidates } from '@/utils/anatomyDictionary'
 
 declare global {
   interface Window {
@@ -36,8 +35,6 @@ type Message = {
   content: string
   images?: string[] // Base64 image data voor preview in chat
   map?: any
-  diagram?: any
-  remoteImage?: any
   graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
   image?: { url: string; caption?: string; sourceUrl?: string }
   formula?: { latex: string; title?: string }
@@ -849,7 +846,7 @@ export default function Workspace() {
       const topic: string | null = typeof parsed?.topic === 'string' ? parsed.topic : null
       const action: string | null = typeof parsed?.action === 'string' ? parsed.action : null
       const mapSpec: any | null = parsed?.map && typeof parsed.map === 'object' ? parsed.map : null
-      const diagramSpec: any | null = parsed?.diagram && typeof parsed.diagram === 'object' ? parsed.diagram : null
+      // Legacy visuals (SVG/diagram/remote-image) intentionally removed per Blueprint V10 reset.
       const graphSpec: any | null =
         parsed?.graph && typeof parsed.graph === 'object' && Array.isArray((parsed.graph as any).expressions)
           ? {
@@ -915,50 +912,13 @@ export default function Workspace() {
         }
         return null
       }
-      const hasSvg = /```xml[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?```/i.test(finalChatMessage) || /<svg[\s\S]*?<\/svg>/i.test(finalChatMessage)
-
-      const parseRemoteImageTag = (text: string) => {
-        // Support:
-        // - <remote-image src="..." caption="..." />
-        // - <remote-image query="..." caption="..." />
-        // - [SEARCH_DIAGRAM: <specific English term> diagram]
-        const m = text.match(/<remote-image\s+([^>]*?)\/>/i)
-        const s = text.match(/\[SEARCH_DIAGRAM:\s*([^\]]+)\]/i)
-        if (!m && !s) return { cleaned: text, spec: null as any }
-
-        // Prefer explicit remote-image tag if present; otherwise use SEARCH_DIAGRAM.
-        if (m) {
-          const attrs = m[1] || ''
-          const getAttr = (name: string) => {
-            const r = new RegExp(`${name}\\s*=\\s*"(.*?)"`, 'i')
-            const mm = attrs.match(r)
-            return mm?.[1] ? mm[1].trim() : null
-          }
-
-          const spec: any = {
-            src: getAttr('src') || undefined,
-            query: getAttr('query') || undefined,
-            caption: getAttr('caption') || undefined,
-          }
-
-          const cleaned = text.replace(m[0], '').trim()
-          return { cleaned, spec }
-        }
-
-        const query = (s?.[1] || '').trim()
-        const spec: any = { query, caption: query }
-        const cleaned = text.replace(s![0], '').trim()
-        return { cleaned, spec }
-      }
-
-      const { cleaned: messageWithoutRemote, spec: remoteFromTag } = parseRemoteImageTag(finalChatMessage)
-      const latexForBoard = extractLatexForBoard(messageWithoutRemote)
+      const latexForBoard = extractLatexForBoard(finalChatMessage)
 
       // Update message immediately (no more brittle regex/stream parsing)
       setMessages(prev =>
         prev.map(msg =>
           msg.id === aiMessageId
-            ? { ...msg, content: messageWithoutRemote, map: mapSpec, diagram: diagramSpec, remoteImage: remoteFromTag, graph: graphSpec, image: imageSpec, formula: formulaSpec }
+            ? { ...msg, content: finalChatMessage, map: mapSpec, graph: graphSpec, image: imageSpec, formula: formulaSpec }
             : msg
         )
       );
@@ -1032,43 +992,8 @@ export default function Workspace() {
       if (topic) boardTopicRef.current = topic
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
-      if (mobileView === 'chat' && (nextBoard.type !== 'IDLE' || diagramSpec || remoteFromTag || hasSvg)) {
+      if (mobileView === 'chat' && nextBoard.type !== 'IDLE') {
         setHasNewImage(true)
-      }
-
-      // If the model provided a remote-image query (or a non-Wikimedia src), resolve it via Wikimedia.
-      if (
-        remoteFromTag &&
-        (remoteFromTag.query ||
-          (remoteFromTag.src && !/wikimedia|wikipedia|upload\\.wikimedia\\.org/i.test(remoteFromTag.src)))
-      ) {
-        try {
-          const baseQuery = remoteFromTag.query || remoteFromTag.caption || 'human anatomy'
-          const dict = anatomyCandidates(baseQuery)
-          const q = dict.canonical || baseQuery
-          const wikiResp = await fetch('/api/wikimedia', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: q, limit: 5 })
-          })
-          const wikiJson = await wikiResp.json()
-          if (wikiResp.ok && wikiJson?.found && wikiJson?.url) {
-            const resolved = {
-              src: wikiJson.url,
-              caption: remoteFromTag.caption || wikiJson.title,
-              sourceUrl: wikiJson.descriptionUrl,
-              attribution: wikiJson.attribution,
-            }
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === aiMessageId ? { ...msg, remoteImage: resolved } : msg
-              )
-            )
-            if (mobileView === 'chat') setHasNewImage(true)
-          }
-        } catch {
-          // ignore lookup failures
-        }
       }
 
       // --- OPSLAAN MET HUIDIGE SESSION ID ---

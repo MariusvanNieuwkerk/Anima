@@ -2,13 +2,8 @@
 
 import { useMemo } from 'react'
 import { Pencil } from 'lucide-react'
-import SvgDisplay from './SvgDisplay'
 import MapPane from './MapPane'
 import type { MapSpec } from './mapTypes'
-import DiagramRenderer from './DiagramRenderer'
-import type { DiagramSpec } from './diagramTypes'
-import RemoteImageDisplay from './RemoteImageDisplay'
-import type { RemoteImageSpec } from './remoteImageTypes'
 import GraphView from '@/app/components/board/graph-view'
 import InlineErrorBoundary from './InlineErrorBoundary'
 import ImageView from '@/app/components/board/image-view'
@@ -18,8 +13,6 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   map?: MapSpec
-  diagram?: DiagramSpec
-  remoteImage?: RemoteImageSpec
   graph?: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> }
   image?: { url: string; caption?: string; sourceUrl?: string }
 }
@@ -30,24 +23,6 @@ type BoardMode =
   | { type: 'IMAGE'; data: { url: string; title: string } }
   | { type: 'GRAPH'; data: { expressions: string[] } }
   | { type: 'FORMULA'; data: { latex: string } }
-
-function extractSvg(text: string): string | null {
-  if (!text) return null
-
-  // Prefer fenced xml blocks
-  const fenced = text.match(/```xml\s*([\s\S]*?)```/i)
-  if (fenced && fenced[1]) {
-    const inner = fenced[1].trim()
-    const svgMatch = inner.match(/<svg[\s\S]*?<\/svg>/i)
-    if (svgMatch) return svgMatch[0].trim()
-  }
-
-  // Fallback: raw inline svg
-  const raw = text.match(/<svg[\s\S]*?<\/svg>/i)
-  if (raw) return raw[0].trim()
-
-  return null
-}
 
 function extractLatexForBoard(text: string): string | null {
   const t = String(text || '')
