@@ -5,6 +5,7 @@ import { LogOut, MessageCircle } from 'lucide-react'
 import { createBrowserClient } from '@supabase/ssr'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import AddChildForm from '@/components/parent/AddChildForm'
+import DeleteChildSection from '@/components/parent/DeleteChildSection'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -308,6 +309,9 @@ export default function ParentDashboardPage() {
               </button>
             </div>
           </section>
+
+          {/* Danger zone at the bottom (double confirmation) */}
+          <DeleteChildSection children={children} />
 
           {/* Role badge */}
           <div className="fixed bottom-4 right-4">
