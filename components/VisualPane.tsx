@@ -19,7 +19,7 @@ type Message = {
 
 type BoardMode =
   | { type: 'IDLE' }
-  | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
+  | { type: 'MAP'; data: any }
   | { type: 'IMAGE'; data: { url: string; title: string } }
   | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }

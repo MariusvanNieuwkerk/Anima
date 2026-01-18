@@ -43,7 +43,7 @@ type Message = {
 // Clean-slate Board state (single active view) — discriminated union.
 type BoardMode =
   | { type: 'IDLE' }
-  | { type: 'MAP'; data: { lat: number; lng: number; zoom: number; title: string } }
+  | { type: 'MAP'; data: any }
   | { type: 'IMAGE'; data: { url: string; title: string } }
   | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }
@@ -941,22 +941,8 @@ export default function Workspace() {
           return latex.trim() ? { type: 'FORMULA', data: { latex } } : { type: 'IDLE' }
         }
         if (action === 'show_map') {
-          // Accept both tool-style {lat,lng,zoom,title} and MapSpec {center:{lat,lon}, zoom, title}
-          const lat =
-            typeof (mapSpec as any)?.lat === 'number'
-              ? (mapSpec as any).lat
-              : typeof (mapSpec as any)?.center?.lat === 'number'
-                ? (mapSpec as any).center.lat
-                : null
-          const lng =
-            typeof (mapSpec as any)?.lng === 'number'
-              ? (mapSpec as any).lng
-              : typeof (mapSpec as any)?.center?.lon === 'number'
-                ? (mapSpec as any).center.lon
-                : null
-          const zoom = typeof (mapSpec as any)?.zoom === 'number' ? (mapSpec as any).zoom : 10
-          const title = typeof (mapSpec as any)?.title === 'string' ? (mapSpec as any).title : 'Kaart'
-          return lat != null && lng != null ? { type: 'MAP', data: { lat, lng, zoom, title } } : { type: 'IDLE' }
+          // Pass full spec through to MapPane so it can fetch + render outlines (GeoJSON) and fit bounds.
+          return mapSpec && typeof mapSpec === 'object' ? { type: 'MAP', data: mapSpec } : { type: 'IDLE' }
         }
 
         // Fallback: infer from payload fields
@@ -964,23 +950,7 @@ export default function Workspace() {
           return { type: 'GRAPH', data: { expressions: graphSpec.expressions, points: graphSpec.points } }
         if (imageSpec?.url) return { type: 'IMAGE', data: { url: imageSpec.url, title: imageSpec.caption || 'Afbeelding' } }
         if (formulaSpec?.latex) return { type: 'FORMULA', data: { latex: formulaSpec.latex } }
-        if (mapSpec) {
-          const lat =
-            typeof (mapSpec as any)?.lat === 'number'
-              ? (mapSpec as any).lat
-              : typeof (mapSpec as any)?.center?.lat === 'number'
-                ? (mapSpec as any).center.lat
-                : null
-          const lng =
-            typeof (mapSpec as any)?.lng === 'number'
-              ? (mapSpec as any).lng
-              : typeof (mapSpec as any)?.center?.lon === 'number'
-                ? (mapSpec as any).center.lon
-                : null
-          const zoom = typeof (mapSpec as any)?.zoom === 'number' ? (mapSpec as any).zoom : 10
-          const title = typeof (mapSpec as any)?.title === 'string' ? (mapSpec as any).title : 'Kaart'
-          return lat != null && lng != null ? { type: 'MAP', data: { lat, lng, zoom, title } } : { type: 'IDLE' }
-        }
+        if (mapSpec && typeof mapSpec === 'object') return { type: 'MAP', data: mapSpec }
         if (latexForBoard) return { type: 'FORMULA', data: { latex: latexForBoard } }
         return { type: 'IDLE' }
       })()

@@ -24,12 +24,17 @@ export default function MapPane({ spec }: { spec: MapSpec }) {
       const lat = typeof anySpec.lat === 'number' ? anySpec.lat : undefined
       const lng = typeof anySpec.lng === 'number' ? anySpec.lng : undefined
       if (lat != null && lng != null && !anySpec.center) {
+        const title = typeof anySpec.title === 'string' ? anySpec.title : undefined
+        const zoom = typeof anySpec.zoom === 'number' ? anySpec.zoom : 10
+        // Blueprint UX: for cities/countries/rivers, show the whole outline (GeoJSON) + fit bounds.
+        // We can fetch that via /api/geocode if we have a meaningful place name.
+        const canOutline = Boolean(title && title.trim() && title.trim().toLowerCase() !== 'kaart' && /[a-zA-ZÀ-ÿ]/.test(title))
         return {
-          title: typeof anySpec.title === 'string' ? anySpec.title : undefined,
-          zoom: typeof anySpec.zoom === 'number' ? anySpec.zoom : 10,
+          title,
+          zoom,
           center: { lat, lon: lng },
-          markers: [{ lat, lon: lng, label: typeof anySpec.title === 'string' ? anySpec.title : undefined }],
-          queries: [],
+          markers: [{ lat, lon: lng, label: title }],
+          queries: canOutline ? [{ query: title!, label: title, withGeoJson: true }] : [],
         }
       }
     }

@@ -188,12 +188,24 @@ export default function MapPaneInner({ spec }: { spec: MapSpec }) {
               <GeoJSON
                 key={`geo-${q?.query || idx}-${idx}`}
                 data={rr.geojson}
-                style={() => ({
-                  color: '#0f172a',
-                  weight: 2,
-                  fillColor: '#93c5fd',
-                  fillOpacity: 0.15,
-                })}
+                style={(feature: any) => {
+                  const type = String(feature?.geometry?.type || '').toLowerCase()
+                  const isLine = type.includes('line')
+                  const isPoint = type.includes('point')
+                  // Rivers/lines: blue stroke, no fill. Areas: subtle fill + dark border.
+                  if (isLine) {
+                    return { color: '#2563eb', weight: 3, fillOpacity: 0 }
+                  }
+                  if (isPoint) {
+                    return { color: '#0f172a', weight: 2, fillOpacity: 0 }
+                  }
+                  return {
+                    color: '#0f172a',
+                    weight: 2,
+                    fillColor: '#93c5fd',
+                    fillOpacity: 0.15,
+                  }
+                }}
               />
             )
           })}

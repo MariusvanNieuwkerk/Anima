@@ -1094,7 +1094,8 @@ export async function POST(req: Request) {
           center: { lat: center.lat, lon: center.lon },
           zoom: 10,
           markers: [{ lat: center.lat, lon: center.lon, label: place }],
-          queries: [],
+          // Ask the client map to fetch GeoJSON bounds/outline and auto-fit (cities/countries/rivers).
+          queries: [{ query: place, label: place, withGeoJson: true }],
         }
         // Also include tool-style lat/lng for compatibility with the prompt/tool schema.
         payload.map = { ...map, lat: center.lat, lng: center.lon } as any
