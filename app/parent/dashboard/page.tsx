@@ -8,6 +8,7 @@ import AddChildForm from '@/components/parent/AddChildForm'
 import DeleteChildSection from '@/components/parent/DeleteChildSection'
 import { listMyChildren, setChildDeepReadMode } from '@/app/actions/parent-actions'
 import { getParentChildSummary } from '@/app/actions/dashboard-actions'
+import { parentJoinClassroomByCode } from '@/app/actions/classroom-actions'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -39,6 +40,8 @@ export default function ParentDashboardPage() {
   const [focusData, setFocusData] = useState<Array<{ name: string; value: number; color: string }>>([])
   const [flowRows, setFlowRows] = useState<Array<{ name: string; label: string; value: number; color: string }>>([])
   const [summaryHint, setSummaryHint] = useState<string | null>(null)
+  const [schoolCode, setSchoolCode] = useState<string>('')
+  const [schoolStatus, setSchoolStatus] = useState<string | null>(null)
 
   const totalMinutes = useMemo(() => focusData.reduce((sum, it) => sum + it.value, 0), [focusData])
   const hasAnyLearningData = focusData.length > 0 || flowRows.length > 0
@@ -122,6 +125,17 @@ export default function ParentDashboardPage() {
 
   const selectedChild = useMemo(() => children.find((c) => c.id === selectedChildId) ?? null, [children, selectedChildId])
 
+  useEffect(() => {
+    // Prefill join code from URL: /parent/dashboard?join=ABC123
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const join = params.get('join')
+      if (join) setSchoolCode(join)
+    } catch {
+      // ignore
+    }
+  }, [])
+
   // Load “real” summary for the selected child from messages (best-effort; falls back to placeholders).
   useEffect(() => {
     let mounted = true
@@ -174,6 +188,21 @@ export default function ParentDashboardPage() {
       setChildren((prev) => prev.map((c) => (c.id === selectedChildId ? { ...c, deep_read_mode: current } : c)))
       setError(res.error)
     }
+  }
+
+  const joinSchool = async () => {
+    setSchoolStatus(null)
+    if (!selectedChildId) {
+      setSchoolStatus('Kies eerst een kind.')
+      return
+    }
+    const res = await parentJoinClassroomByCode({ childId: selectedChildId, code: schoolCode })
+    if (!res.ok) {
+      setSchoolStatus(res.error)
+      return
+    }
+    setSchoolStatus(`Gekoppeld aan: ${res.classroomName}`)
+    setSchoolCode('')
   }
 
   return (
@@ -390,6 +419,32 @@ export default function ParentDashboardPage() {
                 <div className="text-stone-500 group-open:rotate-180 transition-transform">⌄</div>
               </summary>
               <div className="px-6 pb-6 space-y-5">
+                {/* School section */}
+                <div className="rounded-2xl border border-stone-200 bg-white p-4">
+                  <div className="text-stone-800 font-semibold">School</div>
+                  <div className="mt-1 text-sm text-stone-500">
+                    Koppel {selectedChild?.displayName || 'je kind'} aan een klas met een klascode (alleen met jouw toestemming).
+                  </div>
+                  <div className="mt-4 flex flex-col md:flex-row gap-2 md:items-center">
+                    <input
+                      value={schoolCode}
+                      onChange={(e) => setSchoolCode(e.target.value)}
+                      placeholder="Klascode (bijv. ABC123)"
+                      className="flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-900"
+                      autoCapitalize="characters"
+                    />
+                    <button
+                      type="button"
+                      onClick={joinSchool}
+                      disabled={!selectedChildId || !schoolCode.trim()}
+                      className="rounded-xl bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-900 disabled:opacity-50"
+                    >
+                      Koppel aan klas
+                    </button>
+                  </div>
+                  {schoolStatus ? <div className="mt-3 text-sm text-stone-600">{schoolStatus}</div> : null}
+                </div>
+
                 {children.length > 0 ? (
                   <div className="space-y-2">
                     <div className="text-sm font-semibold text-stone-700">Kinderen</div>

@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { LogOut, Search, AlertTriangle, HelpCircle, CheckCircle2, Lock } from 'lucide-react'
 import StudentDetailSheet from '@/components/StudentDetailSheet'
 import { supabase } from '@/utils/supabase'
-import { getTeacherStudents } from '@/app/actions/dashboard-actions'
+import QRCodeDisplay from '@/components/QRCodeDisplay'
+import { teacherCreateClassroom, teacherListApprovedStudents, teacherListClassrooms } from '@/app/actions/classroom-actions'
 
 export default function TeacherClipboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [teacherName, setTeacherName] = useState<string>('Leraar')
-  const [students, setStudents] = useState<
-    Array<{ id: string; name: string; activity: string; status: 'flow' | 'focus' | 'inactive'; deep_read: boolean }>
-  >([])
+  const [classrooms, setClassrooms] = useState<Array<{ id: number; name: string; join_code: string; created_at: string }>>([])
+  const [selectedClassroomId, setSelectedClassroomId] = useState<number | null>(null)
+  const [approvedStudents, setApprovedStudents] = useState<Array<{ id: string; name: string; username?: string | null; deep_read: boolean }>>([])
+  const [classNameInput, setClassNameInput] = useState('Groep 6B')
   const [dataHint, setDataHint] = useState<string | null>(null)
 
   useEffect(() => {
@@ -41,35 +43,61 @@ export default function TeacherClipboardPage() {
     }
   }, [])
 
+  const refreshClassrooms = async () => {
+    const res = await teacherListClassrooms()
+    if (!res.ok) {
+      setDataHint(res.error)
+      setClassrooms([])
+      return
+    }
+    setDataHint(null)
+    setClassrooms(res.classrooms)
+    if (!selectedClassroomId && res.classrooms[0]?.id) setSelectedClassroomId(res.classrooms[0].id)
+  }
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
-      const res = await getTeacherStudents()
-      if (!mounted) return
-      if (!res.ok) {
-        setDataHint(res.error)
-        setStudents([])
-        return
-      }
-      if (res.requiresMigration) {
-        setDataHint('Nog geen activiteit-data (run migratie 009/010 en laat een leerling even chatten).')
-      } else {
-        setDataHint(null)
-      }
-      setStudents(
-        res.students.map((s) => ({
-          id: s.id,
-          name: s.name,
-          activity: s.activityLabel,
-          status: s.status,
-          deep_read: s.deep_read_mode,
-        }))
-      )
+      await refreshClassrooms()
     })()
     return () => {
       mounted = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      if (!selectedClassroomId) {
+        setApprovedStudents([])
+        return
+      }
+      const res = await teacherListApprovedStudents({ classroomId: selectedClassroomId })
+      if (!mounted) return
+      if (!res.ok) {
+        setDataHint(res.error)
+        setApprovedStudents([])
+        return
+      }
+      setDataHint(null)
+      setApprovedStudents(res.students.map((s) => ({ id: s.id, name: s.name, username: s.username ?? null, deep_read: s.deep_read_mode })))
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [selectedClassroomId])
+
+  const createClass = async () => {
+    const res = await teacherCreateClassroom({ name: classNameInput })
+    if (!res.ok) {
+      setDataHint(res.error)
+      return
+    }
+    setDataHint(null)
+    await refreshClassrooms()
+    setSelectedClassroomId(res.classroom.id)
+  }
 
   const handleLogout = async () => {
     try {
@@ -79,15 +107,15 @@ export default function TeacherClipboardPage() {
     }
   }
 
-  const stuckCount = useMemo(() => students.filter((s: any) => s.status === 'inactive').length, [students])
-  const focusCount = useMemo(() => students.filter((s: any) => s.status === 'focus').length, [students])
-  const flowCount = useMemo(() => students.filter((s: any) => s.status === 'flow').length, [students])
+  const stuckCount = useMemo(() => 0, [])
+  const focusCount = useMemo(() => 0, [])
+  const flowCount = useMemo(() => approvedStudents.length, [approvedStudents.length])
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return [...students]
-    return students.filter((s: any) => s.name.toLowerCase().includes(q))
-  }, [searchQuery, students])
+    if (!q) return [...approvedStudents]
+    return approvedStudents.filter((s: any) => String(s.name || '').toLowerCase().includes(q))
+  }, [searchQuery, approvedStudents])
 
   const today = new Date()
   const months = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december']
@@ -99,17 +127,15 @@ export default function TeacherClipboardPage() {
     return name.substring(0, 2).toUpperCase()
   }
 
-  const statusBadge = (s: any) => {
-    if (s === 'flow') return 'bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium'
-    if (s === 'inactive') return 'bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-medium'
-    return 'bg-stone-200 text-stone-700 px-3 py-1 rounded-full text-xs font-medium'
-  }
+  const statusBadge = (_s: any) => 'bg-stone-200 text-stone-700 px-3 py-1 rounded-full text-xs font-medium'
+  const statusLabel = (_s: any) => 'Actief'
 
-  const statusLabel = (s: any) => {
-    if (s === 'flow') return 'Flow'
-    if (s === 'inactive') return 'Hulp nodig'
-    return 'Focus'
-  }
+  const selectedClass = useMemo(() => classrooms.find((c) => c.id === selectedClassroomId) ?? null, [classrooms, selectedClassroomId])
+  const joinUrl = useMemo(() => {
+    if (!selectedClass?.join_code) return null
+    if (typeof window === 'undefined') return null
+    return `${window.location.origin}/parent/dashboard?join=${encodeURIComponent(selectedClass.join_code)}`
+  }, [selectedClass?.join_code])
 
   return (
     <div
@@ -139,6 +165,70 @@ export default function TeacherClipboardPage() {
               <LogOut className="h-4 w-4" />
               Uitloggen
             </button>
+          </div>
+        </div>
+
+        {/* Class code card */}
+        <div className="mb-5 md:mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-2xl border-2 border-stone-300 shadow-md p-4 md:p-5 md:col-span-2">
+            <div className="text-stone-900 font-bold text-lg mb-2">Klascode</div>
+            <div className="text-sm text-stone-600 mb-4">
+              Maak een klas aan en deel de code met ouders. Ouders koppelen hun kind → jij ziet de leerling pas na toestemming.
+            </div>
+            <div className="flex flex-col md:flex-row gap-2 md:items-center">
+              <input
+                value={classNameInput}
+                onChange={(e) => setClassNameInput(e.target.value)}
+                className="flex-1 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-900"
+                placeholder="Bijv. Groep 6B"
+              />
+              <button
+                onClick={createClass}
+                className="rounded-xl bg-stone-800 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-900"
+              >
+                Nieuwe klas
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {classrooms.length === 0 ? (
+                <div className="text-sm text-stone-500">Nog geen klassen.</div>
+              ) : (
+                classrooms.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedClassroomId(c.id)}
+                    className={`px-3 py-2 rounded-xl text-sm border ${
+                      c.id === selectedClassroomId ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {selectedClass?.join_code ? (
+              <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide">Klascode</div>
+                  <div className="text-2xl font-black tracking-[0.2em] text-stone-900">{selectedClass.join_code}</div>
+                  <div className="text-xs text-stone-500 mt-1">Ouders voeren dit in bij “School” in hun dashboard.</div>
+                </div>
+                {joinUrl ? (
+                  <div className="hidden md:block">
+                    <QRCodeDisplay url={joinUrl} size={132} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="bg-white rounded-2xl border-2 border-stone-300 shadow-md p-4 md:p-5">
+            <div className="text-stone-900 font-bold text-lg mb-2">Toestemming</div>
+            <div className="text-sm text-stone-600">
+              Jij ziet alleen leerlingen die door een ouder gekoppeld zijn via de klascode.
+            </div>
           </div>
         </div>
 
@@ -189,7 +279,7 @@ export default function TeacherClipboardPage() {
 
         {/* Klassenlijst */}
         <div className="bg-white rounded-2xl md:rounded-3xl border-2 border-stone-300 shadow-md p-4 md:p-6">
-          <h2 className="text-lg md:text-xl font-bold text-stone-900 mb-3 md:mb-4">Klassenlijst</h2>
+          <h2 className="text-lg md:text-xl font-bold text-stone-900 mb-3 md:mb-4">Leerlingen (goedgekeurd)</h2>
           {dataHint ? <div className="mb-3 text-sm text-stone-500">{dataHint}</div> : null}
 
           <div className="mb-4 md:mb-6">
@@ -206,11 +296,11 @@ export default function TeacherClipboardPage() {
           </div>
 
           <div className="space-y-1.5 md:space-y-2 max-h-[600px] overflow-y-auto">
-            {students.length === 0 ? (
+            {approvedStudents.length === 0 ? (
               <div className="text-stone-500 text-sm py-8 text-center">
-                Nog geen klas‑activiteit.
+                Nog geen leerlingen gekoppeld.
                 <div className="mt-2 text-xs text-stone-400">
-                  Laat een leerling 3–5 berichten sturen in het bureau en refresh dan dit scherm.
+                  Laat een ouder de klascode invullen bij “School” in het ouderdashboard.
                 </div>
               </div>
             ) : filtered.length === 0 ? (
@@ -235,12 +325,13 @@ export default function TeacherClipboardPage() {
                         </span>
                       )}
                     </div>
-                    <div className="text-xs md:text-sm text-stone-600 truncate font-medium">{student.activity}</div>
+                    <div className="text-xs md:text-sm text-stone-600 truncate font-medium">
+                      {student.username ? `@${student.username}` : '—'}
+                    </div>
                   </div>
 
                   <div className="flex flex-col md:flex-row items-end md:items-center gap-1.5 md:gap-3 flex-shrink-0">
-                    <div className="text-xs md:text-sm text-stone-600 hidden md:block font-medium">{student.activity}</div>
-                    <span className={statusBadge(student.status)}>{statusLabel(student.status)}</span>
+                    <span className={statusBadge('ok')}>{statusLabel('ok')}</span>
                   </div>
                 </button>
               ))
