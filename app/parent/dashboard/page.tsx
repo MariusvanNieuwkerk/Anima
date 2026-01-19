@@ -21,6 +21,16 @@ function createClientComponentClient() {
 export default function ParentDashboardPage() {
   const supabase = useMemo(() => createClientComponentClient(), [])
 
+  const todayLabel = useMemo(() => {
+    try {
+      const d = new Date()
+      // e.g. "maandag 19 januari"
+      return new Intl.DateTimeFormat('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }).format(d)
+    } catch {
+      return ''
+    }
+  }, [])
+
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -184,7 +194,7 @@ export default function ParentDashboardPage() {
                   ? `Hoi ${parentName}, hier is de update van ${children[0].displayName}.`
                   : `Hoi ${parentName}, hier is je ouderoverzicht.`}
               </h1>
-              <div className="mt-2 text-stone-500">Maandag 12 januari</div>
+              {todayLabel ? <div className="mt-2 text-stone-500">{todayLabel}</div> : null}
             </div>
             <button
               onClick={handleLogout}
@@ -405,12 +415,6 @@ export default function ParentDashboardPage() {
             </details>
           </section>
 
-          {/* Role badge */}
-          <div className="fixed bottom-4 right-4">
-            <div className="rounded-full bg-stone-700 text-white text-xs px-3 py-1 shadow-sm">
-              parent
-            </div>
-          </div>
         </main>
       </div>
     </div>
