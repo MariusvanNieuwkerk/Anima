@@ -1299,14 +1299,37 @@ export async function POST(req: Request) {
         return ''
       })()
       const prevAssistantAsked = /\?\s*$/.test(prevAssistantText.trim())
+      const isYesNo = /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserText)
+
+      const userTurnIndex = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        return arr.filter((m: any) => m?.role === 'user').length
+      })()
+      const variant = ((userTurnIndex % 3) + 3) % 3
+
+      const closingVariantsNl = [
+        'Top. Wil je een voorbeeld, of heb je een nieuwe vraag?',
+        'Helder. Wil je 1 oefenvraag, of wil je iets anders vragen?',
+        'Oké. Zullen we één voorbeeld doen, of ga je door met een nieuwe vraag?',
+      ]
+      const closingVariantsEn = [
+        'Got it. Do you want an example, or do you have a new question?',
+        'Clear. Do you want 1 practice question, or do you want to ask something else?',
+        'Okay. Should we do one example, or do you have a new question?',
+      ]
+
       payload.message =
         lang === 'en'
           ? prevAssistantAsked
-            ? `Got it. What’s your answer to my last question? (1 short line)`
-            : `Got it. Do you want an example, or do you have a new question?`
+            ? isYesNo
+              ? closingVariantsEn[variant]
+              : `Got it. What’s your answer to my last question? (1 short line)`
+            : closingVariantsEn[variant]
           : prevAssistantAsked
-            ? `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
-            : `Top. Wil je een voorbeeld, of heb je een nieuwe vraag?`
+            ? isYesNo
+              ? closingVariantsNl[variant]
+              : `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
+            : closingVariantsNl[variant]
     }
 
     // FINAL ANTI-REPEAT SAFETY NET:
