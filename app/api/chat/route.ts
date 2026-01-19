@@ -1072,10 +1072,25 @@ OUTPUT-CONTRACT (CRITICAL)
     const isConfirmation = (() => {
       const m = String(payload?.message || '').trim().toLowerCase()
       // Include common Dutch confirmations used in practice (e.g. "precies!", "super!").
-      return /^(juist|exact|precies|super|helemaal\s+goed|goed\s+zo|klopt|correct|dat\s+klopt|that'?s\s+right|correct!|exact!|right!)/.test(
+      return /^(juist|exact|precies|super|top|mooi|helemaal\s+goed|goed\s+zo|klopt|correct|dat\s+klopt|that'?s\s+right|correct!|exact!|right!)/.test(
         m
       )
     })()
+
+    const hasCompletionMarker = (() => {
+      const m = String(payload?.message || '').toLowerCase()
+      return /\b(we\s+zijn\s+klaar|klaar\.?$|dat\s+is\s+het|that'?s\s+it|we'?re\s+done|done\.)\b/i.test(m)
+    })()
+
+    const stripAfterFirstQuestion = (s: string) => {
+      const t = String(s || '').trim()
+      if (!t) return ''
+      const q = t.indexOf('?')
+      if (q === -1) return t
+      const before = t.slice(0, q).trim()
+      // If we cut right after a colon, keep going until next sentence end.
+      return (before.endsWith(':') ? before.slice(0, -1) : before).trim() + '.'
+    }
 
     const takeFirstSentenceNoQuestion = (s: string) => {
       const t = String(s || '').trim()
@@ -1093,9 +1108,13 @@ OUTPUT-CONTRACT (CRITICAL)
       return out.trim()
     }
 
-    if (prevAssistantAskedForStop && userLooksLikeAnswer && isConfirmation) {
-      const first = takeFirstSentenceNoQuestion(String(payload.message || ''))
-      payload.message = first || 'Juist.'
+    if (prevAssistantAskedForStop && userLooksLikeAnswer && (isConfirmation || hasCompletionMarker)) {
+      const clipped = stripAfterFirstQuestion(String(payload.message || ''))
+      const first = takeFirstSentenceNoQuestion(clipped)
+      payload.message = first || clipped || 'Juist.'
+    } else if ((isConfirmation || hasCompletionMarker) && /\?/.test(String(payload?.message || ''))) {
+      // Even if we can't prove the previous turn was a question, never end a "correct/done" message with a new question.
+      payload.message = stripAfterFirstQuestion(String(payload.message || '')) || takeFirstSentenceNoQuestion(String(payload.message || '')) || 'Juist.'
     }
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
@@ -1345,6 +1364,13 @@ OUTPUT-CONTRACT (CRITICAL)
       lastUserText.length <= 8 &&
       !/[?¿]/.test(lastUserText) &&
       /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserText)
+    const isStopSignal =
+      lastUserText.length > 0 &&
+      lastUserText.length <= 32 &&
+      !/[?¿]/.test(lastUserText) &&
+      /^(niets|nee\s+hoor|laat\s+maar|stop|klaar|geen\s+vragen|geen\s+verdere\s+vragen|that'?s\s+all|nothing|no\s+thanks)\b[!.]*$/i.test(
+        lastUserText
+      )
 
     const prevAssistantTextForAck = (() => {
       const arr = Array.isArray(messages) ? messages : []
@@ -1362,6 +1388,20 @@ OUTPUT-CONTRACT (CRITICAL)
       lastUserText.length <= 24 &&
       !/[?¿]/.test(lastUserText) &&
       /^(ok(é|ay)?|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
+
+    // If the student says "stop / niets / laat maar", treat as conversation complete and stop cleanly.
+    if (isStopSignal) {
+      const lang = String(userLanguage || 'nl')
+      const userTurnIndex = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        return arr.filter((m: any) => m?.role === 'user').length
+      })()
+      const variant = ((userTurnIndex % 3) + 3) % 3
+      const closuresNl = ['Oké. Tot later.', 'Helemaal goed. Tot zo.', 'Prima. Laat maar weten als je nog iets hebt.']
+      const closuresEn = ['Okay. See you later.', 'All good. Talk soon.', 'Sure. Let me know if you need anything else.']
+      payload.message = lang === 'en' ? closuresEn[variant] : closuresNl[variant]
+      payload.action = payload.action || 'none'
+    }
 
     // If the student clearly acknowledges with a bare yes/no BUT there's no pending yes/no question,
     // treat it as "conversation complete" and stop without a wedervraag.

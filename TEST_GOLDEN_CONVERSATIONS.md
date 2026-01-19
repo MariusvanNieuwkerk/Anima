@@ -93,6 +93,20 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must-not**
 - Geen nieuwe micro-opdracht na een correcte afronding.
 
+---
+
+## 5c) Stop-signaal van leerling → sluit af (NL)
+**Setup**: na een afgeronde oplossing (Anima zegt bv. “Juist.” / “We zijn klaar.”).
+
+**User**
+1. `niets`
+
+**Must**
+- Anima sluit af met 1 korte zin (zonder nieuwe vraag, geen “volgende micro-stap”).
+
+**Must-not**
+- Geen meta-coaching (“volgende stap”, “wat is de volgende micro-stap…”).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
