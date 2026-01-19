@@ -12,7 +12,7 @@ import ParentDashboard from './ParentDashboard'
 import TeacherDashboard from './TeacherDashboard'
 import DebugBanner from './DebugBanner'
 import { supabase } from '../utils/supabase'
-import { getUserProfile, type UserProfile } from '../utils/auth'
+import { type UserProfile } from '../utils/auth'
 import { compressImage } from '../utils/imageUtils'
 import { unlockAudioContext, unlockSpeechSynthesis } from '../utils/audioUnlock'
 import { getBestVoice, waitForVoices } from '../utils/voiceSelector'
@@ -102,35 +102,56 @@ export default function Workspace() {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // Haal user profile op
-        const profile = await getUserProfile();
-        
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) {
+          const { createFallbackProfile } = await import('../utils/auth')
+          const fallbackProfile = createFallbackProfile()
+          setUserProfile(fallbackProfile)
+          setUserRole('student')
+          setStudentName('Rens')
+          return
+        }
+
+        let profile: UserProfile | null = null
+
+        // Preferred: service-role endpoint that auto-creates profile if missing.
+        try {
+          const resp = await fetch('/api/auth/get-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+          })
+          const json = await resp.json().catch(() => null)
+          if (json?.profile) profile = json.profile as UserProfile
+        } catch {
+          // ignore and fall back to direct table query below
+        }
+
+        // Fallback: direct query (best-effort; may be constrained by RLS)
+        if (!profile) {
+          const prof = await supabase
+            .from('profiles')
+            .select('id, role, student_name, parent_name, teacher_name, username, deep_read_mode')
+            .eq('id', userId)
+            .single()
+          if (!prof.error && prof.data) profile = prof.data as any
+        }
+
         if (profile) {
-          setUserProfile(profile);
-          setUserRole(profile.role);
-          
-          // PERSONALIZATION: Zet naam op basis van role
-          if (profile.role === 'student' && profile.student_name) {
-            setStudentName(profile.student_name);
-          } else if (profile.role === 'parent' && profile.parent_name) {
-            setStudentName(profile.parent_name);
-          } else if (profile.role === 'teacher' && profile.teacher_name) {
-            setStudentName(profile.teacher_name);
-          } else {
-            // Fallback: gebruik eerste beschikbare naam
-            setStudentName(profile.student_name || profile.parent_name || profile.teacher_name || 'Gebruiker');
-          }
-          
-          console.log(`DEBUG: Gebruiker ingelogd met rol: ${profile.role}`);
+          setUserProfile(profile)
+          setUserRole(profile.role)
+
+          if (profile.role === 'student' && profile.student_name) setStudentName(profile.student_name)
+          else if (profile.role === 'parent' && profile.parent_name) setStudentName(profile.parent_name)
+          else if (profile.role === 'teacher' && profile.teacher_name) setStudentName(profile.teacher_name)
+          else setStudentName(profile.student_name || profile.parent_name || profile.teacher_name || 'Gebruiker')
         } else {
-          // FALLBACK: Geen profile gevonden, gebruik standaard student profile
-          const { createFallbackProfile } = await import('../utils/auth');
-          const fallbackProfile = createFallbackProfile();
-          setUserProfile(fallbackProfile);
-          setUserRole('student');
-          setStudentName('Rens');
-          
-          console.log('DEBUG: Geen profile gevonden, gebruik fallback student profile');
+          const { createFallbackProfile } = await import('../utils/auth')
+          const fallbackProfile = createFallbackProfile(userId)
+          setUserProfile(fallbackProfile)
+          setUserRole('student')
+          setStudentName('Rens')
         }
       } catch (error) {
         console.error('[WORKSPACE] Auth initialization error:', error);

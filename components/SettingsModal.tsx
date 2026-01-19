@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Zap, Compass, Sprout, Check, RefreshCw, LogOut, Baby, School, GraduationCap, PartyPopper } from 'lucide-react';
 import { supabase } from '../utils/supabase';
-import { getUserProfile, type UserProfile } from '../utils/auth';
+import { type UserProfile } from '../utils/auth';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -36,8 +36,36 @@ export default function SettingsModal({ isOpen, onClose, tutorMode, onModeChange
       const fetchProfile = async () => {
         try {
           setIsLoadingProfile(true);
-          const userProfile = await getUserProfile();
-          setProfile(userProfile);
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData?.user?.id
+          if (!userId) {
+            setProfile(null)
+            return
+          }
+
+          // Preferred: call service-role endpoint that auto-creates the profile if missing.
+          try {
+            const resp = await fetch('/api/auth/get-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId }),
+            })
+            const json = await resp.json().catch(() => null)
+            if (json?.profile) {
+              setProfile(json.profile as UserProfile)
+              return
+            }
+          } catch {
+            // ignore and fall back to direct table query below
+          }
+
+          // Fallback: direct query (may be constrained by RLS; keep it best-effort).
+          const prof = await supabase
+            .from('profiles')
+            .select('id, role, student_name, parent_name, teacher_name, username, deep_read_mode')
+            .eq('id', userId)
+            .single()
+          if (!prof.error && prof.data) setProfile(prof.data as any)
         } catch (error) {
           console.error('[SETTINGS] Error fetching profile:', error);
         } finally {
