@@ -5,10 +5,24 @@ import Link from 'next/link'
 import { supabase } from '@/utils/supabase'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  const normalizeUsername = (raw: string) => {
+    const s = String(raw || '').trim().toLowerCase()
+    return s.replace(/[^a-z0-9._-]/g, '')
+  }
+
+  const toLoginEmail = (rawIdentifier: string) => {
+    const raw = String(rawIdentifier || '').trim()
+    if (!raw) return ''
+    if (raw.includes('@')) return raw.toLowerCase()
+    const username = normalizeUsername(raw)
+    if (!username) return ''
+    return `${username}@student.anima.app`
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -16,6 +30,12 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
+      const email = toLoginEmail(identifier)
+      if (!email) {
+        setError('Vul een e-mailadres of gebruikersnaam in.')
+        setIsLoading(false)
+        return
+      }
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -87,19 +107,27 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-stone-700 mb-2">
-                E-mailadres
+              <label htmlFor="identifier" className="block text-sm font-medium text-stone-700 mb-2">
+                E-mailadres of gebruikersnaam
               </label>
               <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                inputMode="email"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 required
                 className="w-full px-4 py-3 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-500 focus:border-stone-500 transition-all"
-                placeholder="jouw@email.nl"
+                placeholder="ouder@email.nl of gebruikersnaam"
                 disabled={isLoading}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
+              <div className="mt-2 text-xs text-stone-500">
+                Leerling? Gebruik je <span className="font-medium text-stone-700">gebruikersnaam</span>. Ouder/leraar? Gebruik je{' '}
+                <span className="font-medium text-stone-700">e-mailadres</span>.
+              </div>
             </div>
 
             <div>
