@@ -6,6 +6,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import AddChildForm from '@/components/parent/AddChildForm'
 import DeleteChildSection from '@/components/parent/DeleteChildSection'
+import { listMyChildren, setChildDeepReadMode } from '@/app/actions/parent-actions'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -19,11 +20,11 @@ function createClientComponentClient() {
 export default function ParentDashboardPage() {
   const supabase = useMemo(() => createClientComponentClient(), [])
 
-  const [deepReadMode, setDeepReadMode] = useState(false)
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [parentName, setParentName] = useState<string>('Ouder')
-  const [children, setChildren] = useState<Array<{ id: string; displayName: string; username?: string | null }>>([])
+  const [children, setChildren] = useState<Array<{ id: string; displayName: string; username?: string | null; deep_read_mode: boolean }>>([])
 
   // Hardcoded “newsletter” data for now (as requested).
   const focusData = useMemo(
@@ -70,7 +71,6 @@ export default function ParentDashboardPage() {
               setIsLoading(false)
               return
             }
-            setDeepReadMode(retry.data?.deep_read_mode === true)
             setParentName((retry.data?.student_name as string) || 'Ouder')
           } else {
             setError('Kon instellingen niet laden.')
@@ -81,49 +81,17 @@ export default function ParentDashboardPage() {
         if (profileErr) {
           // handled above
         } else {
-          setDeepReadMode(data?.deep_read_mode === true)
           setParentName(((data?.display_name as string) || (data?.student_name as string)) || 'Ouder')
         }
 
-        // Load linked children (Roblox model): show first child instead of demo text.
-        try {
-          const { data: links } = await supabase
-            .from('family_links')
-            .select('child_id, created_at')
-            .eq('parent_id', userId)
-            .order('created_at', { ascending: true })
-
-          const childIds = Array.isArray(links) ? links.map((l: any) => l.child_id).filter(Boolean) : []
-          if (childIds.length > 0) {
-            // Some DBs don't have profiles.display_name yet → retry without it.
-            const kids1 = await supabase.from('profiles').select('id, display_name, student_name, username').in('id', childIds)
-            let kids: any[] | null = (kids1.data as any) ?? null
-            if (kids1.error) {
-              const msg = String((kids1.error as any)?.message || '')
-              if (
-                /display_name\s+does\s+not\s+exist/i.test(msg) ||
-                /column\s+profiles\.display_name/i.test(msg) ||
-                /could\s+not\s+find\s+the\s+'display_name'\s+column\s+of\s+'profiles'\s+in\s+the\s+schema\s+cache/i.test(msg)
-              ) {
-                const kids2 = await supabase.from('profiles').select('id, student_name, username').in('id', childIds)
-                kids = (kids2.data as any) ?? null
-              }
-            }
-
-            if (Array.isArray(kids)) {
-              setChildren(
-                kids.map((k: any) => ({
-                  id: String(k.id),
-                  displayName: String(k.display_name || k.student_name || 'Kind'),
-                  username: k.username ?? null,
-                }))
-              )
-            }
-          } else {
-            setChildren([])
+        // Load linked children via server action (works even if RLS blocks direct selects).
+        const res = await listMyChildren()
+        if (res.ok) {
+          setChildren(res.children)
+          if (!selectedChildId) {
+            setSelectedChildId(res.children[0]?.id ?? null)
           }
-        } catch {
-          // If profiles RLS blocks this, keep UI stable with generic labels.
+        } else {
           setChildren([])
         }
         setIsLoading(false)
@@ -146,29 +114,25 @@ export default function ParentDashboardPage() {
     }
   }
 
+  const selectedChild = useMemo(() => children.find((c) => c.id === selectedChildId) ?? null, [children, selectedChildId])
+
   const toggleDeepReadMode = async () => {
     setError(null)
-    const next = !deepReadMode
-    setDeepReadMode(next) // optimistic
+    if (!selectedChildId) {
+      setError('Koppel eerst een kind om Diep-Lees Modus te kunnen gebruiken.')
+      return
+    }
+    const current = children.find((c) => c.id === selectedChildId)?.deep_read_mode === true
+    const next = !current
 
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      const userId = userData?.user?.id
-      if (!userId) {
-        window.location.href = '/login'
-        return
-      }
+    // optimistic update
+    setChildren((prev) => prev.map((c) => (c.id === selectedChildId ? { ...c, deep_read_mode: next } : c)))
 
-      const { error: updateErr } = await supabase
-        .from('profiles')
-        .update({ deep_read_mode: next })
-        .eq('id', userId)
-
-      if (updateErr) throw updateErr
-    } catch {
+    const res = await setChildDeepReadMode({ childId: selectedChildId, enabled: next })
+    if (!res.ok) {
       // revert
-      setDeepReadMode(!next)
-      setError('Kon instelling niet opslaan. Probeer opnieuw.')
+      setChildren((prev) => prev.map((c) => (c.id === selectedChildId ? { ...c, deep_read_mode: current } : c)))
+      setError(res.error)
     }
   }
 
@@ -299,23 +263,42 @@ export default function ParentDashboardPage() {
                   Activeer dit om de camera uit te schakelen. Dit dwingt je kind om de vraag rustig over te
                   typen. Dit bevordert begrijpend lezen en vertraagt de haast.
                 </div>
+                {children.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div className="text-xs font-medium text-stone-600">Voor:</div>
+                    <select
+                      value={selectedChildId ?? ''}
+                      onChange={(e) => setSelectedChildId(e.target.value || null)}
+                      className="rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800"
+                    >
+                      {children.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.displayName}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="text-xs text-stone-500">{selectedChild?.username ? `@${selectedChild.username}` : null}</div>
+                  </div>
+                ) : (
+                  <div className="mt-4 text-sm text-stone-500">Koppel eerst een kind (Gezinsaccount) om deze knop te gebruiken.</div>
+                )}
                 {error && <div className="text-sm text-red-700 mt-3">{error}</div>}
               </div>
 
               <button
                 type="button"
                 onClick={toggleDeepReadMode}
-                disabled={isLoading}
+                disabled={isLoading || !selectedChildId}
                 className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full border transition-colors ${
-                  deepReadMode ? 'bg-stone-800 border-stone-800' : 'bg-stone-200 border-stone-200'
+                  selectedChild?.deep_read_mode ? 'bg-stone-800 border-stone-800' : 'bg-stone-200 border-stone-200'
                 } ${isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
-                aria-pressed={deepReadMode}
+                aria-pressed={selectedChild?.deep_read_mode === true}
                 aria-label="Toggle Diep-Lees Modus"
-                title={isLoading ? 'Laden...' : deepReadMode ? 'Aan' : 'Uit'}
+                title={isLoading ? 'Laden...' : selectedChild?.deep_read_mode ? 'Aan' : 'Uit'}
               >
                 <span
                   className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                    deepReadMode ? 'translate-x-6' : 'translate-x-1'
+                    selectedChild?.deep_read_mode ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>

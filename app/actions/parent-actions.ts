@@ -16,6 +16,14 @@ type LinkResult =
   | { ok: true; childId: string; username: string }
   | { ok: false; error: string }
 
+type ChildrenResult =
+  | { ok: true; children: Array<{ id: string; displayName: string; username?: string | null; deep_read_mode: boolean }> }
+  | { ok: false; error: string }
+
+type DeepReadResult =
+  | { ok: true; childId: string; deep_read_mode: boolean }
+  | { ok: false; error: string }
+
 function normalizeUsername(raw: string) {
   const s = String(raw || '').trim().toLowerCase()
   // Roblox-ish: letters, numbers, underscore, dash, dot. No spaces.
@@ -355,6 +363,112 @@ export async function linkExistingChildByUsername(input: { username: string }): 
     }
 
     return { ok: true, childId, username }
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+      return { ok: false, error: 'Server mist SUPABASE_SERVICE_ROLE_KEY. Voeg deze toe aan .env.local en Vercel env.' }
+    }
+    return { ok: false, error: 'Er ging iets mis. Probeer opnieuw.' }
+  }
+}
+
+export async function listMyChildren(): Promise<ChildrenResult> {
+  try {
+    const supabase = createCookieServerClient()
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser()
+    if (userErr || !user) return { ok: false, error: 'Niet ingelogd. Log opnieuw in.' }
+
+    const { data: parentProfile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id, role')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profileErr) return { ok: false, error: 'Kon profiel niet laden.' }
+    if (!parentProfile || parentProfile.role !== 'parent') return { ok: false, error: 'Alleen ouders kunnen kinderen bekijken.' }
+
+    const admin = createAdminClient()
+    const { data: links, error: linkErr } = await admin
+      .from('family_links')
+      .select('child_id, created_at')
+      .eq('parent_id', user.id)
+      .order('created_at', { ascending: true })
+
+    if (linkErr) return { ok: false, error: linkErr.message || 'Kon gezinslinks niet laden.' }
+    const childIds = Array.isArray(links) ? links.map((l: any) => l.child_id).filter(Boolean) : []
+    if (childIds.length === 0) return { ok: true, children: [] }
+
+    const { data: kids, error: kidsErr } = await admin
+      .from('profiles')
+      .select('id, student_name, display_name, username, deep_read_mode')
+      .in('id', childIds)
+
+    // If display_name doesn't exist, retry without it.
+    let finalKids: any[] | null = kids as any
+    if (kidsErr) {
+      const msg = String(kidsErr.message || '')
+      if (isMissingDisplayNameColumn(msg)) {
+        const retry = await admin.from('profiles').select('id, student_name, username, deep_read_mode').in('id', childIds)
+        if (retry.error) return { ok: false, error: retry.error.message || 'Kon kinderen niet laden.' }
+        finalKids = retry.data as any
+      } else {
+        return { ok: false, error: kidsErr.message || 'Kon kinderen niet laden.' }
+      }
+    }
+
+    const mapped = (Array.isArray(finalKids) ? finalKids : []).map((k: any) => ({
+      id: String(k.id),
+      displayName: String(k.display_name || k.student_name || 'Kind'),
+      username: k.username ?? null,
+      deep_read_mode: k.deep_read_mode === true,
+    }))
+    return { ok: true, children: mapped }
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+      return { ok: false, error: 'Server mist SUPABASE_SERVICE_ROLE_KEY. Voeg deze toe aan .env.local en Vercel env.' }
+    }
+    return { ok: false, error: 'Er ging iets mis. Probeer opnieuw.' }
+  }
+}
+
+export async function setChildDeepReadMode(input: { childId: string; enabled: boolean }): Promise<DeepReadResult> {
+  try {
+    const childId = String(input.childId || '').trim()
+    if (!childId) return { ok: false, error: 'Kies eerst een kind.' }
+
+    const supabase = createCookieServerClient()
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser()
+    if (userErr || !user) return { ok: false, error: 'Niet ingelogd. Log opnieuw in.' }
+
+    const { data: parentProfile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id, role')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profileErr) return { ok: false, error: 'Kon profiel niet laden.' }
+    if (!parentProfile || parentProfile.role !== 'parent') return { ok: false, error: 'Alleen ouders mogen Diep-Lees Modus aanpassen.' }
+
+    // Ownership check
+    const { data: linkRow, error: linkErr } = await supabase
+      .from('family_links')
+      .select('id')
+      .eq('parent_id', user.id)
+      .eq('child_id', childId)
+      .maybeSingle()
+    if (linkErr) return { ok: false, error: 'Kon gezinslink niet controleren.' }
+    if (!linkRow) return { ok: false, error: 'Dit kind is niet gekoppeld aan dit ouder-account.' }
+
+    const admin = createAdminClient()
+    const { error: updErr } = await admin.from('profiles').update({ deep_read_mode: input.enabled }).eq('id', childId)
+    if (updErr) return { ok: false, error: updErr.message || 'Kon instelling niet opslaan.' }
+
+    return { ok: true, childId, deep_read_mode: input.enabled === true }
   } catch (e: any) {
     const msg = String(e?.message || '')
     if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {

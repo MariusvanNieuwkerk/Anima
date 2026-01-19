@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Search, AlertTriangle, HelpCircle, CheckCircle2, Lock } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { LogOut, Search, AlertTriangle, HelpCircle, CheckCircle2, Lock } from 'lucide-react'
 import StudentDetailSheet from '@/components/StudentDetailSheet'
+import { supabase } from '@/utils/supabase'
 
 const MOCK_STUDENTS = [
   { id: 1, name: 'Emma de Vries', activity: 'Breuken Oefenen', status: 'flow', time: '12 min', deep_read: false },
@@ -17,6 +18,41 @@ type MockStudent = (typeof MOCK_STUDENTS)[number]
 export default function TeacherClipboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
+  const [teacherName, setTeacherName] = useState<string>('Leraar')
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return
+        const resp = await fetch('/api/auth/get-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        })
+        const json = await resp.json().catch(() => null)
+        const prof = json?.profile
+        if (!mounted || !prof) return
+        const name = prof.teacher_name || prof.display_name || prof.parent_name || prof.student_name
+        if (typeof name === 'string' && name.trim()) setTeacherName(name.trim())
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } finally {
+      window.location.href = '/login'
+    }
+  }
 
   const stuckCount = useMemo(
     () => MOCK_STUDENTS.filter((s) => s.status === 'stuck').length,
@@ -70,12 +106,24 @@ export default function TeacherClipboardPage() {
       <div className="max-w-7xl mx-auto mt-4 md:mt-12 p-4 md:p-8">
         {/* Header */}
         <div className="mb-5 md:mb-8">
-          <h1 className="text-2xl md:text-4xl font-bold text-stone-900 mb-1.5 md:mb-2 leading-tight">
-            Goedemorgen, Meneer Jansen.
-          </h1>
-          <p className="text-stone-600 text-xs md:text-base font-medium">
-            Overzicht Groep 6B - {dateString}
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-4xl font-bold text-stone-900 mb-1.5 md:mb-2 leading-tight">
+                Goedemorgen, {teacherName}.
+              </h1>
+              <p className="text-stone-600 text-xs md:text-base font-medium">
+                Overzicht Groep 6B - {dateString}
+              </p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="mt-1 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition-colors"
+              title="Uitloggen"
+            >
+              <LogOut className="h-4 w-4" />
+              Uitloggen
+            </button>
+          </div>
         </div>
 
         {/* Top 3 cards */}
