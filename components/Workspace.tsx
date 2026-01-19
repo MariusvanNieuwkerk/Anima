@@ -393,14 +393,49 @@ export default function Workspace() {
   }, []);
 
   // --- HULPFUNCTIE: Opslaan in DB (gebruikt de huidige sessionId) ---
-  const saveMessageToDb = async (role: 'user' | 'assistant', content: string, activeSessionId: string) => {
+  const saveMessageToDb = async (
+    role: 'user' | 'assistant',
+    content: string,
+    activeSessionId: string,
+    opts?: { userId?: string | null; topic?: string | null }
+  ) => {
     if (!activeSessionId) return;
-    const { error } = await supabase.from('messages').insert({
-      role,
-      content,
-      session_id: activeSessionId
-    });
-    if (error) console.error('Error saving message:', error);
+    const baseRow: any = { role, content, session_id: activeSessionId }
+    const metaRow: any = {
+      ...baseRow,
+      user_id: opts?.userId ?? null,
+      topic: opts?.topic ?? null,
+    }
+
+    // Prefer inserting user_id/topic, but fall back if the columns don't exist yet.
+    const attempt1 = await supabase.from('messages').insert(metaRow)
+    if (attempt1.error) {
+      const msg = String((attempt1.error as any)?.message || '')
+      const missingUserId = /column\s+messages\.user_id\s+does\s+not\s+exist/i.test(msg) || /user_id\s+does\s+not\s+exist/i.test(msg)
+      const missingTopic = /column\s+messages\.topic\s+does\s+not\s+exist/i.test(msg) || /topic\s+does\s+not\s+exist/i.test(msg)
+      if (missingUserId || missingTopic) {
+        const attempt2 = await supabase.from('messages').insert(baseRow)
+        if (attempt2.error) console.error('Error saving message:', attempt2.error)
+      } else {
+        console.error('Error saving message:', attempt1.error)
+      }
+    }
+
+    // Best-effort: update profile activity fields (also optional columns)
+    const userId = opts?.userId
+    if (userId) {
+      const upd = await supabase
+        .from('profiles')
+        .update({ last_session_id: activeSessionId, last_active_at: new Date().toISOString() })
+        .eq('id', userId)
+      if (upd.error) {
+        const msg = String((upd.error as any)?.message || '')
+        if (!/last_session_id\s+does\s+not\s+exist/i.test(msg) && !/last_active_at\s+does\s+not\s+exist/i.test(msg)) {
+          // ignore missing-column errors, log other issues
+          console.warn('Error updating profile activity:', upd.error)
+        }
+      }
+    }
   };
 
   const getTTSLangCode = (lang: Language) => {
@@ -774,7 +809,7 @@ export default function Workspace() {
     setMessages(prev => [...prev, userMessage]);
     
     // --- OPSLAAN MET HUIDIGE SESSION ID ---
-    saveMessageToDb('user', displayContent, sessionId);
+    saveMessageToDb('user', displayContent, sessionId, { userId: userProfile?.id ?? null });
 
     const imagesToSend = [...selectedImages];
     
@@ -990,7 +1025,7 @@ export default function Workspace() {
       }
 
       // --- OPSLAAN MET HUIDIGE SESSION ID ---
-      saveMessageToDb('assistant', finalChatMessage, sessionId);
+      saveMessageToDb('assistant', finalChatMessage, sessionId, { userId: userProfile?.id ?? null, topic });
 
       // TEST-TRIGGER: Genereer proef-insight na 3e bericht (gebruiker + AI = 2 berichten, na 3e AI bericht = totaal 6 berichten)
       // Of simpelweg: na elke 3e user message (3 user messages = 6 totaal berichten)

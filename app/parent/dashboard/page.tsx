@@ -7,6 +7,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import AddChildForm from '@/components/parent/AddChildForm'
 import DeleteChildSection from '@/components/parent/DeleteChildSection'
 import { listMyChildren, setChildDeepReadMode } from '@/app/actions/parent-actions'
+import { getParentChildSummary } from '@/app/actions/dashboard-actions'
 
 // NOTE: We use Supabase SSR's browser client so auth is cookie-based (works with middleware).
 // This function name matches the intent of "createClientComponentClient" without adding extra deps.
@@ -25,16 +26,10 @@ export default function ParentDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [parentName, setParentName] = useState<string>('Ouder')
   const [children, setChildren] = useState<Array<{ id: string; displayName: string; username?: string | null; deep_read_mode: boolean }>>([])
+  const [focusData, setFocusData] = useState<Array<{ name: string; value: number; color: string }>>([])
+  const [flowRows, setFlowRows] = useState<Array<{ name: string; label: string; value: number; color: string }>>([])
+  const [summaryHint, setSummaryHint] = useState<string | null>(null)
 
-  // Hardcoded “newsletter” data for now (as requested).
-  const focusData = useMemo(
-    () => [
-      { name: 'Wiskunde', value: 45, color: '#a8a29e' }, // stone-400
-      { name: 'Geschiedenis', value: 30, color: '#d6d3d1' }, // stone-300
-      { name: 'Engels', value: 25, color: '#e7e5e4' }, // stone-200
-    ],
-    []
-  )
   const totalMinutes = useMemo(() => focusData.reduce((sum, it) => sum + it.value, 0), [focusData])
 
   useEffect(() => {
@@ -116,6 +111,40 @@ export default function ParentDashboardPage() {
 
   const selectedChild = useMemo(() => children.find((c) => c.id === selectedChildId) ?? null, [children, selectedChildId])
 
+  // Load “real” summary for the selected child from messages (best-effort; falls back to placeholders).
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      if (!selectedChildId) {
+        if (!mounted) return
+        setFocusData([])
+        setFlowRows([])
+        setSummaryHint(null)
+        return
+      }
+      const res = await getParentChildSummary({ childId: selectedChildId })
+      if (!mounted) return
+      if (!res.ok) {
+        setSummaryHint(res.error)
+        setFocusData([])
+        setFlowRows([])
+        return
+      }
+      if (res.requiresMigration) {
+        setSummaryHint('Nog geen leerdata beschikbaar (run migratie 009/010 en voer een paar chat-berichten).')
+        setFocusData([])
+        setFlowRows([])
+        return
+      }
+      setSummaryHint(null)
+      setFocusData(res.focus.length ? res.focus : [])
+      setFlowRows(res.flow.length ? res.flow : [])
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [selectedChildId])
+
   const toggleDeepReadMode = async () => {
     setError(null)
     if (!selectedChildId) {
@@ -172,26 +201,32 @@ export default function ParentDashboardPage() {
             <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
               <div className="text-stone-800 font-semibold text-lg">Focus</div>
               <div className="mt-6 h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={focusData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={72}
-                      outerRadius={96}
-                      startAngle={90}
-                      endAngle={-270}
-                      paddingAngle={2}
-                      stroke="white"
-                      strokeWidth={4}
-                    >
-                      {focusData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                {focusData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={focusData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={72}
+                        outerRadius={96}
+                        startAngle={90}
+                        endAngle={-270}
+                        paddingAngle={2}
+                        stroke="white"
+                        strokeWidth={4}
+                      >
+                        {focusData.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-stone-400 text-sm">
+                    Nog geen focus-data
+                  </div>
+                )}
                 <div className="pointer-events-none -mt-[168px] flex flex-col items-center justify-center">
                   <div className="text-3xl font-semibold text-stone-900">{totalMinutes}</div>
                   <div className="text-sm text-stone-500">min</div>
@@ -199,18 +234,19 @@ export default function ParentDashboardPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                {focusData.map((row) => (
-                  <div key={row.name} className="flex items-center justify-between text-stone-600">
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: row.color }}
-                      />
-                      <span>{row.name}</span>
+                {focusData.length > 0 ? (
+                  focusData.map((row) => (
+                    <div key={row.name} className="flex items-center justify-between text-stone-600">
+                      <div className="flex items-center gap-3">
+                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: row.color }} />
+                        <span>{row.name}</span>
+                      </div>
+                      <span className="text-stone-700">{row.value} min</span>
                     </div>
-                    <span className="text-stone-700">{row.value} min</span>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-sm text-stone-400">Typ een paar vragen met {selectedChild?.displayName || 'je kind'} om data op te bouwen.</div>
+                )}
               </div>
             </section>
 
@@ -219,27 +255,31 @@ export default function ParentDashboardPage() {
               <div className="text-stone-800 font-semibold text-lg">Flow</div>
 
               <div className="mt-6 space-y-6">
-                {[
-                  { name: 'Wiskunde', label: 'Pittig', value: 0.25, color: '#f6caa2' },
-                  { name: 'Geschiedenis', label: 'In de zone', value: 0.92, color: '#5b5b5b' },
-                  { name: 'Engels', label: 'Stabiel', value: 0.55, color: '#a8a29e' },
-                ].map((row) => (
-                  <div key={row.name} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-stone-800 font-semibold">{row.name}</div>
-                      <div className="text-stone-500">{row.label}</div>
+                {flowRows.length > 0 ? (
+                  flowRows.map((row) => (
+                    <div key={row.name} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-stone-800 font-semibold">{row.name}</div>
+                        <div className="text-stone-500">{row.label}</div>
+                      </div>
+                      <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${Math.round(row.value * 100)}%`, backgroundColor: row.color }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${Math.round(row.value * 100)}%`, backgroundColor: row.color }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-sm text-stone-400">Nog geen flow-data</div>
+                )}
               </div>
             </section>
           </div>
+
+          {summaryHint ? (
+            <div className="text-sm text-stone-500">{summaryHint}</div>
+          ) : null}
 
           {/* Tip card */}
           <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">

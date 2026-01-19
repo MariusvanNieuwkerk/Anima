@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LogOut, Search, AlertTriangle, HelpCircle, CheckCircle2, Lock } from 'lucide-react'
 import StudentDetailSheet from '@/components/StudentDetailSheet'
 import { supabase } from '@/utils/supabase'
+import { getTeacherStudents } from '@/app/actions/dashboard-actions'
 
 const MOCK_STUDENTS = [
   { id: 1, name: 'Emma de Vries', activity: 'Breuken Oefenen', status: 'flow', time: '12 min', deep_read: false },
@@ -19,6 +20,10 @@ export default function TeacherClipboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
   const [teacherName, setTeacherName] = useState<string>('Leraar')
+  const [students, setStudents] = useState<
+    Array<{ id: string; name: string; activity: string; status: 'flow' | 'focus' | 'inactive'; deep_read: boolean }>
+  >([])
+  const [dataHint, setDataHint] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -46,6 +51,36 @@ export default function TeacherClipboardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      const res = await getTeacherStudents()
+      if (!mounted) return
+      if (!res.ok) {
+        setDataHint(res.error)
+        setStudents([])
+        return
+      }
+      if (res.requiresMigration) {
+        setDataHint('Nog geen activiteit-data (run migratie 009/010 en laat een leerling even chatten).')
+      } else {
+        setDataHint(null)
+      }
+      setStudents(
+        res.students.map((s) => ({
+          id: s.id,
+          name: s.name,
+          activity: s.activityLabel,
+          status: s.status,
+          deep_read: s.deep_read_mode,
+        }))
+      )
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
@@ -54,24 +89,17 @@ export default function TeacherClipboardPage() {
     }
   }
 
-  const stuckCount = useMemo(
-    () => MOCK_STUDENTS.filter((s) => s.status === 'stuck').length,
-    []
-  )
-  const focusCount = useMemo(
-    () => MOCK_STUDENTS.filter((s) => s.status === 'focus').length,
-    []
-  )
-  const flowCount = useMemo(
-    () => MOCK_STUDENTS.filter((s) => s.status === 'flow').length,
-    []
-  )
+  const source = students.length > 0 ? students : [...MOCK_STUDENTS]
+
+  const stuckCount = useMemo(() => source.filter((s: any) => s.status === 'inactive').length, [source])
+  const focusCount = useMemo(() => source.filter((s: any) => s.status === 'focus').length, [source])
+  const flowCount = useMemo(() => source.filter((s: any) => s.status === 'flow').length, [source])
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return [...MOCK_STUDENTS]
-    return MOCK_STUDENTS.filter((s) => s.name.toLowerCase().includes(q))
-  }, [searchQuery])
+    if (!q) return [...source]
+    return source.filter((s: any) => s.name.toLowerCase().includes(q))
+  }, [searchQuery, source])
 
   const today = new Date()
   const months = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december']
@@ -83,15 +111,15 @@ export default function TeacherClipboardPage() {
     return name.substring(0, 2).toUpperCase()
   }
 
-  const statusBadge = (s: MockStudent['status']) => {
+  const statusBadge = (s: any) => {
     if (s === 'flow') return 'bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium'
-    if (s === 'stuck') return 'bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-medium'
+    if (s === 'inactive') return 'bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-medium'
     return 'bg-stone-200 text-stone-700 px-3 py-1 rounded-full text-xs font-medium'
   }
 
-  const statusLabel = (s: MockStudent['status']) => {
+  const statusLabel = (s: any) => {
     if (s === 'flow') return 'Flow'
-    if (s === 'stuck') return 'Hulp nodig'
+    if (s === 'inactive') return 'Hulp nodig'
     return 'Focus'
   }
 
@@ -174,6 +202,7 @@ export default function TeacherClipboardPage() {
         {/* Klassenlijst */}
         <div className="bg-white rounded-2xl md:rounded-3xl border-2 border-stone-300 shadow-md p-4 md:p-6">
           <h2 className="text-lg md:text-xl font-bold text-stone-900 mb-3 md:mb-4">Klassenlijst</h2>
+          {dataHint ? <div className="mb-3 text-sm text-stone-500">{dataHint}</div> : null}
 
           <div className="mb-4 md:mb-6">
             <div className="relative">
@@ -192,7 +221,7 @@ export default function TeacherClipboardPage() {
             {filtered.length === 0 ? (
               <div className="text-stone-500 text-sm py-8 text-center">Geen studenten gevonden</div>
             ) : (
-              filtered.map((student) => (
+              filtered.map((student: any) => (
                 <button
                   key={student.id}
                   onClick={() => setSelectedStudent(student.name)}
@@ -215,9 +244,7 @@ export default function TeacherClipboardPage() {
                   </div>
 
                   <div className="flex flex-col md:flex-row items-end md:items-center gap-1.5 md:gap-3 flex-shrink-0">
-                    <div className="text-xs md:text-sm text-stone-600 hidden md:block font-medium">
-                      Vandaag, {student.time}
-                    </div>
+                    <div className="text-xs md:text-sm text-stone-600 hidden md:block font-medium">{student.activity}</div>
                     <span className={statusBadge(student.status)}>{statusLabel(student.status)}</span>
                   </div>
                 </button>
