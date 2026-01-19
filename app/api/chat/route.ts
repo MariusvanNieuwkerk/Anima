@@ -92,13 +92,13 @@ export async function POST(req: Request) {
     })()
     
     if (tutorMode === 'focus') {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen. Bij sommen/huiswerk: geef NIET meteen het eindantwoord (ook niet als de gebruiker erom vraagt). Gebruik de 3-level escape hatch; pas bij level 3 (na 3 échte pogingen) mag je het eindantwoord geven + mini-transfer. Kort, zakelijk, geen emoji's. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph (grafiek), display_formula (LaTeX), show_map (Leaflet), show_image (Wikimedia) wanneer passend volgens routing table + quality gate.";
     } else if (tutorMode === 'growth') {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen. Bij sommen/huiswerk: geef NIET meteen het eindantwoord (ook niet als de gebruiker erom vraagt). Gebruik de 3-level escape hatch; pas bij level 3 (na 3 échte pogingen) mag je het eindantwoord geven + mini-transfer. Warm, geduldig en ondersteunend (emoji's mag). Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph, display_formula, show_map, show_image wanneer passend volgens routing table + quality gate.";
     } else {
-      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen, maar NOOIT het eindantwoord geven bij sommen/huiswerk (ook niet als de gebruiker erom vraagt). Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
+      coachInstructions = "SCAFFOLDED GUIDE: direct richting geven, methode uitleggen. Bij sommen/huiswerk: geef NIET meteen het eindantwoord (ook niet als de gebruiker erom vraagt). Gebruik de 3-level escape hatch; pas bij level 3 (na 3 échte pogingen) mag je het eindantwoord geven + mini-transfer. Vriendelijk en helder, geen 'schooljuf' toon. Eindig met een concrete volgende stap (mini-opdracht).";
       visualStrategy = "VISUALS (Blueprint V10): Geen generatieve afbeeldingen. Gebruik Smart Board tools: plot_graph, display_formula, show_map, show_image wanneer passend volgens routing table + quality gate.";
     }
 
@@ -115,11 +115,11 @@ export async function POST(req: Request) {
     ### ANIMA FILOSOFIE (GROTE RESET — HARD RULES)
     - Jij bent een tutor: **methode eerst**, geen eindantwoord in de eerste beurt bij sommen/huiswerk.
     - **Scaffolded Guide**: geef richting + structuur, zet 1–2 checkpoints, laat de leerling de laatste stap doen.
-    - **Escape Hatch (genuanceerd)**: als de leerling vastloopt (2 mislukte pogingen / "ik snap het niet"):
-      - Focus: Regel‑Hint (kort: regel/formule/werkwijze).
-      - Verkenner/Explorer: Analogie (maakt het idee intuïtief).
-      - Groei: Samen starten (vul 1 kleine stap in + laat 1 open plek).
-      - NOOIT het eindantwoord.
+    - **Escape Hatch (3-level, deterministisch)**: als de leerling vastloopt (“ik snap het niet”, “help”, “geen idee”) of na meerdere mislukte pogingen:
+      - **Wat telt als ‘poging’ (BELANGRIJK)**: alleen als de leerling **echt werk laat zien** (een stap/redenering/bewerking). Een losse “ja/ok” of alleen een getal is géén poging.
+      - **Level 1 (0 echte pogingen)**: geef 1 *regel-hint* (formule/werkwijze) + 1 mini-checkvraag. **Geen eindantwoord**.
+      - **Level 2 (1–2 echte pogingen)**: werk **één** stap concreet uit (met 1 open plek/blanco) + vraag de leerling die plek in te vullen. **Nog geen eindantwoord**.
+      - **Level 3 (≥3 echte pogingen)**: geef nu het **eindantwoord**, plus **2 korte zinnen waarom**, plus **1 mini transfer-oefenvraag** (zelfde principe, nieuw getal). Houd het kort.
     - **Anti‑Sorry**: vermijd "sorry/mijn excuses" als standaard. Wees direct en pedagogisch: "Oké—stap 1 is…".
     - **Instant Responsiviteit**: geen "even denken/wacht". Start meteen met een stap of één gerichte vraag.
     - **Fail‑Safe**: bij tool/visual twijfel → liever alleen tekst dan een foute/lege visual.
@@ -153,7 +153,11 @@ export async function POST(req: Request) {
     - QUALITY GATE: liever geen visual dan een verkeerde.
 
     ### PERSONA: THE SCAFFOLDED GUIDE (METHOD OVER RESULT)
-    Doel: Je geeft wel directe richting en uitleg, maar je geeft NIET meteen het eindantwoord bij huiswerk/sommen.
+    Doel: Je geeft directe richting en uitleg. Bij **huiswerk/sommen** geef je **niet meteen** het eindantwoord; je gebruikt de 3-level escape hatch.
+
+    BALANS (BELANGRIJK):
+    - **Reken-/huiswerkvragen**: methode + scaffolding eerst; eindantwoord pas bij Escape Hatch level 3.
+    - **Feitelijke vragen** (definities, ‘wie/wat/waarom’-kennis, geschiedenis/biologie-feiten): geef wél een direct, duidelijk antwoord (kort), en bied daarna 1 vervolgvraag of mini-check.
 
     HOOFDREGEL: "Method over Result"
     - Als de gebruiker een probleem laat zien (rekensom, logica, puzzel, huiswerk):
@@ -168,9 +172,9 @@ export async function POST(req: Request) {
       STEP 3: Visual Check (Show & Tell)
       - Koppel meteen aan iets zichtbaars in de foto/tekst: "Kijk op je blaadje: waar staat [detail]?"
 
-    FORBIDDEN (ALTIJD, ook als de gebruiker erom vraagt):
-    - Geef nooit het eindantwoord zoals "€16,30" of "x = 4".
-    - Geen "Ik ga het even voor je uitrekenen" met de finale uitkomst.
+    FORBIDDEN (standaard bij huiswerk/sommen — behalve Escape Hatch level 3):
+    - Geef niet meteen het eindantwoord zoals "€16,30" of "x = 4" in de eerste beurt.
+    - Geen "Ik ga het even voor je uitrekenen" met de finale uitkomst zonder scaffolding.
 
     TONE:
     - Helpful, encouraging, empowering. Zeg bv: "Laten we deze samen kraken."
@@ -344,7 +348,7 @@ export async function POST(req: Request) {
     const chat = model.startChat({
       history: [
         { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: `Begrepen. Ik ben een "Scaffolded Guide": ik leg de methode uit en wijs details aan, maar ik geef NOOIT het eindantwoord—ook niet als je er expliciet om vraagt.` }] },
+        { role: "model", parts: [{ text: `Begrepen. Ik ben een "Scaffolded Guide": ik leg de methode uit en wijs details aan. Bij sommen/huiswerk geef ik niet meteen het eindantwoord; ik gebruik de 3-level escape hatch en geef pas bij level 3 (na 3 échte pogingen) het eindantwoord + mini-transfer.` }] },
         ...previousHistory
       ],
     });
@@ -847,6 +851,57 @@ export async function POST(req: Request) {
       ].join('\n')
     }
 
+    // --- ESCAPE HATCH (SERVER-SIDE, DETERMINISTIC) ---
+    // Trigger only when the user explicitly signals being stuck.
+    const isStuckSignal = (s: string) => {
+      const t = String(s || '').toLowerCase().trim()
+      return (
+        /^(help|hulp)\b/.test(t) ||
+        /(ik\s+snap\s+het\s+niet|snap\s+het\s+niet|geen\s+idee|ik\s+begrijp\s+het\s+niet|lukt\s+niet|ik\s+kom\s+er\s+niet\s+uit|vastgelopen)/.test(t)
+      )
+    }
+
+    // "Echte poging" heuristic: must show work/reasoning, not just a final answer token.
+    const isWorkAttempt = (s: string) => {
+      const t = String(s || '').trim()
+      if (!t) return false
+      // Exclude ACK-only and ultra-short tokens
+      if (t.length <= 4) return false
+      if (/^(ok(é|ay)?|ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(t)) return false
+      // Pure number/time/letter answers don't count as "work"
+      if (/^\s*\d+([.,]\d+)?\s*$/.test(t)) return false
+      if (/^\s*[a-fA-F]\s*$/.test(t)) return false
+      if (/^\s*\d{1,2}:\d{2}\s*$/.test(t)) return false
+
+      const lowerT = t.toLowerCase()
+      const hasOps = /[+\-*/^=]/.test(t) || /\\frac|\\sqrt/.test(t)
+      const hasMultiNumbers = (t.match(/\d+/g) || []).length >= 2
+      const hasReasoningWords = /\b(omdat|dus|want|eerst|dan|stap|volgens|ik\s+denk|ik\s+doe)\b/.test(lowerT)
+      const hasUnits = /\b(€|euro|cent|km|m|cm|mm|kg|g|uur|min(uten)?|seconde(n)?|procent|%)\b/i.test(t)
+
+      return hasOps || hasMultiNumbers || hasReasoningWords || hasUnits
+    }
+
+    const escapeHatchLevel = (() => {
+      const lastUser = String(lastMessageContent || '').trim()
+      if (!isStuckSignal(lastUser)) return 0
+
+      const arr = Array.isArray(messages) ? messages : []
+      const recentUserTexts = arr
+        .filter((m: any) => m?.role === 'user')
+        .slice(-10)
+        .map((m: any) => String(m?.content || '').trim())
+
+      // Count only "work attempts" in recent history (excluding current stuck signal turn)
+      const workAttempts = recentUserTexts
+        .slice(0, -1)
+        .filter((t: string) => isWorkAttempt(t)).length
+
+      if (workAttempts >= 3) return 3
+      if (workAttempts >= 1) return 2
+      return 1
+    })()
+
     // If OCR itself says medium/low confidence, do NOT proceed to "answer" (prevents wrong amounts).
     if (wantsPreciseReading && ocrTranscript && ocrConfidence && ocrConfidence !== 'high') {
       return new Response(
@@ -987,12 +1042,30 @@ export async function POST(req: Request) {
     const finalUserParts = (() => {
       if (!ocrTranscript) return userParts
       const suffix =
-        `\n\n[EXACTE TEKST UIT DE FOTO (OCR)]\n${ocrTranscript}\n\n[SYSTEEM OVERRIDE (STRICT): Gebruik ALLEEN de OCR-tekst hierboven om de opdracht te beantwoorden. Als info ontbreekt of onleesbaar is, zeg precies welk stukje ontbreekt en vraag om een scherpere close-up van dat deel. GEEN gokken. Houd je aan de Scaffolded Guide: methode/aanpak eerst, NOOIT het eindantwoord geven.]`
+        `\n\n[EXACTE TEKST UIT DE FOTO (OCR)]\n${ocrTranscript}\n\n[SYSTEEM OVERRIDE (STRICT): Gebruik ALLEEN de OCR-tekst hierboven om de opdracht te beantwoorden. Als info ontbreekt of onleesbaar is, zeg precies welk stukje ontbreekt en vraag om een scherpere close-up van dat deel. GEEN gokken. Houd je aan de Scaffolded Guide: methode/aanpak eerst; bij sommen/huiswerk geen eindantwoord in de eerste beurt (eindantwoord pas bij Escape Hatch level 3).]`
       // Keep images attached so the model can cross-check, but transcript is the source of truth.
       return partsCloneWithTextSuffix(userParts, suffix)
     })()
 
-    let text = await runOnceWithRetry(finalUserParts, 'final', 2)
+    const finalUserPartsWithEscape = (() => {
+      if (!escapeHatchLevel) return finalUserParts
+      const lang = String(userLanguage || 'nl')
+      const addon =
+        lang === 'en'
+          ? escapeHatchLevel === 1
+            ? `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 1): The student is stuck. Give 1 short rule/formula hint + 1 tiny check question. Do NOT give the final answer. Keep it short. Output valid JSON only.]`
+            : escapeHatchLevel === 2
+              ? `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 2): The student is stuck and has already tried. Work out exactly ONE step (leave 1 blank like "__") and ask them to fill it in. Do NOT give the final answer yet. Output valid JSON only.]`
+              : `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 3): The student is stuck after 3 real attempts. You MAY give the final answer now. Format: final answer + 2 short 'why' sentences + 1 mini transfer practice question (same idea, new numbers). Keep it concise. Output valid JSON only.]`
+          : escapeHatchLevel === 1
+            ? `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 1): De leerling zit vast. Geef 1 korte regel-hint (formule/werkwijze) + 1 mini-checkvraag. Geef GEEN eindantwoord. Houd het kort. Output ALLEEN geldige JSON.]`
+            : escapeHatchLevel === 2
+              ? `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 2): De leerling zit vast en heeft al geprobeerd. Werk precies ÉÉN stap concreet uit (laat 1 blanco zoals "__") en laat de leerling die invullen. Nog GEEN eindantwoord. Output ALLEEN geldige JSON.]`
+              : `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 3): De leerling zit vast na 3 échte pogingen. Je MAG nu het eindantwoord geven. Format: eindantwoord + 2 korte zinnen 'waarom' + 1 mini transfer-oefenvraag (zelfde idee, nieuwe getallen). Houd het kort. Output ALLEEN geldige JSON.]`
+      return partsCloneWithTextSuffix(finalUserParts, addon)
+    })()
+
+    let text = await runOnceWithRetry(finalUserPartsWithEscape, 'final', 2)
 
     // Best-effort JSON extraction. If it fails, fall back to plain text in message.
     let payload: any = null
