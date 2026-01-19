@@ -6,16 +6,6 @@ import StudentDetailSheet from '@/components/StudentDetailSheet'
 import { supabase } from '@/utils/supabase'
 import { getTeacherStudents } from '@/app/actions/dashboard-actions'
 
-const MOCK_STUDENTS = [
-  { id: 1, name: 'Emma de Vries', activity: 'Breuken Oefenen', status: 'flow', time: '12 min', deep_read: false },
-  { id: 2, name: 'Liam Bakker', activity: 'Begrijpend Lezen', status: 'stuck', time: '25 min', deep_read: true },
-  { id: 3, name: 'Sophie Janssen', activity: 'Tijdrekenen', status: 'focus', time: '40 min', deep_read: false },
-  { id: 4, name: 'Noah Visser', activity: 'Spelling', status: 'flow', time: '8 min', deep_read: false },
-  { id: 5, name: 'Lucas Smit', activity: 'Geschiedenis', status: 'stuck', time: '3 min', deep_read: true },
-] as const
-
-type MockStudent = (typeof MOCK_STUDENTS)[number]
-
 export default function TeacherClipboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null)
@@ -89,17 +79,15 @@ export default function TeacherClipboardPage() {
     }
   }
 
-  const source = students.length > 0 ? students : [...MOCK_STUDENTS]
-
-  const stuckCount = useMemo(() => source.filter((s: any) => s.status === 'inactive').length, [source])
-  const focusCount = useMemo(() => source.filter((s: any) => s.status === 'focus').length, [source])
-  const flowCount = useMemo(() => source.filter((s: any) => s.status === 'flow').length, [source])
+  const stuckCount = useMemo(() => students.filter((s: any) => s.status === 'inactive').length, [students])
+  const focusCount = useMemo(() => students.filter((s: any) => s.status === 'focus').length, [students])
+  const flowCount = useMemo(() => students.filter((s: any) => s.status === 'flow').length, [students])
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return [...source]
-    return source.filter((s: any) => s.name.toLowerCase().includes(q))
-  }, [searchQuery, source])
+    if (!q) return [...students]
+    return students.filter((s: any) => s.name.toLowerCase().includes(q))
+  }, [searchQuery, students])
 
   const today = new Date()
   const months = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december']
@@ -218,7 +206,14 @@ export default function TeacherClipboardPage() {
           </div>
 
           <div className="space-y-1.5 md:space-y-2 max-h-[600px] overflow-y-auto">
-            {filtered.length === 0 ? (
+            {students.length === 0 ? (
+              <div className="text-stone-500 text-sm py-8 text-center">
+                Nog geen klas‑activiteit.
+                <div className="mt-2 text-xs text-stone-400">
+                  Laat een leerling 3–5 berichten sturen in het bureau en refresh dan dit scherm.
+                </div>
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="text-stone-500 text-sm py-8 text-center">Geen studenten gevonden</div>
             ) : (
               filtered.map((student: any) => (

@@ -137,13 +137,13 @@ export async function getParentChildSummary(input: { childId: string }): Promise
     const messageCount7d = rows.length
     const totalMinutes7d = minutesFromMessageCount(messageCount7d)
 
-    // Topic minutes from assistant messages (fallback to "Overig")
+    // Topic minutes from assistant messages (fallback to "Overig" so early sessions still show something)
     const topicCount = new Map<string, number>()
     for (const r of rows) {
       if ((r as any).role !== 'assistant') continue
       const t = typeof (r as any).topic === 'string' ? (r as any).topic.trim() : ''
-      if (!t) continue
-      topicCount.set(t, (topicCount.get(t) || 0) + 1)
+      const key = t || 'Overig'
+      topicCount.set(key, (topicCount.get(key) || 0) + 1)
     }
 
     const sortedTopics = Array.from(topicCount.entries())

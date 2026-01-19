@@ -31,6 +31,7 @@ export default function ParentDashboardPage() {
   const [summaryHint, setSummaryHint] = useState<string | null>(null)
 
   const totalMinutes = useMemo(() => focusData.reduce((sum, it) => sum + it.value, 0), [focusData])
+  const hasAnyLearningData = focusData.length > 0 || flowRows.length > 0
 
   useEffect(() => {
     let mounted = true
@@ -223,14 +224,21 @@ export default function ParentDashboardPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center text-stone-400 text-sm">
-                    Nog geen focus-data
+                  <div className="h-full w-full flex items-center justify-center">
+                    <div className="max-w-xs text-center">
+                      <div className="text-stone-700 font-semibold">Nog geen focus‑data</div>
+                      <div className="mt-2 text-sm text-stone-500">
+                        Laat {selectedChild?.displayName || 'je kind'} even 3–5 vragen stellen in het bureau. Dan verschijnt hier automatisch een update.
+                      </div>
+                    </div>
                   </div>
                 )}
-                <div className="pointer-events-none -mt-[168px] flex flex-col items-center justify-center">
-                  <div className="text-3xl font-semibold text-stone-900">{totalMinutes}</div>
-                  <div className="text-sm text-stone-500">min</div>
-                </div>
+                {focusData.length > 0 ? (
+                  <div className="pointer-events-none -mt-[168px] flex flex-col items-center justify-center">
+                    <div className="text-3xl font-semibold text-stone-900">{totalMinutes}</div>
+                    <div className="text-sm text-stone-500">min</div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-6 space-y-3">
@@ -245,7 +253,9 @@ export default function ParentDashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-stone-400">Typ een paar vragen met {selectedChild?.displayName || 'je kind'} om data op te bouwen.</div>
+                  <div className="text-sm text-stone-400">
+                    Tip: begin met “Ik snap breuken niet” of upload een werkblad (als Diep‑Lees Modus uit staat).
+                  </div>
                 )}
               </div>
             </section>
@@ -271,14 +281,24 @@ export default function ParentDashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-stone-400">Nog geen flow-data</div>
+                  <div className="text-sm text-stone-400">
+                    Nog geen flow‑data. Dit vult zich zodra er wat gesprekshistorie is.
+                  </div>
                 )}
               </div>
             </section>
           </div>
 
-          {summaryHint ? (
-            <div className="text-sm text-stone-500">{summaryHint}</div>
+          {summaryHint ? <div className="text-sm text-stone-500">{summaryHint}</div> : null}
+          {!summaryHint && !hasAnyLearningData ? (
+            <div className="rounded-2xl border border-stone-200 bg-white shadow-sm p-5">
+              <div className="text-stone-800 font-semibold">Eerste keer? Zo krijg je data</div>
+              <ol className="mt-3 space-y-2 text-sm text-stone-600 list-decimal list-inside">
+                <li>Log in als leerling en stel 3–5 vragen.</li>
+                <li>Gebruik bij voorkeur één onderwerp per sessie (bijv. breuken).</li>
+                <li>Refresh dit dashboard na 1 minuut.</li>
+              </ol>
+            </div>
           ) : null}
 
           {/* Tip card */}
