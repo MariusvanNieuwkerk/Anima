@@ -27,6 +27,13 @@ function proxyEmailForUsername(username: string) {
   return `${username}@student.anima.app`
 }
 
+function isMissingDisplayNameColumn(errMsg: string) {
+  return (
+    /column\s+profiles\.display_name\s+does\s+not\s+exist/i.test(errMsg) ||
+    /display_name\s+does\s+not\s+exist/i.test(errMsg)
+  )
+}
+
 function createCookieServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -123,21 +130,49 @@ export async function createChildAccount(input: {
     const childId = created.user.id
 
     // Ensure a profile exists (admin bypasses RLS). Upsert keeps it safe if a trigger already created it.
-    const profileBase: any = {
+    const profileBaseWithDisplayName: any = {
       id: childId,
       role: 'student',
       username,
       display_name: displayName,
       student_name: displayName,
     }
+    const profileBaseNoDisplayName: any = {
+      id: childId,
+      role: 'student',
+      username,
+      student_name: displayName,
+    }
     // Try with email first (preferred), but fall back if the column doesn't exist.
     const tryUpsert = async (row: any) => admin.from('profiles').upsert(row, { onConflict: 'id' })
-    const up1 = await tryUpsert({ ...profileBase, email })
+    const up1 = await tryUpsert({ ...profileBaseWithDisplayName, email })
     if (up1.error) {
-      const msg = String(up1.error.message || '')
-      if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)) {
-        const up2 = await tryUpsert(profileBase)
-        if (up2.error) return { ok: false, error: up2.error.message || 'Kon student-profiel niet opslaan.' }
+      const msg1 = String(up1.error.message || '')
+
+      // Remove email if column is missing
+      if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg1) || /email\\s+does\\s+not\\s+exist/i.test(msg1)) {
+        const up2 = await tryUpsert(profileBaseWithDisplayName)
+        if (up2.error) {
+          const msg2 = String(up2.error.message || '')
+          if (isMissingDisplayNameColumn(msg2)) {
+            const up3 = await tryUpsert(profileBaseNoDisplayName)
+            if (up3.error) return { ok: false, error: up3.error.message || 'Kon student-profiel niet opslaan.' }
+          } else {
+            return { ok: false, error: up2.error.message || 'Kon student-profiel niet opslaan.' }
+          }
+        }
+      } else if (isMissingDisplayNameColumn(msg1)) {
+        // Remove display_name if column is missing
+        const up2 = await tryUpsert({ ...profileBaseNoDisplayName, email })
+        if (up2.error) {
+          const msg2 = String(up2.error.message || '')
+          if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg2) || /email\\s+does\\s+not\\s+exist/i.test(msg2)) {
+            const up3 = await tryUpsert(profileBaseNoDisplayName)
+            if (up3.error) return { ok: false, error: up3.error.message || 'Kon student-profiel niet opslaan.' }
+          } else {
+            return { ok: false, error: up2.error.message || 'Kon student-profiel niet opslaan.' }
+          }
+        }
       } else {
         return { ok: false, error: up1.error.message || 'Kon student-profiel niet opslaan.' }
       }
@@ -199,14 +234,23 @@ export async function deleteChildAccount(input: { childId: string; confirm: stri
     if (!linkRow) return { ok: false, error: 'Dit kind is niet gekoppeld aan dit ouder-account.' }
 
     const admin = createAdminClient()
-    const { data: childProfile } = await admin
-      .from('profiles')
-      .select('display_name, username')
-      .eq('id', childId)
-      .maybeSingle()
+    // Some DBs don't have profiles.display_name → fall back to student_name.
+    let childProfile: any = null
+    const sel1 = await admin.from('profiles').select('display_name, username, student_name').eq('id', childId).maybeSingle()
+    if (sel1.error && isMissingDisplayNameColumn(String(sel1.error.message || ''))) {
+      const sel2 = await admin.from('profiles').select('student_name, username').eq('id', childId).maybeSingle()
+      childProfile = sel2.data
+    } else {
+      childProfile = sel1.data
+    }
 
     const expectedUsername = typeof (childProfile as any)?.username === 'string' ? String((childProfile as any).username) : ''
-    const expectedName = typeof (childProfile as any)?.display_name === 'string' ? String((childProfile as any).display_name) : ''
+    const expectedName =
+      typeof (childProfile as any)?.display_name === 'string'
+        ? String((childProfile as any).display_name)
+        : typeof (childProfile as any)?.student_name === 'string'
+          ? String((childProfile as any).student_name)
+          : ''
 
     const norm = (s: string) => String(s || '').trim().toLowerCase()
     const typed = norm(confirm).replace(/^@/, '')
@@ -275,12 +319,25 @@ export async function linkExistingChildByUsername(input: { username: string }): 
     // Find the child profile by username (preferred) or by proxy email.
     const proxyEmail = proxyEmailForUsername(username)
 
-    const { data: childProfile, error: childErr } = await admin
+    // Some DBs don't have profiles.display_name → fall back to student_name.
+    let childProfile: any = null
+    const q1 = await admin
       .from('profiles')
-      .select('id, role, username, display_name, email')
+      .select('id, role, username, display_name, student_name, email')
       .or(`username.eq.${username},email.eq.${proxyEmail}`)
       .maybeSingle()
-    if (childErr) return { ok: false, error: childErr.message || 'Kon kind-profiel niet vinden.' }
+    if (q1.error && isMissingDisplayNameColumn(String(q1.error.message || ''))) {
+      const q2 = await admin
+        .from('profiles')
+        .select('id, role, username, student_name, email')
+        .or(`username.eq.${username},email.eq.${proxyEmail}`)
+        .maybeSingle()
+      childProfile = q2.data
+      if (q2.error) return { ok: false, error: q2.error.message || 'Kon kind-profiel niet vinden.' }
+    } else {
+      childProfile = q1.data
+      if (q1.error) return { ok: false, error: q1.error.message || 'Kon kind-profiel niet vinden.' }
+    }
     if (!childProfile?.id) return { ok: false, error: 'Geen bestaand kind-account gevonden met deze gebruikersnaam.' }
     if ((childProfile as any).role !== 'student') return { ok: false, error: 'Dit account is geen student-account.' }
 

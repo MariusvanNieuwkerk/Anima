@@ -84,16 +84,45 @@ export async function POST(req: NextRequest) {
           created_at: new Date().toISOString()
         }
 
-        // Some deployments don't have profiles.email yet → try insert with email, then retry without.
-        const attempt1 = await supabaseAdmin.from('profiles').insert({ ...rowBase, email: userEmail }).select().single();
+        const isMissingEmail = (msg: string) =>
+          /column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)
+        const isMissingDisplayName = (msg: string) =>
+          /column\\s+profiles\\.display_name\\s+does\\s+not\\s+exist/i.test(msg) || /display_name\\s+does\\s+not\\s+exist/i.test(msg)
+
+        // Some deployments don't have profiles.email and/or profiles.display_name yet → try insert, then retry with fields removed.
+        const tryInsert = async (row: any) => supabaseAdmin.from('profiles').insert(row).select().single()
+
+        const attempt1 = await tryInsert({ ...rowBase, email: userEmail })
         let newProfile = attempt1.data
         let insertError = attempt1.error
+
         if (insertError) {
-          const msg = String(insertError.message || '')
-          if (/column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)) {
-            const attempt2 = await supabaseAdmin.from('profiles').insert(rowBase).select().single()
+          const msg1 = String(insertError.message || '')
+          if (isMissingEmail(msg1)) {
+            const attempt2 = await tryInsert(rowBase)
             newProfile = attempt2.data
             insertError = attempt2.error
+          }
+        }
+
+        if (insertError) {
+          const msg2 = String(insertError.message || '')
+          if (isMissingDisplayName(msg2)) {
+            const rowNoDisplay: any = { ...rowBase }
+            delete rowNoDisplay.display_name
+
+            const attempt3 = await tryInsert({ ...rowNoDisplay, email: userEmail })
+            newProfile = attempt3.data
+            insertError = attempt3.error
+
+            if (insertError) {
+              const msg3 = String(insertError.message || '')
+              if (isMissingEmail(msg3)) {
+                const attempt4 = await tryInsert(rowNoDisplay)
+                newProfile = attempt4.data
+                insertError = attempt4.error
+              }
+            }
           }
         }
 

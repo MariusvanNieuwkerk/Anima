@@ -51,19 +51,35 @@ export default function ParentDashboardPage() {
 
         const { data, error: profileErr } = await supabase
           .from('profiles')
-          .select('deep_read_mode, display_name')
+          .select('deep_read_mode, display_name, student_name')
           .eq('id', userId)
           .single()
 
         if (!mounted) return
         if (profileErr) {
-          setError('Kon instellingen niet laden.')
-          setIsLoading(false)
-          return
+          // Some DBs don't have profiles.display_name yet → retry without it.
+          const msg = String((profileErr as any)?.message || '')
+          if (/display_name\s+does\s+not\s+exist/i.test(msg) || /column\s+profiles\.display_name/i.test(msg)) {
+            const retry = await supabase.from('profiles').select('deep_read_mode, student_name').eq('id', userId).single()
+            if (retry.error) {
+              setError('Kon instellingen niet laden.')
+              setIsLoading(false)
+              return
+            }
+            setDeepReadMode(retry.data?.deep_read_mode === true)
+            setParentName((retry.data?.student_name as string) || 'Ouder')
+          } else {
+            setError('Kon instellingen niet laden.')
+            setIsLoading(false)
+            return
+          }
         }
-
-        setDeepReadMode(data?.deep_read_mode === true)
-        setParentName((data?.display_name as string) || 'Ouder')
+        if (profileErr) {
+          // handled above
+        } else {
+          setDeepReadMode(data?.deep_read_mode === true)
+          setParentName(((data?.display_name as string) || (data?.student_name as string)) || 'Ouder')
+        }
 
         // Load linked children (Roblox model): show first child instead of demo text.
         try {
@@ -75,16 +91,22 @@ export default function ParentDashboardPage() {
 
           const childIds = Array.isArray(links) ? links.map((l: any) => l.child_id).filter(Boolean) : []
           if (childIds.length > 0) {
-            const { data: kids } = await supabase
-              .from('profiles')
-              .select('id, display_name, username')
-              .in('id', childIds)
+            // Some DBs don't have profiles.display_name yet → retry without it.
+            const kids1 = await supabase.from('profiles').select('id, display_name, student_name, username').in('id', childIds)
+            let kids: any[] | null = (kids1.data as any) ?? null
+            if (kids1.error) {
+              const msg = String((kids1.error as any)?.message || '')
+              if (/display_name\s+does\s+not\s+exist/i.test(msg) || /column\s+profiles\.display_name/i.test(msg)) {
+                const kids2 = await supabase.from('profiles').select('id, student_name, username').in('id', childIds)
+                kids = (kids2.data as any) ?? null
+              }
+            }
 
             if (Array.isArray(kids)) {
               setChildren(
                 kids.map((k: any) => ({
                   id: String(k.id),
-                  displayName: String(k.display_name || 'Kind'),
+                  displayName: String(k.display_name || k.student_name || 'Kind'),
                   username: k.username ?? null,
                 }))
               )
