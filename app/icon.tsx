@@ -3,11 +3,10 @@ import { ImageResponse } from 'next/og'
 export const runtime = 'edge'
 
 function Logo({ size }: { size: number }) {
-  const stroke = '#6b4e2e'
-  const paper = '#efe4cf'
-  const shadow = '#0000000a'
+  // Aim: mimic the provided sketch with a *uniform* paper tone and a hand-drawn brown mark.
+  const stroke = '#5b4026'
+  const paper = '#efe4cf' // uniform background (no texture)
 
-  // Simple “sprout” mark inspired by the provided sketch (kept bold for legibility at small sizes).
   return (
     <div
       style={{
@@ -15,77 +14,92 @@ function Logo({ size }: { size: number }) {
         height: size,
         background: paper,
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: Math.round(size * 0.14),
+        paddingTop: Math.round(size * 0.12),
+        paddingBottom: Math.round(size * 0.1),
         boxSizing: 'border-box',
       }}
     >
+      <svg
+        width={Math.round(size * 0.72)}
+        height={Math.round(size * 0.5)}
+        viewBox="0 0 320 220"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        {/* Seed/base (double-stroke for sketch feel) */}
+        <path
+          d="M86 168 C86 128, 120 104, 160 104 C200 104, 234 128, 234 168 C234 196, 210 206, 160 206 C110 206, 86 196, 86 168 Z"
+          stroke={stroke}
+          strokeWidth="12"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <path
+          d="M90 168 C90 132, 122 110, 160 110 C198 110, 230 132, 230 168 C230 191, 209 199, 160 199 C111 199, 90 191, 90 168 Z"
+          stroke={stroke}
+          strokeWidth="7"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          opacity="0.85"
+        />
+
+        {/* Stem */}
+        <path
+          d="M166 108 C166 78, 178 54, 204 34"
+          stroke={stroke}
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        <path
+          d="M162 110 C162 80, 174 56, 200 36"
+          stroke={stroke}
+          strokeWidth="7"
+          strokeLinecap="round"
+          opacity="0.85"
+        />
+
+        {/* Leaf (slightly irregular) */}
+        <path
+          d="M204 34 C230 18, 266 20, 286 44 C268 76, 226 76, 204 34 Z"
+          stroke={stroke}
+          strokeWidth="12"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <path
+          d="M210 36 C232 24, 262 26, 278 46 C262 72, 230 70, 210 36 Z"
+          stroke={stroke}
+          strokeWidth="7"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          opacity="0.85"
+        />
+        {/* Inner leaf scribble */}
+        <path
+          d="M230 42 C242 54, 256 60, 272 58"
+          stroke={stroke}
+          strokeWidth="6"
+          strokeLinecap="round"
+          opacity="0.9"
+        />
+      </svg>
+
       <div
         style={{
-          width: '100%',
-          height: '100%',
-          borderRadius: Math.round(size * 0.18),
-          background: '#ffffffb3',
-          boxShadow: `0 10px 30px ${shadow}`,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: Math.round(size * 0.05),
-          padding: Math.round(size * 0.12),
+          marginTop: Math.round(size * 0.02),
+          fontSize: Math.round(size * 0.14),
+          letterSpacing: Math.round(size * 0.02),
+          color: stroke,
+          fontWeight: 700,
+          fontFamily: 'ui-rounded, ui-serif, "Comic Sans MS", cursive',
+          lineHeight: 1,
         }}
       >
-        <svg
-          width={Math.round(size * 0.6)}
-          height={Math.round(size * 0.42)}
-          viewBox="0 0 240 170"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          {/* Seed / base */}
-          <path
-            d="M70 130 C70 100, 95 85, 120 85 C145 85, 170 100, 170 130 C170 150, 152 160, 120 160 C88 160, 70 150, 70 130 Z"
-            stroke={stroke}
-            strokeWidth="10"
-            strokeLinejoin="round"
-          />
-          {/* Stem */}
-          <path
-            d="M122 88 C122 62, 132 44, 150 30"
-            stroke={stroke}
-            strokeWidth="10"
-            strokeLinecap="round"
-          />
-          {/* Leaf */}
-          <path
-            d="M146 32 C164 18, 190 18, 204 36 C190 58, 160 58, 146 32 Z"
-            stroke={stroke}
-            strokeWidth="10"
-            strokeLinejoin="round"
-          />
-          {/* Inner leaf detail */}
-          <path
-            d="M162 32 C171 40, 180 45, 194 44"
-            stroke={stroke}
-            strokeWidth="6"
-            strokeLinecap="round"
-            opacity="0.9"
-          />
-        </svg>
-
-        <div
-          style={{
-            fontSize: Math.round(size * 0.12),
-            letterSpacing: Math.round(size * 0.01),
-            color: stroke,
-            fontWeight: 800,
-            fontFamily: 'ui-serif, Georgia, Times, serif',
-            lineHeight: 1,
-          }}
-        >
-          ANIMA
-        </div>
+        ANIMA
       </div>
     </div>
   )
