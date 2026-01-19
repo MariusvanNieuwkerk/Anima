@@ -80,6 +80,19 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5b) Correct antwoord → bevestig en stop (NL)
+**Setup**: laat Anima eindigen met een concrete microvraag (bv. “Wat is 17 + 20?”).
+
+**User**
+1. `37`
+
+**Must**
+- Anima bevestigt duidelijk (bv. “Juist.” / “Exact.” / “Helemaal goed.”).
+- Anima **stopt** daarna (geen nieuwe wedervraag, geen “nog een som?”, geen extra uitleg-lap).
+
+**Must-not**
+- Geen nieuwe micro-opdracht na een correcte afronding.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
