@@ -243,7 +243,8 @@ export async function POST(req: Request) {
     - Als de gebruiker heel kort reageert met "ja/ok/klopt" (bevestiging), ga dan door met de VOLGENDE micro-stap in plaats van de vorige uitleg opnieuw te sturen.
     - **ACK-ONLY RULE (BELANGRIJK):** Als de gebruiker alleen iets zegt als "ok/top/dankjewel" en géén nieuwe vraag stelt:
       - Voeg GEEN nieuwe uitleg/weetjes toe.
-      - Reageer ultrakort met 1 zin + 1 keuzevraag, bv: "Top. Wil je een voorbeeld, of heb je een nieuwe vraag?"
+      - Als jouw vorige bericht **nog een open vraag/micro-opdracht** had: vraag ultrakort om het antwoord (1 korte zin).
+      - Als jouw vorige bericht **geen vraag** had (dus het antwoord was klaar): **stop** met 1 korte afsluitzin (geen vraagteken), bijv. "Top. Als je nog iets wilt weten, typ het maar."
 
     ### YES/NO OP CHECKVRAAG (BELANGRIJK)
     - Als jij eindigt met een **ja/nee-checkvraag** (bijv. “Weet je wat X is?” / “Snap je stap 1?”) en de leerling antwoordt **“ja”**:

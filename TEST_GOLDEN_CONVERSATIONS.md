@@ -14,7 +14,8 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Anima geeft **geen nieuwe uitleg**.
-- Anima eindigt met **1 keuzevraag** (één van de 3 deterministische varianten).
+- Als Anima’s vorige bericht **geen vraag** had (antwoord is “klaar”): Anima sluit af met **1 korte zin zonder vraagteken** (deterministische variant).
+- Als Anima’s vorige bericht **wel een vraag** had: Anima vraagt ultrakort om het antwoord (1 korte zin).
 
 **Must-not**
 - Geen nieuw onderwerp starten.
