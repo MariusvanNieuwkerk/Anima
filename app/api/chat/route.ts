@@ -1074,6 +1074,51 @@ export async function POST(req: Request) {
 
     let text = await runOnceWithRetry(finalUserPartsWithEscape, 'final', 2)
 
+    // PRE-PARSE ANTI-REPEAT (YES/NO CONTINUATION):
+    // If the model repeats the previous assistant message AND the student just answered a yes/no
+    // to the assistant's yes/no question, we must NOT respond with "next micro-step" meta text.
+    // Instead: retry once with a strict "continue the answer without repeating" override.
+    const normalizeForRepeatEarly = (s: string) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[“”"']/g, '')
+        .replace(/[^a-z0-9\s:.,!?€$]/g, '')
+        .trim()
+
+    const lastAssistantInHistoryEarly = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 2; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role && m.role !== 'user') return String(m?.content || '')
+      }
+      return ''
+    })()
+
+    const lastUserTextEarly = String(lastMessageContent || '').trim()
+    const isYesNoAnswerEarly = /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserTextEarly)
+    const lastAssistantAskedEarly = /\?\s*$/.test(lastAssistantInHistoryEarly.trim())
+    const lastAssistantLooksYesNoQuestionEarly =
+      lastAssistantAskedEarly &&
+      /\b(wil\s+je|wilt\s+u|zullen\s+we|shall\s+we|do\s+you\s+want|would\s+you\s+like|weet\s+je|snap\s+je|begrijp\s+je|ken\s+je)\b/i.test(
+        lastAssistantInHistoryEarly
+      )
+
+    const didRepeatEarly =
+      lastAssistantInHistoryEarly &&
+      normalizeForRepeatEarly(text) &&
+      normalizeForRepeatEarly(text) === normalizeForRepeatEarly(lastAssistantInHistoryEarly)
+
+    if (didRepeatEarly && isYesNoAnswerEarly && lastAssistantLooksYesNoQuestionEarly) {
+      const lang = String(userLanguage || 'nl')
+      const ynAddon =
+        lang === 'en'
+          ? `\n\n[SYSTEM OVERRIDE (NO-REPEAT + YES/NO): The student answered "${lastUserTextEarly}" to your previous yes/no question: "${lastAssistantInHistoryEarly}". Do NOT repeat your previous message. If the answer is YES, continue by giving the information you offered. If NO, respect it and offer 2 short options for what to do next. Keep it short. Output valid JSON only.]`
+          : `\n\n[SYSTEEM OVERRIDE (NO-REPEAT + JA/NEE): De leerling antwoordde "${lastUserTextEarly}" op jouw vorige ja/nee-vraag: "${lastAssistantInHistoryEarly}". Herhaal je vorige bericht NIET. Bij "ja": ga door en geef de info die je aanbood. Bij "nee": respecteer dat en geef 2 korte opties voor wat nu. Houd het kort. Output ALLEEN geldige JSON.]`
+      const retryParts = partsCloneWithTextSuffix(finalUserPartsWithEscape, ynAddon)
+      text = await runOnceWithRetry(retryParts, 'repeat_yesno_retry', 2)
+    }
+
     // Best-effort JSON extraction. If it fails, fall back to plain text in message.
     let payload: any = null
     try {
