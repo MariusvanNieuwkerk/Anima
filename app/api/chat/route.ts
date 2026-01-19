@@ -936,6 +936,10 @@ OUTPUT-CONTRACT (CRITICAL)
         .replace(/\s+/g, ' ')
         .replace(/[“”"']/g, '')
         .replace(/[^a-z0-9\s:.,!?€$]/g, '')
+        .replace(
+          /^(?:super|precies|juist|exact|helemaal\s+goed|goed\s+zo|top|ok[ée]?|oke|klopt)\b[!.,:;\-–— ]*/i,
+          ''
+        )
         .trim()
 
     const lastAssistantInHistoryEarly = (() => {
@@ -1038,7 +1042,10 @@ OUTPUT-CONTRACT (CRITICAL)
 
     const isConfirmation = (() => {
       const m = String(payload?.message || '').trim().toLowerCase()
-      return /^(juist|exact|helemaal\s+goed|goed\s+zo|klopt|correct|dat\s+klopt|that'?s\s+right|correct!|exact!|right!)/.test(m)
+      // Include common Dutch confirmations used in practice (e.g. "precies!", "super!").
+      return /^(juist|exact|precies|super|helemaal\s+goed|goed\s+zo|klopt|correct|dat\s+klopt|that'?s\s+right|correct!|exact!|right!)/.test(
+        m
+      )
     })()
 
     const takeFirstSentenceNoQuestion = (s: string) => {
@@ -1399,6 +1406,8 @@ OUTPUT-CONTRACT (CRITICAL)
         .replace(/[“”"']/g, '')
         // Keep common punctuation; drop other symbols (ASCII-safe; avoids unicode property escapes).
         .replace(/[^a-z0-9\s:.,!?€$]/g, '')
+        // Ignore small praise/confirmation prefixes so we catch near-duplicates like "Super!" vs "Precies!"
+        .replace(/^(?:super|precies|juist|exact|helemaal\s+goed|goed\s+zo|top|ok[ée]?|oke|klopt)\b[!.,:;\-–— ]*/i, '')
         .trim()
 
     const lastAssistantInHistory = (() => {
