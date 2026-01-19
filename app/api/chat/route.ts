@@ -234,6 +234,9 @@ export async function POST(req: Request) {
     ### ANTI-REPEAT (CRITICAL UX)
     - Herhaal NIET letterlijk je vorige antwoord.
     - Als de gebruiker heel kort reageert met "ja/ok/klopt" (bevestiging), ga dan door met de VOLGENDE micro-stap in plaats van de vorige uitleg opnieuw te sturen.
+    - **ACK-ONLY RULE (BELANGRIJK):** Als de gebruiker alleen iets zegt als "ok/ja/top/dankjewel" en géén nieuwe vraag stelt:
+      - Voeg GEEN nieuwe uitleg/weetjes toe.
+      - Reageer ultrakort met 1 zin + 1 keuzevraag, bv: "Top. Wil je een voorbeeld, of heb je een nieuwe vraag?"
 
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
@@ -1273,6 +1276,37 @@ export async function POST(req: Request) {
             : `\n\nIk kon geen **betrouwbare foto / erkende plaat** vinden die echt goed bij je vraag past.\nBedoel je een **foto** (echt object) of een **schoolboek-schema**? (Ik toon alleen foto’s/erkende platen.)`
         payload.message = `${String(payload.message || '').trim()}${extra}`.trim()
       }
+    }
+
+    // ACK-ONLY GUARDRAIL:
+    // If the user only acknowledges ("ok/ja/top/...") and doesn't ask anything new,
+    // do NOT continue with extra content. Ask 1 short next-step question.
+    const lastUserText = String(lastMessageContent || '').trim()
+    const isAckOnly =
+      lastUserText.length > 0 &&
+      lastUserText.length <= 24 &&
+      !/[?¿]/.test(lastUserText) &&
+      /^(ok(é|ay)?|ja|yes|yep|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
+
+    if (isAckOnly) {
+      const lang = String(userLanguage || 'nl')
+      const prevAssistantText = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        for (let i = arr.length - 2; i >= 0; i--) {
+          const m = arr[i]
+          if (m?.role && m.role !== 'user') return String(m?.content || '')
+        }
+        return ''
+      })()
+      const prevAssistantAsked = /\?\s*$/.test(prevAssistantText.trim())
+      payload.message =
+        lang === 'en'
+          ? prevAssistantAsked
+            ? `Got it. What’s your answer to my last question? (1 short line)`
+            : `Got it. Do you want an example, or do you have a new question?`
+          : prevAssistantAsked
+            ? `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
+            : `Top. Wil je een voorbeeld, of heb je een nieuwe vraag?`
     }
 
     // FINAL ANTI-REPEAT SAFETY NET:
