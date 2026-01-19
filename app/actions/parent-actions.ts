@@ -12,6 +12,10 @@ type DeleteResult =
   | { ok: true; childId: string }
   | { ok: false; error: string }
 
+type LinkResult =
+  | { ok: true; childId: string; username: string }
+  | { ok: false; error: string }
+
 function normalizeUsername(raw: string) {
   const s = String(raw || '').trim().toLowerCase()
   // Roblox-ish: letters, numbers, underscore, dash, dot. No spaces.
@@ -238,6 +242,61 @@ export async function deleteChildAccount(input: { childId: string; confirm: stri
     await admin.from('profiles').delete().eq('id', childId)
 
     return { ok: true, childId }
+  } catch (e: any) {
+    const msg = String(e?.message || '')
+    if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+      return { ok: false, error: 'Server mist SUPABASE_SERVICE_ROLE_KEY. Voeg deze toe aan .env.local en Vercel env.' }
+    }
+    return { ok: false, error: 'Er ging iets mis. Probeer opnieuw.' }
+  }
+}
+
+export async function linkExistingChildByUsername(input: { username: string }): Promise<LinkResult> {
+  try {
+    const username = normalizeUsername(input.username)
+    if (!username) return { ok: false, error: 'Vul een gebruikersnaam in.' }
+
+    const supabase = createCookieServerClient()
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser()
+    if (userErr || !user) return { ok: false, error: 'Niet ingelogd. Log opnieuw in.' }
+
+    const { data: parentProfile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('id, role')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profileErr) return { ok: false, error: 'Kon profiel niet laden.' }
+    if (!parentProfile || parentProfile.role !== 'parent') return { ok: false, error: 'Alleen ouders mogen een kind koppelen.' }
+
+    const admin = createAdminClient()
+    // Find the child profile by username (preferred) or by proxy email.
+    const proxyEmail = proxyEmailForUsername(username)
+
+    const { data: childProfile, error: childErr } = await admin
+      .from('profiles')
+      .select('id, role, username, display_name, email')
+      .or(`username.eq.${username},email.eq.${proxyEmail}`)
+      .maybeSingle()
+    if (childErr) return { ok: false, error: childErr.message || 'Kon kind-profiel niet vinden.' }
+    if (!childProfile?.id) return { ok: false, error: 'Geen bestaand kind-account gevonden met deze gebruikersnaam.' }
+    if ((childProfile as any).role !== 'student') return { ok: false, error: 'Dit account is geen student-account.' }
+
+    const childId = String((childProfile as any).id)
+
+    // Insert family link (RLS applies)
+    const { error: linkErr } = await supabase.from('family_links').insert({ parent_id: user.id, child_id: childId })
+    if (linkErr) {
+      const msg = String(linkErr.message || '')
+      if (/duplicate|unique|already/i.test(msg)) {
+        return { ok: false, error: 'Dit kind is al gekoppeld.' }
+      }
+      return { ok: false, error: msg || 'Kon koppeling niet opslaan.' }
+    }
+
+    return { ok: true, childId, username }
   } catch (e: any) {
     const msg = String(e?.message || '')
     if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { createChildAccount } from '@/app/actions/parent-actions'
+import { useMemo, useState, useTransition } from 'react'
+import { createChildAccount, linkExistingChildByUsername } from '@/app/actions/parent-actions'
 import { UserPlus } from 'lucide-react'
 
 export default function AddChildForm() {
@@ -11,20 +11,44 @@ export default function AddChildForm() {
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [canLinkExisting, setCanLinkExisting] = useState(false)
+
+  const showLink = useMemo(() => {
+    if (!canLinkExisting) return false
+    return Boolean(username.trim())
+  }, [canLinkExisting, username])
 
   const onSubmit = () => {
     setError(null)
     setSuccess(null)
+    setCanLinkExisting(false)
     startTransition(async () => {
       const res = await createChildAccount({ username, password, displayName })
       if (!res.ok) {
         setError(res.error)
+        if (/proxy-email|geregistreerd|bestaat al/i.test(res.error)) {
+          setCanLinkExisting(true)
+        }
         return
       }
       setSuccess(`Kind-account aangemaakt: ${res.username}`)
       setUsername('')
       setPassword('')
       setDisplayName('')
+    })
+  }
+
+  const onLinkExisting = () => {
+    setError(null)
+    setSuccess(null)
+    startTransition(async () => {
+      const res = await linkExistingChildByUsername({ username })
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      setSuccess(`Kind gekoppeld: ${res.username}`)
+      window.setTimeout(() => window.location.reload(), 600)
     })
   }
 
@@ -85,7 +109,17 @@ export default function AddChildForm() {
       ) : null}
       {success ? <div className="mt-3 text-sm text-emerald-700">{success}</div> : null}
 
-      <div className="mt-4 flex items-center justify-end">
+      <div className="mt-4 flex items-center justify-end gap-2">
+        {showLink ? (
+          <button
+            type="button"
+            onClick={onLinkExisting}
+            disabled={pending || !username.trim()}
+            className="rounded-xl border border-stone-200 bg-white text-stone-800 px-4 py-2 text-sm font-medium hover:bg-stone-50 disabled:opacity-50"
+          >
+            Koppel aan gezin
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onSubmit}
