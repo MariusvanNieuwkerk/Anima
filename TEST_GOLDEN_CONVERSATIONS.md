@@ -28,7 +28,10 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Direct antwoord (bijv. 1789–1799).
-- Daarna **1 korte vervolgvraag** of mini-check (bv. “Wil je weten wat er in 1789 gebeurde?”).
+- Daarna óf:
+  - **stop zonder wedervraag** (kort afsluiten), óf
+  - 1 korte optionele verdiepingszin (zonder druk), óf
+  - 1 korte vervolgvraag (mag, maar niet verplicht).
 
 **Must-not**
 - Geen “ik ga je niet het antwoord geven”.

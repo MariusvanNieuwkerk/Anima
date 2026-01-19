@@ -187,6 +187,9 @@ export async function POST(req: Request) {
     INTERACTIVE MANDATE (ALTIJD):
     - Eindig ELK bericht met 1 duidelijke activerende vraag/actie (de gebruiker moet iets doen, niet alleen lezen).
     - Houd die actie klein en concreet (1 stap, 1 check, 1 invulplek).
+    - UITZONDERING (BELANGRIJK): Als de gebruiker een **feitelijke vraag** stelde en jij die duidelijk hebt beantwoord, mag je ook **stoppen zonder wedervraag**.
+      - Sluit dan af met 1 korte zin, bijv. "Oké. Als je nog een vraag hebt, zeg het maar."
+      - Zet geen vraagteken; maak het optioneel (geen druk).
 
     KEEP IT SHORT:
     - Max 3 korte alinea's. Friendly tone. Geen 'schooljuf' taal.
@@ -1407,6 +1410,21 @@ export async function POST(req: Request) {
     // If the user only acknowledges ("ok/ja/top/...") and doesn't ask anything new,
     // do NOT continue with extra content. Ask 1 short next-step question.
     const lastUserText = String(lastMessageContent || '').trim()
+    const isBareYesNo =
+      lastUserText.length > 0 &&
+      lastUserText.length <= 8 &&
+      !/[?¿]/.test(lastUserText) &&
+      /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserText)
+
+    const prevAssistantTextForAck = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 2; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role && m.role !== 'user') return String(m?.content || '')
+      }
+      return ''
+    })()
+    const prevAssistantAskedForAck = /\?\s*$/.test(prevAssistantTextForAck.trim())
     // NOTE: "ja/nee/yes/no" are treated as *answers* to a yes/no question, not as ACK-only.
     // We only treat lightweight acknowledgements like "ok/top/dankjewel" as ACK-only.
     const isAckOnly =
@@ -1415,17 +1433,32 @@ export async function POST(req: Request) {
       !/[?¿]/.test(lastUserText) &&
       /^(ok(é|ay)?|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
 
+    // If the student clearly acknowledges with a bare yes/no BUT there's no pending yes/no question,
+    // treat it as "conversation complete" and stop without a wedervraag.
+    if (isBareYesNo && !prevAssistantAskedForAck) {
+      const lang = String(userLanguage || 'nl')
+      const userTurnIndex = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        return arr.filter((m: any) => m?.role === 'user').length
+      })()
+      const variant = ((userTurnIndex % 3) + 3) % 3
+
+      const closuresNl = [
+        'Top. Als je nog iets wilt weten, typ het maar.',
+        'Helder. Je mag altijd een nieuwe vraag sturen.',
+        'Oké. Zeg het maar als je nog iets nodig hebt.',
+      ]
+      const closuresEn = [
+        'Got it. If you have another question, just type it.',
+        'Clear. Feel free to ask a new question anytime.',
+        'Okay. Tell me if you need anything else.',
+      ]
+      payload.message = lang === 'en' ? closuresEn[variant] : closuresNl[variant]
+    }
+
     if (isAckOnly) {
       const lang = String(userLanguage || 'nl')
-      const prevAssistantText = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        for (let i = arr.length - 2; i >= 0; i--) {
-          const m = arr[i]
-          if (m?.role && m.role !== 'user') return String(m?.content || '')
-        }
-        return ''
-      })()
-      const prevAssistantAsked = /\?\s*$/.test(prevAssistantText.trim())
+      const prevAssistantAsked = prevAssistantAskedForAck
 
       const userTurnIndex = (() => {
         const arr = Array.isArray(messages) ? messages : []
@@ -1448,10 +1481,18 @@ export async function POST(req: Request) {
         lang === 'en'
           ? prevAssistantAsked
             ? `Got it. What’s your answer to my last question? (1 short line)`
-            : closingVariantsEn[variant]
+            : [
+                'Got it. If you have another question, just type it.',
+                'Clear. Feel free to ask a new question anytime.',
+                'Okay. Tell me if you need anything else.',
+              ][variant]
           : prevAssistantAsked
             ? `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
-            : closingVariantsNl[variant]
+            : [
+                'Top. Als je nog iets wilt weten, typ het maar.',
+                'Helder. Je mag altijd een nieuwe vraag sturen.',
+                'Oké. Zeg het maar als je nog iets nodig hebt.',
+              ][variant]
     }
 
     // FINAL ANTI-REPEAT SAFETY NET:
