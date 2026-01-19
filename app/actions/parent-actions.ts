@@ -30,7 +30,8 @@ function proxyEmailForUsername(username: string) {
 function isMissingDisplayNameColumn(errMsg: string) {
   return (
     /column\s+profiles\.display_name\s+does\s+not\s+exist/i.test(errMsg) ||
-    /display_name\s+does\s+not\s+exist/i.test(errMsg)
+    /display_name\s+does\s+not\s+exist/i.test(errMsg) ||
+    /could\s+not\s+find\s+the\s+'display_name'\s+column\s+of\s+'profiles'\s+in\s+the\s+schema\s+cache/i.test(errMsg)
   )
 }
 

@@ -59,7 +59,11 @@ export default function ParentDashboardPage() {
         if (profileErr) {
           // Some DBs don't have profiles.display_name yet → retry without it.
           const msg = String((profileErr as any)?.message || '')
-          if (/display_name\s+does\s+not\s+exist/i.test(msg) || /column\s+profiles\.display_name/i.test(msg)) {
+          if (
+            /display_name\s+does\s+not\s+exist/i.test(msg) ||
+            /column\s+profiles\.display_name/i.test(msg) ||
+            /could\s+not\s+find\s+the\s+'display_name'\s+column\s+of\s+'profiles'\s+in\s+the\s+schema\s+cache/i.test(msg)
+          ) {
             const retry = await supabase.from('profiles').select('deep_read_mode, student_name').eq('id', userId).single()
             if (retry.error) {
               setError('Kon instellingen niet laden.')
@@ -96,7 +100,11 @@ export default function ParentDashboardPage() {
             let kids: any[] | null = (kids1.data as any) ?? null
             if (kids1.error) {
               const msg = String((kids1.error as any)?.message || '')
-              if (/display_name\s+does\s+not\s+exist/i.test(msg) || /column\s+profiles\.display_name/i.test(msg)) {
+              if (
+                /display_name\s+does\s+not\s+exist/i.test(msg) ||
+                /column\s+profiles\.display_name/i.test(msg) ||
+                /could\s+not\s+find\s+the\s+'display_name'\s+column\s+of\s+'profiles'\s+in\s+the\s+schema\s+cache/i.test(msg)
+              ) {
                 const kids2 = await supabase.from('profiles').select('id, student_name, username').in('id', childIds)
                 kids = (kids2.data as any) ?? null
               }
@@ -193,24 +201,6 @@ export default function ParentDashboardPage() {
               Uitloggen
             </button>
           </header>
-
-          {/* Minimal test form: Roblox-model child creation */}
-          <AddChildForm />
-
-          {/* Simple child list (for testing) */}
-          {children.length > 0 ? (
-            <section className="bg-white rounded-2xl border border-stone-200 shadow-sm p-5">
-              <div className="text-stone-800 font-semibold mb-2">Kinderen</div>
-              <div className="space-y-2">
-                {children.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50 px-3 py-2">
-                    <div className="text-sm text-stone-800 font-medium">{c.displayName}</div>
-                    <div className="text-xs text-stone-500">{c.username ? `@${c.username}` : null}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           {/* Cards row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -332,8 +322,45 @@ export default function ParentDashboardPage() {
             </div>
           </section>
 
-          {/* Danger zone at the bottom (double confirmation) */}
-          <DeleteChildSection children={children} />
+          {/* Gezinsaccount (collapsible): manage children without dominating the dashboard */}
+          <section className="bg-white rounded-2xl border border-stone-200 shadow-sm">
+            <details className="group" open={children.length === 0}>
+              <summary className="cursor-pointer list-none px-6 py-5 flex items-center justify-between">
+                <div>
+                  <div className="text-stone-800 font-semibold text-lg">Gezinsaccount</div>
+                  <div className="text-sm text-stone-500 mt-1">
+                    {children.length > 0
+                      ? `${children.length} kind(eren) gekoppeld`
+                      : 'Koppel of maak een kind-account aan om te starten.'}
+                  </div>
+                </div>
+                <div className="text-stone-500 group-open:rotate-180 transition-transform">⌄</div>
+              </summary>
+              <div className="px-6 pb-6 space-y-5">
+                {children.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-stone-700">Kinderen</div>
+                    <div className="space-y-2">
+                      {children.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50 px-3 py-2"
+                        >
+                          <div className="text-sm text-stone-800 font-medium">{c.displayName}</div>
+                          <div className="text-xs text-stone-500">{c.username ? `@${c.username}` : null}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <AddChildForm />
+
+                {/* Danger zone (double confirmation) */}
+                <DeleteChildSection children={children} />
+              </div>
+            </details>
+          </section>
 
           {/* Role badge */}
           <div className="fixed bottom-4 right-4">

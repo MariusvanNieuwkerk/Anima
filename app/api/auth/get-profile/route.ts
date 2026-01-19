@@ -87,7 +87,9 @@ export async function POST(req: NextRequest) {
         const isMissingEmail = (msg: string) =>
           /column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)
         const isMissingDisplayName = (msg: string) =>
-          /column\\s+profiles\\.display_name\\s+does\\s+not\\s+exist/i.test(msg) || /display_name\\s+does\\s+not\\s+exist/i.test(msg)
+          /column\\s+profiles\\.display_name\\s+does\\s+not\\s+exist/i.test(msg) ||
+          /display_name\\s+does\\s+not\\s+exist/i.test(msg) ||
+          /could\\s+not\\s+find\\s+the\\s+'display_name'\\s+column\\s+of\\s+'profiles'\\s+in\\s+the\\s+schema\\s+cache/i.test(msg)
 
         // Some deployments don't have profiles.email and/or profiles.display_name yet → try insert, then retry with fields removed.
         const tryInsert = async (row: any) => supabaseAdmin.from('profiles').insert(row).select().single()
