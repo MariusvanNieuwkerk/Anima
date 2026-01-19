@@ -838,34 +838,63 @@ OUTPUT-CONTRACT (CRITICAL)
       const lang = String(userLanguage || 'nl')
       const t = String(lastMessageContent || '').trim()
       const isHourOnly = /^\d{1,2}$/.test(t)
+      const lastAssistantText = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        for (let i = arr.length - 2; i >= 0; i--) {
+          const m = arr[i]
+          if (m?.role && m.role !== 'user') return String(m?.content || '')
+        }
+        return ''
+      })()
+      const lastAssistantLower = lastAssistantText.toLowerCase()
+      const askedMinutesConversion =
+        /hoeveel\s+minu?t/i.test(lastAssistantText) ||
+        (lastAssistantLower.includes('minuten') && /omzetten|zet\s+om|naar\s+minuten/.test(lastAssistantLower))
+
+      const findStartTime = (() => {
+        const msgs = Array.isArray(messages) ? messages.slice(-12) : []
+        const blob = msgs.map((m: any) => String(m?.content || '')).join('\n')
+        const m = blob.match(/\b(\d{1,2}):(\d{2})\b/)
+        if (!m) return null
+        const hh = String(m[1]).padStart(2, '0')
+        const mm = String(m[2]).padStart(2, '0')
+        return `${hh}:${mm}`
+      })()
+
       const msg =
         lang === 'en'
-          ? isHourOnly
+          ? askedMinutesConversion
             ? [
-                `Nice — you found the **hour** part.`,
-                `Now add the **minutes**: write the full time as **__ : __** (with minutes).`,
-                `Which option/letter matches your full time?`,
+                `Got it — we’ll work with **${t} minutes**.`,
+                `Now add that to the start time${findStartTime ? ` (**${findStartTime}**)` : ''}.`,
+                `Do it in 2 tiny steps: +60 minutes → **__ : __**, then +35 minutes → **__ : __**.`,
+                `What time do you get after the **+60 minutes** step?`,
               ].join('\n')
-            : [
-                `Good attempt. Let’s **verify the steps** (no final answer yet):`,
-                `- Convert the start time to 24h: 2 pm → **14:00**.`,
-                `- Add the hours → **__ : __**`,
-                `- Add the minutes → **__ : __**`,
-                `Which option/letter matches your result?`,
-              ].join('\n')
-          : isHourOnly
+            : isHourOnly
+              ? [
+                  `Nice — you wrote **${t}**.`,
+                  `Write the time with minutes as **__ : __** and tell me what it is.`,
+                ].join('\n')
+              : [
+                  `Good attempt. Let’s do the next micro-step (no final answer yet):`,
+                  `Write your next time as **__ : __** (with minutes).`,
+                ].join('\n')
+          : askedMinutesConversion
             ? [
-                `Mooi — je hebt het **uur** al.`,
-                `Zet er nu de **minuten** bij: schrijf de hele tijd als **__ : __**.`,
-                `Welke antwoordoptie/letter past bij jouw volledige tijd?`,
+                `Oké — we rekenen met **${t} minuten**.`,
+                `Tel dat op bij de starttijd${findStartTime ? ` (**${findStartTime}**)` : ''}.`,
+                `Doe het in 2 mini-stappen: +60 minuten → **__ : __**, daarna +35 minuten → **__ : __**.`,
+                `Welke tijd krijg je na de **+60 minuten** stap?`,
               ].join('\n')
-            : [
-                `Goede poging. We **checken de stappen** (nog geen eindantwoord):`,
-                `- Zet de starttijd om naar 24-uurs: 2 uur ’s middags → **14:00**.`,
-                `- Tel de uren erbij → **__ : __**`,
-                `- Tel de minuten erbij → **__ : __**`,
-                `Welke antwoordoptie/letter past bij jouw uitkomst?`,
-              ].join('\n')
+            : isHourOnly
+              ? [
+                  `Mooi — jij schreef **${t}**.`,
+                  `Schrijf de tijd mét minuten als **__ : __** en stuur die.`,
+                ].join('\n')
+              : [
+                  `Goede poging. We doen de volgende micro-stap (nog geen eindantwoord):`,
+                  `Schrijf je volgende tijd als **__ : __** (met minuten).`,
+                ].join('\n')
 
       return new Response(
         JSON.stringify({ message: msg, action: 'none', topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen' }),
