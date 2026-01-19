@@ -238,9 +238,16 @@ export async function POST(req: Request) {
     ### ANTI-REPEAT (CRITICAL UX)
     - Herhaal NIET letterlijk je vorige antwoord.
     - Als de gebruiker heel kort reageert met "ja/ok/klopt" (bevestiging), ga dan door met de VOLGENDE micro-stap in plaats van de vorige uitleg opnieuw te sturen.
-    - **ACK-ONLY RULE (BELANGRIJK):** Als de gebruiker alleen iets zegt als "ok/ja/top/dankjewel" en géén nieuwe vraag stelt:
+    - **ACK-ONLY RULE (BELANGRIJK):** Als de gebruiker alleen iets zegt als "ok/top/dankjewel" en géén nieuwe vraag stelt:
       - Voeg GEEN nieuwe uitleg/weetjes toe.
       - Reageer ultrakort met 1 zin + 1 keuzevraag, bv: "Top. Wil je een voorbeeld, of heb je een nieuwe vraag?"
+
+    ### YES/NO OP CHECKVRAAG (BELANGRIJK)
+    - Als jij eindigt met een **ja/nee-checkvraag** (bijv. “Weet je wat X is?” / “Snap je stap 1?”) en de leerling antwoordt **“ja”**:
+      - Ga door met de **volgende micro-stap** of geef 1 kort voorbeeld.
+    - Antwoordt de leerling **“nee”**:
+      - Geef direct een **korte uitleg** (1–3 zinnen) en stel daarna 1 mini-checkvraag om verder te gaan.
+    - Behandel “ja/nee” dus als **antwoord op jouw vraag**, niet als “ACK-only”.
 
     ### GRAPH ENGINE (INTERACTIEVE GRAFIEKEN)
     - Als de gebruiker vraagt om een grafiek/functie/lijn/parabool te tekenen of te plotten:
@@ -1355,11 +1362,13 @@ export async function POST(req: Request) {
     // If the user only acknowledges ("ok/ja/top/...") and doesn't ask anything new,
     // do NOT continue with extra content. Ask 1 short next-step question.
     const lastUserText = String(lastMessageContent || '').trim()
+    // NOTE: "ja/nee/yes/no" are treated as *answers* to a yes/no question, not as ACK-only.
+    // We only treat lightweight acknowledgements like "ok/top/dankjewel" as ACK-only.
     const isAckOnly =
       lastUserText.length > 0 &&
       lastUserText.length <= 24 &&
       !/[?¿]/.test(lastUserText) &&
-      /^(ok(é|ay)?|ja|yes|yep|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
+      /^(ok(é|ay)?|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
 
     if (isAckOnly) {
       const lang = String(userLanguage || 'nl')
@@ -1372,7 +1381,6 @@ export async function POST(req: Request) {
         return ''
       })()
       const prevAssistantAsked = /\?\s*$/.test(prevAssistantText.trim())
-      const isYesNo = /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserText)
 
       const userTurnIndex = (() => {
         const arr = Array.isArray(messages) ? messages : []
@@ -1394,14 +1402,10 @@ export async function POST(req: Request) {
       payload.message =
         lang === 'en'
           ? prevAssistantAsked
-            ? isYesNo
-              ? closingVariantsEn[variant]
-              : `Got it. What’s your answer to my last question? (1 short line)`
+            ? `Got it. What’s your answer to my last question? (1 short line)`
             : closingVariantsEn[variant]
           : prevAssistantAsked
-            ? isYesNo
-              ? closingVariantsNl[variant]
-              : `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
+            ? `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
             : closingVariantsNl[variant]
     }
 
