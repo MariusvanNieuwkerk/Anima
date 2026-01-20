@@ -1050,6 +1050,63 @@ OUTPUT-CONTRACT (CRITICAL)
       payload.message = toned || cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
+    // ANTI-PARROT (NO "SAME QUESTION" FOLLOW-UP):
+    // If the user asks a direct calculation like "184/16" and the model just re-asks the same question
+    // ("Wat is de uitkomst van 184 gedeeld door 16?"), rewrite it into a real micro-step.
+    const lastNonTrivialUserText = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role !== 'user') continue
+        const t = String(m?.content || '').trim()
+        if (!t) continue
+        // Skip pure acknowledgements / stop signals
+        if (
+          /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
+            t
+          )
+        )
+          continue
+        return t
+      }
+      return ''
+    })()
+
+    const fracFromUser = (() => {
+      const t = String(lastNonTrivialUserText || '')
+      // Matches "184/16" or "184 / 16"
+      const m = t.match(/(\d+)\s*\/\s*(\d+)/)
+      if (!m) return null
+      return { a: m[1], b: m[2] }
+    })()
+
+    const looksLikeParrotedDivisionQuestion = (() => {
+      if (!fracFromUser) return false
+      const msg = String(payload?.message || '')
+      const low = msg.toLowerCase()
+      if (!/\?\s*$/.test(msg.trim())) return false
+      // Must mention both numbers and the division phrasing
+      if (!low.includes(fracFromUser.a) || !low.includes(fracFromUser.b)) return false
+      if (!/(gedeeld\s+door|delen\s+door|\/)/.test(low)) return false
+      if (!/(wat\s+is|uitkomst|hoeveel)/.test(low)) return false
+      return true
+    })()
+
+    if (looksLikeParrotedDivisionQuestion) {
+      const lang = String(userLanguage || 'nl')
+      const { a, b } = fracFromUser!
+      payload.message =
+        lang === 'en'
+          ? [
+              `Let’s do it step by step (no final answer yet).`,
+              `Start with: **${b} × 10 = __**. What is it?`,
+            ].join('\n')
+          : [
+              `We doen het stap voor stap (nog geen eindantwoord).`,
+              `Begin met: **${b} × 10 = __**. Wat is dat?`,
+            ].join('\n')
+    }
+
     // STOP-AFTER-CORRECT GUARDRAIL (SERVER-SIDE):
     // If the user answered a pending question and the model confirms correctness,
     // strip any follow-up questions/extra coaching and stop (no wedervraag).

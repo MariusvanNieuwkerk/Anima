@@ -107,6 +107,16 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must-not**
 - Geen meta-coaching (“volgende stap”, “wat is de volgende micro-stap…”).
 
+---
+
+## 5d) Geen papegaaivraag (breuk/deling) (NL)
+**User**
+1. `wat is 184/16`
+
+**Must**
+- Anima herhaalt niet dezelfde vraag als wedervraag (“wat is 184 gedeeld door 16?”).
+- Anima geeft 1 concrete micro-stap (bv. `16×10 = __`), zonder eindantwoord.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
