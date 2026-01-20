@@ -921,21 +921,34 @@ export function applyTutorPolicyWithDebug(
       m.match(new RegExp(String.raw`\bvul\s+in\b[:\-]?\s*(\d+)\s*-\s*(\d+)\s*=\s*${blank}`, 'i')) ||
       m.match(new RegExp(String.raw`\b(\d+)\s*-\s*(\d+)\s*=\s*${blank}`, 'i'))
     if (!mm) return null
-    // In the first regex, captures are [a,b] at (1,2). In the second, also (1,2).
+    // Captures are [a,b] at (1,2). NOTE: we do NOT trust these numbers for the rewrite;
+    // we only use them for detection/logging, and will prefer the user's actual problem.
     return { a: Number(mm[1]), b: Number(mm[2]) }
   })()
-  if (fullSubBlank && Number.isFinite(fullSubBlank.a) && Number.isFinite(fullSubBlank.b)) {
-    mark('hardblock_sub_full_blank', { a: fullSubBlank.a, b: fullSubBlank.b })
-    const a = fullSubBlank.a
-    const b = fullSubBlank.b
+  if (fullSubBlank) {
+    const seed = lastMathUser || lastNonTrivialUser
+    const canonFromUser = parseCanonFromText(seed)
+    const a =
+      canonFromUser?.kind === 'sub' && Number.isFinite(canonFromUser.a) ? (canonFromUser.a as number) : fullSubBlank.a
+    const b =
+      canonFromUser?.kind === 'sub' && Number.isFinite(canonFromUser.b) ? (canonFromUser.b as number) : fullSubBlank.b
+    if (!Number.isFinite(a) || !Number.isFinite(b)) {
+      // Can't safely rewrite; fall through.
+    } else {
+      mark('hardblock_sub_full_blank', {
+        detectedFromModel: { a: fullSubBlank.a, b: fullSubBlank.b },
+        usedFromUser: canonFromUser?.kind === 'sub',
+        used: { a, b },
+      })
     const bT = Math.trunc(b / 10) * 10
     const bU = b - bT
     out.message =
       lang === 'en'
-        ? `Rewrite: ${a} - ${b} = ${a} - ${bT} - ${bU}`
-        : `Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`
+        ? `Split: ${b} = ${bT} + ${bU}. Rewrite: ${a} - ${b} = ${a} - ${bT} - ${bU}`
+        : `Splits: ${b} = ${bT} + ${bU}. Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`
     out.action = out.action || 'none'
     return { payload: out, debug }
+    }
   }
 
   // NOTE: Canonical math engine runs AFTER stop/ack-only logic below.
