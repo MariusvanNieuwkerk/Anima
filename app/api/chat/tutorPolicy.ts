@@ -270,14 +270,12 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const userN = parseNum(lastUser)
       if (Math.abs(userN - (aU + bU)) < 1e-9) return ask(`Vul in: ${(aT + bT)} + ${(aU + bU)} = __`, `Fill in: ${(aT + bT)} + ${(aU + bU)} = __`)
     }
-    // Final combine: confirm + check (no new question).
+    // Final combine: confirm and stop (no extra explanation).
     if (new RegExp(`\\b${aT + bT}\\s*\\+\\s*${aU + bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
       const userN = parseNum(lastUser)
       const ans = a + b
       if (Math.abs(userN - ans) < 1e-9) {
-        const aR = Math.round(a / 10) * 10
-        const bR = Math.round(b / 10) * 10
-        return ask(`Juist. Check: ${aR}+${bR}≈${aR + bR}.`, `Correct. Check: ${aR}+${bR}≈${aR + bR}.`)
+        return ask(`Juist.`, `Correct.`)
       }
     }
     return ask(`Vul in: ${aT} + ${bT} = __`, `Fill in: ${aT} + ${bT} = __`)

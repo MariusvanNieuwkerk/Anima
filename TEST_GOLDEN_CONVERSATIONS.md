@@ -87,6 +87,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima start met de canon: **splitsen** of direct de **tientallen-som** (één concrete stap).
 - Anima gebruikt daarna consequent de volgende stappen (tientallen → eenheden → samenvoegen), steeds **één** invulstap per beurt.
+- Na het correcte eindantwoord: Anima bevestigt kort (bv. “Juist.”) en **stopt** (geen extra check-tekst).
 
 **Must-not**
 - Geen “schrijf je berekening” / “wat is je volgende stap”.
