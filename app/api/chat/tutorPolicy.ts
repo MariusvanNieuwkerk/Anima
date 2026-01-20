@@ -222,7 +222,40 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     const aU = a - aT
     const bT = Math.trunc(b / 10) * 10
     const bU = b - bT
-    if (!/(schrijf|write)\s*:?\s*\d+\s*=\s*\d+\s*\+\s*\d+/i.test(prevAssistant)) {
+    const lastAssistantBlankPrompt = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role === 'user') continue
+        const t = String(m?.content || '')
+        if (!t.includes('__')) continue
+        // Only accept our canonical compute blanks
+        if (new RegExp(`\\b${aT}\\s*\\+\\s*${bT}\\b`).test(t)) return `${aT} + ${bT}`
+        if (new RegExp(`\\b${aU}\\s*\\+\\s*${bU}\\b`).test(t)) return `${aU} + ${bU}`
+        if (new RegExp(`\\b${aT + bT}\\s*\\+\\s*${aU + bU}\\b`).test(t)) return `${aT + bT} + ${aU + bU}`
+        if (new RegExp(`\\b${a}\\s*\\+\\s*${b}\\b`).test(t)) return `${a} + ${b}`
+      }
+      return ''
+    })()
+
+    // If the student ACKs on a compute blank, re-ask THAT same blank (do not rewind).
+    if (!/^\d+/.test(lastUser) && lastAssistantBlankPrompt) {
+      return ask(`Vul in: ${lastAssistantBlankPrompt} = __`, `Fill in: ${lastAssistantBlankPrompt} = __`)
+    }
+
+    const splitWasIntroduced = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      const re = new RegExp(`\\b${a}\\s*=\\s*${aT}\\s*\\+\\s*${aU}.*\\b${b}\\s*=\\s*${bT}\\s*\\+\\s*${bU}`, 'i')
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role === 'user') continue
+        const t = String(m?.content || '')
+        if (re.test(t)) return true
+      }
+      return false
+    })()
+
+    if (!splitWasIntroduced) {
       return ask(
         `Schrijf: ${a} = ${aT} + ${aU} en ${b} = ${bT} + ${bU}.`,
         `Write: ${a} = ${aT} + ${aU} and ${b} = ${bT} + ${bU}.`

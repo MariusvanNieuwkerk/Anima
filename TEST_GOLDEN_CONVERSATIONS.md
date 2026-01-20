@@ -114,6 +114,17 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima **stopt niet**.
 - Anima gaat door met de volgende canon-stap, bijv. `Vul in: 40 + 20 = __`.
 
+---
+
+## 5a-4) Optellen (ACK op invulvraag → herhaal invulvraag, geen rewind) (NL)
+**Setup**: Start met `Los op: 47 + 28` en ga door tot Anima vraagt: `Vul in: 40 + 20 = __`.
+
+**User**
+1. `ok`
+
+**Must**
+- Anima herhaalt de **zelfde invulvraag** (of vraagt ultrakort om het getal), maar gaat **niet terug** naar `Schrijf: 47 = ...`.
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 
