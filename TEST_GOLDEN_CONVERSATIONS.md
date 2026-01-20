@@ -158,6 +158,18 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must-not**
 - Geen “schatten / meer of minder …” vraag.
 
+---
+
+## 5h) Delen (geen herhaling na reststap) (NL)
+**Setup**: Start met `wat is 184/16` en ga door tot Anima vraagt “Hoeveel blijft er over als je 160 van 184 aftrekt?”
+
+**User**
+1. `24`
+
+**Must**
+- Anima **herhaalt die aftrek-vraag niet**.
+- Anima gaat door met de volgende micro‑stap, bijv. `16×1 = __`.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

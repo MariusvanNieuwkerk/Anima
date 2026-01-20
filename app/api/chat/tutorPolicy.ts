@@ -120,6 +120,17 @@ const evalOp = (op: { a: number; b: number; op: '+' | '-' | '*' | '/' }) => {
   return NaN
 }
 
+const isDirectArithmeticUserQuery = (t: string) => {
+  const s = strip(t).toLowerCase()
+  if (!s) return false
+  // Exclude multi-step / homework framing.
+  if (/\b(los\s+op|vereenvoudig|stap\s+voor\s+stap|uitleg)\b/.test(s)) return false
+  // Allow "92/2", "17+28", "wat is 92/2", "what is 17+28"
+  if (/^(?:wat\s+is|what\s+is)\s+/.test(s)) return /\d/.test(s) && /[+\-*/:]/.test(s)
+  // Bare expression
+  return /^[\s\d.,]+[+\-*/:][\s\d.,]+$/.test(s)
+}
+
 const isComprehensionCheck = (t: string) =>
   /(\bsnap\s+je\b|\bbegrijp\s+je\b|\bis\s+dat\s+duidelijk\b|\bvolg\s+je\b|\bmake\s+sense\b|\bdo\s+you\s+understand\b)/i.test(
     String(t || '')
@@ -179,6 +190,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   const lastUser = strip(ctx.lastUserText)
   const messages = Array.isArray(ctx.messages) ? ctx.messages : []
   const prevAssistant = getPrevAssistantText(messages)
+  const lastNonTrivialUser = getLastNonTrivialUserText(messages)
 
   // 1) Stop signals (student control)
   if (lastUser && isStopSignal(lastUser)) {
@@ -259,7 +271,9 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     return out
   }
 
-  // 5) Direct arithmetic: if the previous assistant asked a simple arithmetic question and user answered with a number, stop if correct.
+  // 5) Arithmetic handling:
+  // - If this is a *direct user arithmetic query*, stop when correct.
+  // - If this is a *micro-step inside a larger problem*, never stop on correct; continue (and never return praise-only).
   const prevOp = extractSimpleOp(prevAssistant)
   const userIsNumber = /^\s*\d+([.,]\d+)?\s*$/.test(lastUser)
   if (prevOp && userIsNumber) {
@@ -267,8 +281,18 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     const userN = parseNum(lastUser)
     if (Number.isFinite(expected) && Number.isFinite(userN)) {
       if (Math.abs(userN - expected) < 1e-9) {
-        out.message = lang === 'en' ? 'Exactly.' : 'Juist.'
-        out.action = out.action || 'none'
+        if (isDirectArithmeticUserQuery(lastNonTrivialUser)) {
+          out.message = lang === 'en' ? 'Exactly.' : 'Juist.'
+          out.action = out.action || 'none'
+          return out
+        }
+        // Micro-step correct: do not stop. If the model replies with praise-only, force a concrete next step.
+        if (isPraiseOnly(out.message)) {
+          out.message = inferConcreteStep(lang, messages, lastUser)
+          out.action = out.action || 'none'
+          return out
+        }
+        // Otherwise, let the model continue naturally.
         return out
       }
       out.message =
@@ -281,13 +305,68 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   }
 
   // 6) Anti-parrot: rewrite re-asking a division question into a micro-step.
-  const lastNonTrivialUser = getLastNonTrivialUserText(messages)
   const fracFromUser = (() => {
     const t = String(lastNonTrivialUser || '')
     const m = t.match(/(\d+)\s*\/\s*(\d+)/)
     if (!m) return null
     return { a: m[1], b: m[2] }
   })()
+
+  // 6a) Division progression (prevents repeats):
+  // If we're in a division a/b flow and the student answers a micro-step,
+  // advance to the next concrete micro-step deterministically.
+  if (fracFromUser && userIsNumber) {
+    const aN = Number(fracFromUser.a)
+    const bN = Number(fracFromUser.b)
+    const userN = parseNum(lastUser)
+    if (Number.isFinite(aN) && Number.isFinite(bN) && Number.isFinite(userN)) {
+      const prev = String(prevAssistant || '')
+
+      const prevAskedBx10 =
+        new RegExp(`\\b${fracFromUser.b}\\s*[×x*]\\s*10\\b`).test(prev) || /\b(x|×)\s*10\s*=\s*__/.test(prev)
+      if (prevAskedBx10) {
+        const expectedBx10 = bN * 10
+        if (Math.abs(userN - expectedBx10) < 1e-9) {
+          out.message =
+            lang === 'en'
+              ? `Fill in: **${aN} − ${expectedBx10} = __**.`
+              : `Vul in: **${aN} − ${expectedBx10} = __**.`
+          out.action = out.action || 'none'
+          return out
+        }
+        out.message =
+          lang === 'en'
+            ? `Almost. Fill in: **${bN} × 10 = __**.`
+            : `Bijna. Vul in: **${bN} × 10 = __**.`
+        out.action = out.action || 'none'
+        return out
+      }
+
+      const prevAskedRemainder = /\b(hoeveel\s+blijft\s+er\s+over|blijft\s+er\s+over|remainder|rest)\b/i.test(prev)
+      if (prevAskedRemainder) {
+        // Try to find the "used" number from prev assistant (e.g. 160 in "160 van 184 aftrekt")
+        const nums = (prev.match(/\d+/g) || []).map((n) => Number(n)).filter((n) => Number.isFinite(n))
+        const used = nums.find((n) => n !== aN) ?? nums[0]
+        const expectedRem = Number.isFinite(used) ? aN - used : NaN
+        if (Number.isFinite(expectedRem) && Math.abs(userN - expectedRem) < 1e-9) {
+          out.message =
+            lang === 'en'
+              ? `Next step: **${bN} × 1 = __**. What is it?`
+              : `Volgende stap: **${bN} × 1 = __**. Wat is dat?`
+          out.action = out.action || 'none'
+          return out
+        }
+        if (Number.isFinite(expectedRem)) {
+          out.message =
+            lang === 'en'
+              ? `Fill in: **${aN} − ${used} = __**.`
+              : `Vul in: **${aN} − ${used} = __**.`
+          out.action = out.action || 'none'
+          return out
+        }
+      }
+    }
+  }
 
   // 6b) Generic division prompt: if user gave a fraction/division and the assistant replies with a vague
   // "what is the result/outcome?" (without a compute/fill-blank move), rewrite to the stable first micro-step.
