@@ -900,9 +900,10 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     // - "Vul in 82-47=__"
     // - "82-47=__"
     // - underscores "_" or "__"
+    const blank = String.raw`(?:[_＿‗﹍﹎﹏‾]+|__+|\.{2,}|…+)`
     const mm =
-      m.match(/\bvul\s+in\b[:\-]?\s*(\d+)\s*-\s*(\d+)\s*=\s*_{1,}|__/i) ||
-      m.match(/\b(\d+)\s*-\s*(\d+)\s*=\s*(_{1,}|__)\b/)
+      m.match(new RegExp(String.raw`\bvul\s+in\b[:\-]?\s*(\d+)\s*-\s*(\d+)\s*=\s*${blank}`, 'i')) ||
+      m.match(new RegExp(String.raw`\b(\d+)\s*-\s*(\d+)\s*=\s*${blank}`, 'i'))
     if (!mm) return null
     // In the first regex, captures are [a,b] at (1,2). In the second, also (1,2).
     return { a: Number(mm[1]), b: Number(mm[2]) }
