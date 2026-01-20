@@ -288,6 +288,27 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     if (!m) return null
     return { a: m[1], b: m[2] }
   })()
+
+  // 6b) Generic division prompt: if user gave a fraction/division and the assistant replies with a vague
+  // "what is the result/outcome?" (without a compute/fill-blank move), rewrite to the stable first micro-step.
+  const looksLikeGenericOutcomePrompt = (() => {
+    if (!fracFromUser) return false
+    const m = strip(out.message)
+    if (!m) return false
+    // If it already contains a blank or a concrete compute expression, leave it.
+    if (m.includes('__')) return false
+    if (/\b\d+\s*[×x*:+/\-]\s*\d+\b/.test(m)) return false
+    // Vague prompts that cause the "parrot" UX.
+    if (/\b(uitkomst|antwoord|resultaat)\b/i.test(m) && /\?\s*$/.test(m)) return true
+    if (/^(l(aten|et’s)\s+we|we\s+gaan)\b/i.test(m) && /\?\s*$/.test(m)) return true
+    return false
+  })()
+  if (looksLikeGenericOutcomePrompt) {
+    out.message = inferConcreteStep(lang, messages, lastUser)
+    out.action = out.action || 'none'
+    return out
+  }
+
   const looksLikeParrotedDivisionQuestion = (() => {
     if (!fracFromUser) return false
     const msg = String(out?.message || '')

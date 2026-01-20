@@ -116,6 +116,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima herhaalt niet dezelfde vraag als wedervraag (“wat is 184 gedeeld door 16?”).
 - Anima geeft 1 concrete micro-stap (bv. `16×10 = __`), zonder eindantwoord.
+- Ook als Anima “vaag” reageert (bv. “Wat is de uitkomst?”) moet dit worden herschreven naar een concrete compute/fill‑blank stap.
 
 ---
 
