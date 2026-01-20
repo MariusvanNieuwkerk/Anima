@@ -186,9 +186,10 @@ const parseCanonFromText = (tRaw: string): CanonState | null => {
     return { kind: 'div', divA: Number(frac[1]), divB: Number(frac[2]), raw: t }
   }
 
-  // Negatives: any arithmetic expression containing a negative number.
-  if (/\-\s*\d/.test(t) && /[+\-*/:×x]/.test(t) && /\d/.test(t)) {
-    // Keep as expression; canon will break it down if needed.
+  // Negatives: ONLY trigger when there is an actual negative number present
+  // e.g. "-3 + 7" or "5 - -2". Do NOT treat normal subtraction like "82 - 47" as negatives.
+  const hasNegativeNumber = /(^|[^\d])-\s*\d/.test(t) && /-\s*\d/.test(t) && !/^\s*\d+\s*-\s*\d+\s*$/.test(t)
+  if (hasNegativeNumber && /[+\-*/:×x]/.test(t) && /\d/.test(t)) {
     return { kind: 'negatives', expr: t, raw: t }
   }
 

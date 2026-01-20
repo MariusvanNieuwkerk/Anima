@@ -381,6 +381,18 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 14b) Routing check: aftrekken ≠ negatieve getallen (NL)
+**User**
+1. `Los op: 82 - 47`
+
+**Must**
+- Anima gebruikt de **aftrekken-canon** (rewrite → `82−40=__` → `__−7=__`).
+
+**Must-not**
+- Niet behandelen als “negatieve getallen” met `82 - 47 = __`.
+
+---
+
 ## 15) Haakjes/volgorde (canon flow) (NL)
 **User**
 1. `3*(8+4)-5`
