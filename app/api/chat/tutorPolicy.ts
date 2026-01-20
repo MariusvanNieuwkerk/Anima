@@ -17,6 +17,11 @@ export type TutorPayload = {
 
 const strip = (s: any) => String(s || '').trim()
 
+function parseNum(s: string) {
+  const n = Number(String(s || '').trim().replace(',', '.'))
+  return Number.isFinite(n) ? n : NaN
+}
+
 // -------------------------
 // Canonical Math Script Engine (policy-first)
 // -------------------------
@@ -27,8 +32,9 @@ type CanonKind =
   | 'div'
   | 'frac_simplify'
   | 'percent'
-  | 'units_time'
+  | 'units'
   | 'order_ops'
+  | 'negatives'
   | 'unknown'
 
 type CanonState = {
@@ -40,6 +46,10 @@ type CanonState = {
   // division-specific
   divA?: number
   divB?: number
+  // percent-specific
+  pct?: number
+  // negatives/order-of-ops can carry an expression
+  expr?: string
 }
 
 const isStuckSignal = (t: string) =>
@@ -70,6 +80,53 @@ const countRecentAttempts = (messages: any[]) => {
   return n
 }
 
+const userIsNumberLike = (t: string) => /^\s*\d+([.,]\d+)?\s*$/.test(strip(t))
+
+const findLastUserNumber = (messages: any[]) => {
+  const arr = Array.isArray(messages) ? messages : []
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i]
+    if (m?.role !== 'user') continue
+    const t = strip(m?.content)
+    if (!userIsNumberLike(t)) continue
+    const n = parseNum(t)
+    if (Number.isFinite(n)) return n
+  }
+  return NaN
+}
+
+const countAssistantMatches = (messages: any[], re: RegExp) => {
+  const arr = Array.isArray(messages) ? messages : []
+  let n = 0
+  for (let i = Math.max(0, arr.length - 14); i < arr.length; i++) {
+    const m = arr[i]
+    if (m?.role === 'user') continue
+    const t = String(m?.content || '')
+    if (re.test(t)) n++
+  }
+  return n
+}
+
+const findLastFractionInHistory = (messages: any[]) => {
+  const arr = Array.isArray(messages) ? messages : []
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i]
+    if (m?.role === 'user') continue
+    const t = String(m?.content || '')
+    const mm = t.match(/\b(?:Nieuwe breuk|Breuk|New fraction|Fraction)\s*:\s*(\d+)\s*\/\s*(\d+)\b/i)
+    if (mm) return { a: Number(mm[1]), b: Number(mm[2]) }
+  }
+  return null
+}
+
+const nextSmallDivisor = (a: number, b: number) => {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  if (a % 2 === 0 && b % 2 === 0) return 2
+  if (a % 3 === 0 && b % 3 === 0) return 3
+  if (a % 5 === 0 && b % 5 === 0) return 5
+  return null
+}
+
 const parseCanonFromText = (tRaw: string): CanonState | null => {
   const t = strip(tRaw)
   const low = t.toLowerCase()
@@ -88,18 +145,21 @@ const parseCanonFromText = (tRaw: string): CanonState | null => {
     const p = t.match(/(\d+(?:[.,]\d+)?)\s*%/)
     if (p) {
       const a = parseNum(p[1])
-      if (Number.isFinite(a)) return { kind: 'percent', a, raw: t }
+      if (Number.isFinite(a)) return { kind: 'percent', pct: a, raw: t }
     }
   }
 
   // Unit conversion time (hours/minutes)
-  if (/\b(uur|uren|minuut|minuten|hour|hours|minute|minutes)\b/i.test(t) && /\d/.test(t)) {
-    return { kind: 'units_time', raw: t }
+  if (
+    /\b(uur|uren|minuut|minuten|hour|hours|minute|minutes|cm|mm|m|km|kg|gram|g|liter|l|ml|euro|€|cent)\b/i.test(t) &&
+    /\d/.test(t)
+  ) {
+    return { kind: 'units', raw: t }
   }
 
   // Order of ops / parentheses
   if (/[()]/.test(t) && /[+\-*/:×x]/.test(t) && /\d/.test(t)) {
-    return { kind: 'order_ops', raw: t }
+    return { kind: 'order_ops', expr: t, raw: t }
   }
 
   // Fraction simplify
@@ -110,6 +170,12 @@ const parseCanonFromText = (tRaw: string): CanonState | null => {
   // Division / fraction without simplify keyword: treat as division canon
   if (frac) {
     return { kind: 'div', divA: Number(frac[1]), divB: Number(frac[2]), raw: t }
+  }
+
+  // Negatives: any arithmetic expression containing a negative number.
+  if (/\-\s*\d/.test(t) && /[+\-*/:×x]/.test(t) && /\d/.test(t)) {
+    // Keep as expression; canon will break it down if needed.
+    return { kind: 'negatives', expr: t, raw: t }
   }
 
   // Simple arithmetic
@@ -167,6 +233,16 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const userN = parseNum(lastUser)
       if (Math.abs(userN - (aU + bU)) < 1e-9) return ask(`Vul in: ${(aT + bT)} + ${(aU + bU)} = __`, `Fill in: ${(aT + bT)} + ${(aU + bU)} = __`)
     }
+    // Final combine: confirm + check (no new question).
+    if (new RegExp(`\\b${aT + bT}\\s*\\+\\s*${aU + bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const ans = a + b
+      if (Math.abs(userN - ans) < 1e-9) {
+        const aR = Math.round(a / 10) * 10
+        const bR = Math.round(b / 10) * 10
+        return ask(`Juist. Check: ${aR}+${bR}≈${aR + bR}.`, `Correct. Check: ${aR}+${bR}≈${aR + bR}.`)
+      }
+    }
     return ask(`Vul in: ${aT} + ${bT} = __`, `Fill in: ${aT} + ${bT} = __`)
   }
 
@@ -182,6 +258,11 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     if (new RegExp(`\\b${a}\\s*[−-]\\s*${bT}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - (a - bT)) < 1e-9) return ask(`Vul in: ${a - bT} − ${bU} = __`, `Fill in: ${a - bT} − ${bU} = __`)
+    }
+    if (new RegExp(`\\b${a - bT}\\s*[−-]\\s*${bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const ans = a - b
+      if (Math.abs(userN - ans) < 1e-9) return ask(`Juist. Check: ${ans}+${b}=${a}.`, `Correct. Check: ${ans}+${b}=${a}.`)
     }
     return ask(`Vul in: ${a} − ${bT} = __`, `Fill in: ${a} − ${bT} = __`)
   }
@@ -199,46 +280,293 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const userN = parseNum(lastUser)
       if (Math.abs(userN - a * bT) < 1e-9) return ask(`Vul in: ${a}×${bU} = __`, `Fill in: ${a}×${bU} = __`)
     }
+    if (new RegExp(`\\b${a}\\s*[×x*]\\s*${bU}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - a * bU) < 1e-9) return ask(`Vul in: ${a * bT} + ${a * bU} = __`, `Fill in: ${a * bT} + ${a * bU} = __`)
+    }
+    // If we just summed, end with a non-question check sentence (no extra user action).
+    if (new RegExp(`\\b${a * bT}\\s*\\+\\s*${a * bU}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - a * b) < 1e-9) {
+        return ask(
+          `Juist. Check: ${Math.round(a)}×${Math.round(b)} ligt rond ${Math.round(Math.round(a / 10) * 10)}×${Math.round(Math.round(b / 10) * 10)}.`,
+          `Correct. Check: ${Math.round(a)}×${Math.round(b)} is close to ${Math.round(Math.round(a / 10) * 10)}×${Math.round(Math.round(b / 10) * 10)}.`
+        )
+      }
+    }
     return ask(`Vul in: ${a}×${bT} = __`, `Fill in: ${a}×${bT} = __`)
   }
 
   if (state.kind === 'div' && Number.isFinite(state.divA) && Number.isFinite(state.divB)) {
     const a = state.divA!
     const b = state.divB!
-    // Canon chunking with 10 then remainder then 1
-    if (!/\b10\b/.test(prevAssistant) && !/\b×\s*10\b/.test(prevAssistant)) {
-      return ask(`Begin met: ${b}×10 = __`, `Start with: ${b}×10 = __`)
+    // Canon chunking: start with ×10 if possible, else ×1. Then remainder, then keep adding ×1 until remainder < b.
+    const k0 = Math.floor(a / b)
+    const startChunk = k0 >= 10 ? 10 : 1
+    const finishWithQuotientStep = (q: number, rest: number) =>
+      ask(`Vul in: ${startChunk} + ${q - startChunk} = __ (quotiënt)`, `Fill in: ${startChunk} + ${q - startChunk} = __ (quotient)`)
+
+    // Step 1: b×startChunk
+    if (!/\b×\s*(10|1)\b/.test(prevAssistant) && !new RegExp(`\\b${b}\\s*[×x*]\\s*(10|1)\\b`).test(prevAssistant)) {
+      return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
     }
-    // If remainder asked and user answered, next step is b×1
-    if (/\b(aftrek|blijft\s+er\s+over|over)\b/i.test(prevAssistant) && /^\d+/.test(lastUser)) {
-      const used = b * 10
-      const expectedRem = a - used
+
+    // If we asked b×startChunk and user answered, ask first remainder.
+    if (new RegExp(`\\b${b}\\s*[×x*]\\s*${startChunk}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
       const userN = parseNum(lastUser)
-      if (Math.abs(userN - expectedRem) < 1e-9) return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+      const expected = b * startChunk
+      if (Math.abs(userN - expected) < 1e-9) return ask(`Vul in: ${a} − ${expected} = __`, `Fill in: ${a} − ${expected} = __`)
+      return ask(`Bijna. Vul in: ${b}×${startChunk} = __`, `Almost. Fill in: ${b}×${startChunk} = __`)
     }
-    // Otherwise ask remainder
-    return ask(`Vul in: ${a} − ${b * 10} = __`, `Fill in: ${a} − ${b * 10} = __`)
+
+    // If we asked a - used, and user answered remainder, decide next.
+    const remMatch = prevAssistant.match(/(\d+)\s*[−-]\s*(\d+)\s*=\s*__/)
+    if (remMatch && userIsNumberLike(lastUserText)) {
+      const total = Number(remMatch[1])
+      const used = Number(remMatch[2])
+      const expectedRem = total - used
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - expectedRem) < 1e-9) {
+        if (expectedRem >= b) {
+          return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+        }
+        // Finish requires an explicit quotient compute step first.
+        return finishWithQuotientStep(startChunk, expectedRem)
+      }
+      return ask(`Vul in: ${total} − ${used} = __`, `Fill in: ${total} − ${used} = __`)
+    }
+
+    // If we asked b×1 and user answered, ask subtract from last remainder if we can find it.
+    if (new RegExp(`\\b${b}\\s*[×x*]\\s*1\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const prod = parseNum(lastUser)
+      if (Math.abs(prod - b) < 1e-9) {
+        // Find the last remainder number in history (user's last remainder).
+        const rem = findLastUserNumber(messages)
+        if (Number.isFinite(rem) && rem >= b) return ask(`Vul in: ${rem} − ${b} = __`, `Fill in: ${rem} − ${b} = __`)
+      }
+      return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+    }
+
+    // If we asked rem - b and user answered, either loop or finish with quotient.
+    const rem2 = prevAssistant.match(/(\d+)\s*[−-]\s*(\d+)\s*=\s*__/)
+    if (rem2 && userIsNumberLike(lastUserText)) {
+      const r0 = Number(rem2[1])
+      const sub = Number(rem2[2])
+      const expected = r0 - sub
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - expected) < 1e-9) {
+        // Determine how many ×1 steps were taken: count occurrences of "×1" prompts after start.
+        const onesCount = countAssistantMatches(messages, new RegExp(`\\b${b}\\s*[×x*]\\s*1\\b`))
+        const q = startChunk + onesCount
+        const rest = expected
+        if (rest >= b) {
+          return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+        }
+        return finishWithQuotientStep(q, rest)
+      }
+      return ask(`Vul in: ${r0} − ${sub} = __`, `Fill in: ${r0} − ${sub} = __`)
+    }
+
+    // If we asked the quotient-sum and the user answered, finalize with remainder + check (no new question).
+    const qSum = prevAssistant.match(/(\d+)\s*\+\s*(\d+)\s*=\s*__\s*\((?:quotiënt|quotient)\)/i)
+    if (qSum && userIsNumberLike(lastUserText)) {
+      const x = Number(qSum[1])
+      const y = Number(qSum[2])
+      const expQ = x + y
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - expQ) < 1e-9) {
+        // Determine current rest from the last user remainder number in the thread.
+        const rest = findLastUserNumber(messages)
+        if (Number.isFinite(rest)) {
+          return ask(
+            `Juist. Quotiënt: **${expQ}**, rest: **${rest}**. Check: ${b}×${expQ}+${rest}=${a}.`,
+            `Correct. Quotient: **${expQ}**, remainder: **${rest}**. Check: ${b}×${expQ}+${rest}=${a}.`
+          )
+        }
+        return ask(`Juist.`, `Correct.`)
+      }
+    }
+
+    return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
   }
 
   if (state.kind === 'frac_simplify' && Number.isFinite(state.a) && Number.isFinite(state.b)) {
-    const a = state.a!
-    const b = state.b!
-    // Canon: try divide by 2,3,5 via a concrete compute
-    const can2 = a % 2 === 0 && b % 2 === 0
-    const can3 = a % 3 === 0 && b % 3 === 0
-    const can5 = a % 5 === 0 && b % 5 === 0
-    if (can2) return ask(`Vul in: ${a}/2 = __ en ${b}/2 = __`, `Fill in: ${a}/2 = __ and ${b}/2 = __`)
-    if (can3) return ask(`Vul in: ${a}/3 = __ en ${b}/3 = __`, `Fill in: ${a}/3 = __ and ${b}/3 = __`)
-    if (can5) return ask(`Vul in: ${a}/5 = __ en ${b}/5 = __`, `Fill in: ${a}/5 = __ and ${b}/5 = __`)
-    return ask(`Kan ${a}/${b} nog door 2, 3 of 5? Vul in: nee`, `Can ${a}/${b} still be divided by 2, 3, or 5? Fill in: no`)
+    // Canon iterative: always one compute per turn. We keep the current fraction explicit in the prompt.
+    const current = findLastFractionInHistory(messages) || { a: state.a!, b: state.b! }
+    const a = current.a
+    const b = current.b
+    const d = nextSmallDivisor(a, b)
+
+    // If no divisor left, stop cleanly (no question).
+    if (!d) {
+      return ask(`Dit is vereenvoudigd: **${a}/${b}**.`, `This is simplified: **${a}/${b}**.`)
+    }
+
+    // If we just computed numerator division, ask denominator division.
+    const numPrompt = new RegExp(`Teller:\\s*${a}\\s*[÷/:]\\s*${d}\\s*=\\s*__`, 'i')
+    if (numPrompt.test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const newA = parseNum(lastUser)
+      if (Number.isFinite(newA) && Math.abs(newA - a / d) < 1e-9) {
+        return ask(`Noemer: ${b} ÷ ${d} = __`, `Denominator: ${b} ÷ ${d} = __`)
+      }
+      return ask(`Teller: ${a} ÷ ${d} = __`, `Numerator: ${a} ÷ ${d} = __`)
+    }
+    const denPrompt = new RegExp(`Noemer:\\s*${b}\\s*[÷/:]\\s*${d}\\s*=\\s*__`, 'i')
+    if (denPrompt.test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const newB = parseNum(lastUser)
+      if (Number.isFinite(newB) && Math.abs(newB - b / d) < 1e-9) {
+        const nextA = a / d
+        const nextB = b / d
+        const d2 = nextSmallDivisor(nextA, nextB)
+        if (!d2) return ask(`Dit is vereenvoudigd: **${nextA}/${nextB}**.`, `This is simplified: **${nextA}/${nextB}**.`)
+        return ask(`Nieuwe breuk: ${nextA}/${nextB}. Teller: ${nextA} ÷ ${d2} = __`, `New fraction: ${nextA}/${nextB}. Numerator: ${nextA} ÷ ${d2} = __`)
+      }
+      return ask(`Noemer: ${b} ÷ ${d} = __`, `Denominator: ${b} ÷ ${d} = __`)
+    }
+
+    return ask(`Breuk: ${a}/${b}. Teller: ${a} ÷ ${d} = __`, `Fraction: ${a}/${b}. Numerator: ${a} ÷ ${d} = __`)
+  }
+
+  if (state.kind === 'percent' && Number.isFinite(state.pct)) {
+    const p = state.pct!
+    const pInt = p % 1 === 0 ? Number(p.toFixed(0)) : p
+    // Canon: p% = p/100 -> (optional simplify) -> decimal -> check
+    if (!/\/\s*100/.test(prevAssistant)) {
+      return ask(`Vul in: ${pInt}% = ${pInt}/100`, `Fill in: ${pInt}% = ${pInt}/100`)
+    }
+    // Decimal step (one action): p/100 = __
+    if (!/=\s*__/.test(prevAssistant) && !/\b0[,.]\d+/.test(prevAssistant)) {
+      return ask(`Vul in: ${pInt}% = __`, `Fill in: ${pInt}% = __`)
+    }
+    if (userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const exp = pInt / 100
+      if (Math.abs(userN - exp) < 1e-9) return ask(`Juist. Check: ${userN}×100=${pInt}%.`, `Correct. Check: ${userN}×100=${pInt}%.`)
+    }
+    return ask(`Vul in: ${pInt}% = __`, `Fill in: ${pInt}% = __`)
+  }
+
+  if (state.kind === 'units') {
+    const raw = state.raw || ''
+    // Canon (time): h×60 then +m
+    const h = (() => {
+      const m = raw.match(/(\d+)\s*(?:uur|hours?|h)\b/i)
+      return m ? Number(m[1]) : NaN
+    })()
+    const m0 = (() => {
+      const m = raw.match(/(\d+)\s*(?:minuut|minuten|minutes?|min)\b/i)
+      return m ? Number(m[1]) : NaN
+    })()
+    if (Number.isFinite(h) && !/×\s*60/.test(prevAssistant)) {
+      return ask(`Vul in: ${h}×60 = __`, `Fill in: ${h}×60 = __`)
+    }
+    if (Number.isFinite(h) && Number.isFinite(m0) && /\b×\s*60\b/.test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const mins = parseNum(lastUser)
+      if (Math.abs(mins - h * 60) < 1e-9) return ask(`Vul in: ${mins} + ${m0} = __`, `Fill in: ${mins} + ${m0} = __`)
+    }
+    if (Number.isFinite(h) && Number.isFinite(m0) && /\+\s*\d+/.test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const totalMin = parseNum(lastUser)
+      const exp = h * 60 + m0
+      if (Math.abs(totalMin - exp) < 1e-9) return ask(`Juist. Check: ${h} uur = ${h * 60} min.`, `Correct. Check: ${h} hours = ${h * 60} min.`)
+    }
+
+    // Canon (length cm→m): ask divide by 100
+    const cm = raw.match(/(\d+(?:[.,]\d+)?)\s*cm\b/i)
+    if (cm && /\bm\b/i.test(raw) && !/\b\/\s*100\b/.test(prevAssistant)) {
+      const v = parseNum(cm[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 100 = __ (meter)`, `Fill in: ${v} ÷ 100 = __ (meters)`)
+    }
+
+    return ask(`Vul in: 1 uur = __ minuten`, `Fill in: 1 hour = __ minutes`)
+  }
+
+  if (state.kind === 'order_ops' && state.expr) {
+    const expr = state.expr
+    // Very simple canonical: evaluate innermost (single) parentheses with + or - then multiply/divide then add/sub.
+    const inside = expr.match(/\((\s*-?\d+(?:[.,]\d+)?\s*[+\-]\s*-?\d+(?:[.,]\d+)?\s*)\)/)
+    if (inside) {
+      const inner = inside[1]
+      if (!/\(\s*.*\)\s*=/.test(prevAssistant)) {
+        return ask(`Vul in: (${inner.trim()}) = __`, `Fill in: (${inner.trim()}) = __`)
+      }
+      // If inner computed, look for a leading multiplier like "3×__"
+      const mult = expr.match(/(\d+)\s*[×x*]\s*\(/)
+      const tail = expr.match(/\)\s*([+\-])\s*(\d+(?:[.,]\d+)?)/)
+      if (mult && userIsNumberLike(lastUserText)) {
+        const innerVal = parseNum(lastUser)
+        const k = Number(mult[1])
+        if (Number.isFinite(innerVal)) return ask(`Vul in: ${k}×${innerVal} = __`, `Fill in: ${k}×${innerVal} = __`)
+      }
+      // After multiplication, finish with the trailing +/- step if present.
+      const prevMul = prevAssistant.match(/(\d+)\s*[×x*]\s*(\d+(?:[.,]\d+)?)\s*=\s*__/)
+      if (prevMul && userIsNumberLike(lastUserText) && tail) {
+        const prod = parseNum(lastUser)
+        const op = tail[1]
+        const n = parseNum(tail[2])
+        if (Number.isFinite(prod) && Number.isFinite(n)) return ask(`Vul in: ${prod} ${op} ${n} = __`, `Fill in: ${prod} ${op} ${n} = __`)
+      }
+    }
+    // If final step was asked and answered, confirm.
+    const final = prevAssistant.match(/(\d+(?:[.,]\d+)?)\s*([+\-])\s*(\d+(?:[.,]\d+)?)\s*=\s*__/)
+    if (final && userIsNumberLike(lastUserText)) {
+      const a0 = parseNum(final[1])
+      const op = final[2]
+      const b0 = parseNum(final[3])
+      const exp = op === '+' ? a0 + b0 : a0 - b0
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) return ask(`Juist.`, `Correct.`)
+    }
+    return ask(`Vul in: (8+4) = __`, `Fill in: (8+4) = __`)
+  }
+
+  if (state.kind === 'negatives' && state.expr) {
+    // Canon: one compute, keep it on number line implicitly.
+    const e = state.expr
+    const m =
+      e.match(/(-?\d+(?:[.,]\d+)?)\s*([+\-])\s*(-?\d+(?:[.,]\d+)?)/) ||
+      e.match(/(-?\d+(?:[.,]\d+)?)\s*([+\-])\s*(\d+(?:[.,]\d+)?)/)
+    if (m) {
+      const a = parseNum(m[1])
+      const op = m[2]
+      const b = parseNum(m[3])
+      if (Number.isFinite(a) && Number.isFinite(b)) {
+        // If we just asked and the user answered correctly, confirm.
+        const exp = op === '+' ? a + b : a - b
+        if (new RegExp(`\\b${a}\\s*[+\\-]\\s*${b}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+          const userN = parseNum(lastUser)
+          if (Math.abs(userN - exp) < 1e-9) return ask(`Juist.`, `Correct.`)
+        }
+        return ask(`Vul in: ${a} ${op} ${b} = __`, `Fill in: ${a} ${op} ${b} = __`)
+      }
+    }
+    return ask(`Vul in: −3 + 7 = __`, `Fill in: −3 + 7 = __`)
   }
 
   if (state.kind === 'unknown' && Number.isFinite(state.a) && Number.isFinite(state.b) && state.op) {
     const c = state.a!
     const b = state.b!
     const op = state.op!
-    if (op === '+') return ask(`Vul in: __ = ${c} − ${b}`, `Fill in: __ = ${c} − ${b}`)
-    return ask(`Vul in: __ = ${c} + ${b}`, `Fill in: __ = ${c} + ${b}`)
+    if (op === '+') {
+      // Canon: rewrite, then compute
+      if (!new RegExp(`\\b${c}\\s*[−-]\\s*${b}\\b`).test(prevAssistant)) {
+        return ask(`Maak: __ = ${c} − ${b}. Vul in: ${c} − ${b} = __`, `Rewrite: __ = ${c} − ${b}. Fill in: ${c} − ${b} = __`)
+      }
+      if (new RegExp(`\\b${c}\\s*[−-]\\s*${b}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+        const userN = parseNum(lastUser)
+        const exp = c - b
+        if (Math.abs(userN - exp) < 1e-9) return ask(`Juist.`, `Correct.`)
+      }
+      return ask(`Vul in: ${c} − ${b} = __`, `Fill in: ${c} − ${b} = __`)
+    }
+    if (!new RegExp(`\\b${c}\\s*\\+\\s*${b}\\b`).test(prevAssistant)) {
+      return ask(`Maak: __ = ${c} + ${b}. Vul in: ${c} + ${b} = __`, `Rewrite: __ = ${c} + ${b}. Fill in: ${c} + ${b} = __`)
+    }
+    if (new RegExp(`\\b${c}\\s*\\+\\s*${b}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const exp = c + b
+      if (Math.abs(userN - exp) < 1e-9) return ask(`Juist.`, `Correct.`)
+    }
+    return ask(`Vul in: ${c} + ${b} = __`, `Fill in: ${c} + ${b} = __`)
   }
 
   // Fallback: do nothing.
@@ -318,11 +646,6 @@ const stripAfterFirstQuestion = (s: string) => {
   if (q === -1) return t
   const before = t.slice(0, q).trim()
   return (before.endsWith(':') ? before.slice(0, -1) : before).trim() + '.'
-}
-
-const parseNum = (s: string) => {
-  const n = Number(String(s || '').trim().replace(',', '.'))
-  return Number.isFinite(n) ? n : NaN
 }
 
 const extractSimpleOp = (text: string): { a: number; b: number; op: '+' | '-' | '*' | '/' } | null => {

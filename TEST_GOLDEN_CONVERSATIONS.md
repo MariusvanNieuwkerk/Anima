@@ -181,6 +181,15 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima **herhaalt die aftrek-vraag niet**.
 - Anima gaat door met de volgende micro‑stap, bijv. `16×1 = __`.
 
+---
+
+## 5i) Delen (canon: quotiënt + check) (NL)
+**Setup**: Start met `wat is 184/16` en ga door tot de rest kleiner is dan 16.
+
+**Must**
+- Anima vraagt expliciet om de **quotiënt-som** (bijv. `10 + 1 = __ (quotiënt)`).
+- Daarna stopt Anima met een korte bevestiging + **check** (bijv. `16×11 + 8 = 184.`) **zonder vraagteken**.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
@@ -279,6 +288,46 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Geen verzonnen bedragen/tekst.
 
 ---
+
+## 13) Procent → decimaal (canon) (NL)
+**User**
+1. `25%`
+
+**Must**
+- Anima noemt expliciet `25/100` (of schrijft `25% = 25/100`).
+- Anima vraagt daarna 1 concrete invulstap: `25% = __` (verwacht `0,25`).
+- Bij correct: korte bevestiging + check (`0,25×100=25%`) zonder vraagteken.
+
+---
+
+## 14) Negatieve getallen (canon) (NL)
+**User**
+1. `-3 + 7`
+
+**Must**
+- Anima vraagt 1 invulstap: `-3 + 7 = __`.
+- Bij correct: bevestig kort en stop.
+
+---
+
+## 15) Haakjes/volgorde (canon flow) (NL)
+**User**
+1. `3*(8+4)-5`
+
+**Must**
+- Stap 1: `(8+4)=__`
+- Stap 2: `3×__=__`
+- Stap 3: `__-5=__`
+- Bij correct eindantwoord: korte bevestiging, stop.
+
+---
+
+## 16) Eenheden (cm → m) (canon) (NL)
+**User**
+1. `250 cm naar meter`
+
+**Must**
+- Anima vraagt 1 invulstap: `250 ÷ 100 = __ (meter)`.
 
 ### Extra: deterministische closing-variant check (ACK-only)
 Run test #1 drie keer in een nieuwe sessie met verschillende aantallen user-berichten ervoor (0/1/2 extra user turns) en check:
