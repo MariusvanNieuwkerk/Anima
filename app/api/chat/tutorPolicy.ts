@@ -895,8 +895,16 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   // If the model produces it, we force the canon rewrite step immediately.
   const fullSubBlank = (() => {
     const m = normalizeMathText(String(out.message || ''))
-    const mm = m.match(/\bvul\s+in:\s*(\d+)\s*-\s*(\d+)\s*=\s*__/i)
+    // Match variants like:
+    // - "Vul in: 82 - 47 = __"
+    // - "Vul in 82-47=__"
+    // - "82-47=__"
+    // - underscores "_" or "__"
+    const mm =
+      m.match(/\bvul\s+in\b[:\-]?\s*(\d+)\s*-\s*(\d+)\s*=\s*_{1,}|__/i) ||
+      m.match(/\b(\d+)\s*-\s*(\d+)\s*=\s*(_{1,}|__)\b/)
     if (!mm) return null
+    // In the first regex, captures are [a,b] at (1,2). In the second, also (1,2).
     return { a: Number(mm[1]), b: Number(mm[2]) }
   })()
   if (fullSubBlank && Number.isFinite(fullSubBlank.a) && Number.isFinite(fullSubBlank.b)) {
