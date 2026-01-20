@@ -23,7 +23,11 @@ const strip = (s: any) => String(s || '').trim()
 
 const normalizeMathText = (t: string) =>
   String(t || '')
-    .replace(/[−–—]/g, '-')
+    // Normalize many hyphen/minus variants to "-"
+    // - U+2212 minus, U+2010..U+2015 hyphens/dashes, U+00AD soft hyphen, U+FF0D fullwidth hyphen-minus
+    .replace(/[\u2212\u2010\u2011\u2012\u2013\u2014\u2015\u00AD\uFF0D−–—]/g, '-')
+    // Normalize NBSP to space
+    .replace(/\u00A0/g, ' ')
     .replace(/[×]/g, '*')
     .replace(/:/g, '/')
 
@@ -885,6 +889,27 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   const prevAssistant = getPrevAssistantText(messages)
   const lastNonTrivialUser = getLastNonTrivialUserText(messages)
   const lastMathUser = getLastMathLikeUserText(messages)
+
+  // Absolute rewrite: never allow "Vul in: A - B = __" as the first step for subtraction.
+  // If the model produces it, we force the canon rewrite step immediately.
+  const fullSubBlank = (() => {
+    const m = normalizeMathText(String(out.message || ''))
+    const mm = m.match(/\bvul\s+in:\s*(\d+)\s*-\s*(\d+)\s*=\s*__/i)
+    if (!mm) return null
+    return { a: Number(mm[1]), b: Number(mm[2]) }
+  })()
+  if (fullSubBlank && Number.isFinite(fullSubBlank.a) && Number.isFinite(fullSubBlank.b)) {
+    const a = fullSubBlank.a
+    const b = fullSubBlank.b
+    const bT = Math.trunc(b / 10) * 10
+    const bU = b - bT
+    out.message =
+      lang === 'en'
+        ? `Rewrite: ${a} - ${b} = ${a} - ${bT} - ${bU}`
+        : `Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`
+    out.action = out.action || 'none'
+    return out
+  }
 
   // NOTE: Canonical math engine runs AFTER stop/ack-only logic below.
 

@@ -101,6 +101,9 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima volgt dezelfde canon (rewrite → `82−40=__` → `__−7=__`) en start niet met `82−47=__`.
 
+**Must-not**
+- Niet starten met `Vul in: 82 − 47 = __` (ook niet met andere streepjes zoals `–` of `—`).
+
 ---
 
 ## 5-3) Aftrekken (ACK op invulvraag → herhaal invulvraag, geen rewind) (NL)
