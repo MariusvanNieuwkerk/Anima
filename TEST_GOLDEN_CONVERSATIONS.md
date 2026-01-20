@@ -91,6 +91,17 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must-not**
 - Geen “schrijf je berekening” / “wat is je volgende stap”.
 
+---
+
+## 5a-2) Optellen (stop na eind-invulvraag) (NL)
+**Setup**: Anima vraagt expliciet om het eindantwoord als invulvraag (bv. `Vul in: 47 + 28 = __`).
+
+**User**
+1. `75`
+
+**Must**
+- Anima bevestigt kort (bv. “Juist.”) en **stopt** (geen nieuwe micro-stap zoals `7+8=__`).
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 

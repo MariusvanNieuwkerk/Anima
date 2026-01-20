@@ -666,6 +666,22 @@ const getLastNonTrivialUserText = (messages?: any[]) => {
   return ''
 }
 
+const getLastMathLikeUserText = (messages?: any[]) => {
+  const arr = Array.isArray(messages) ? messages : []
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const m = arr[i]
+    if (m?.role !== 'user') continue
+    const t = strip(m?.content)
+    if (!t) continue
+    // Skip stop/ack-only
+    if (/^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b/i.test(t)) continue
+    if (isStopSignal(t)) continue
+    // Math-like: has digits plus an operator or fraction
+    if (/\d/.test(t) && (/[+\-*/=]/.test(t) || /(\d+)\s*\/\s*(\d+)/.test(t) || /[×x:]/.test(t))) return t
+  }
+  return ''
+}
+
 const normalizeForRepeat = (s: string) =>
   String(s || '')
     .toLowerCase()
@@ -800,6 +816,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   const messages = Array.isArray(ctx.messages) ? ctx.messages : []
   const prevAssistant = getPrevAssistantText(messages)
   const lastNonTrivialUser = getLastNonTrivialUserText(messages)
+  const lastMathUser = getLastMathLikeUserText(messages)
 
   // NOTE: Canonical math engine runs AFTER stop/ack-only logic below.
 
@@ -831,7 +848,8 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   // 0) Canonical math engine override (consistency): if we can parse a known math skill,
   // we return the next One-Move step from the canon.
   // Do not override stop/ack-only/bare yes-no closures.
-  const canon = parseCanonFromText(lastNonTrivialUser)
+  const canonSeed = lastMathUser || lastNonTrivialUser
+  const canon = parseCanonFromText(canonSeed)
   if (canon && !(lastUser && (isStopSignal(lastUser) || isAckOnly(lastUser) || isBareYesNo(lastUser)))) {
     // Deterministic escape hatch if the student is stuck.
     if (lastUser && isStuckSignal(lastUser)) {
@@ -952,6 +970,21 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     const userN = parseNum(lastUser)
     if (Number.isFinite(expected) && Number.isFinite(userN)) {
       if (Math.abs(userN - expected) < 1e-9) {
+        // If the assistant asked for the FULL original expression (e.g. "Vul in: 47 + 28 = __"),
+        // we must confirm and stop (do not continue with extra micro-steps).
+        const seedOp = extractSimpleOp(canonSeed || '')
+        const askedFullExpression =
+          !!seedOp &&
+          /__/.test(prevAssistant) &&
+          /[=]/.test(prevAssistant) &&
+          prevAssistant.includes(String(seedOp.a)) &&
+          prevAssistant.includes(String(seedOp.b))
+        if (askedFullExpression) {
+          out.message = lang === 'en' ? 'Correct.' : 'Juist.'
+          out.action = out.action || 'none'
+          return out
+        }
+
         if (isDirectArithmeticUserQuery(lastNonTrivialUser)) {
           out.message = lang === 'en' ? 'Exactly.' : 'Juist.'
           out.action = out.action || 'none'
