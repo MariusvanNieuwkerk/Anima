@@ -225,6 +225,48 @@ OUTPUT-CONTRACT (CRITICAL)
     const lastMessage = messages[messages.length - 1]
     const lastMessageContent = lastMessage?.content || '';
     let userParts: any[] = [{ text: lastMessageContent }];
+
+    // --- DETERMINISTIC CANON PREFLIGHT (math/grammar) ---
+    // If tutorPolicy can deterministically respond based on the user's last message alone (no images),
+    // we bypass the LLM call entirely. This prevents regressions like starting subtraction with
+    // "Vul in: 82 − 47 = __" and makes math canons fully stable.
+    if (images.length === 0) {
+      const preflight = applyTutorPolicyWithDebug(
+        { message: '' },
+        { userLanguage, messages, lastUserText: String(lastMessageContent || '') }
+      )
+      const preMsg = String(preflight?.payload?.message || '').trim()
+      const preAction = String(preflight?.payload?.action || 'none')
+      const preDeterministic = Array.isArray(preflight?.debug)
+        ? preflight.debug.some((e) =>
+            [
+              'stop_signal',
+              'grammar_route',
+              'math_canon_step',
+              'ack_only_continue_math_canon',
+              'ack_only_answer_last_q',
+              'bare_yes_no_close',
+            ].includes(String(e?.name || ''))
+          )
+        : false
+
+      if (preDeterministic && preMsg && (preAction === 'none' || preAction === '')) {
+        if (process.env.ANIMA_DEBUG_MATH === '1') {
+          console.log('[ANIMA_DEBUG_MATH][preflight]', {
+            git: process.env.VERCEL_GIT_COMMIT_SHA || null,
+            deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
+            userLanguage,
+            lastUserText: String(lastMessageContent || ''),
+            out: preMsg,
+            debug: preflight.debug,
+          })
+        }
+        return new Response(JSON.stringify(preflight.payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
     
     // IMAGE PAYLOAD: Controleer en verwerk afbeeldingen correct
     if (images.length > 0) {
