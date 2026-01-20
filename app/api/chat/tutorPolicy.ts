@@ -21,6 +21,12 @@ export type TutorPayload = {
 
 const strip = (s: any) => String(s || '').trim()
 
+const normalizeMathText = (t: string) =>
+  String(t || '')
+    .replace(/[−–—]/g, '-')
+    .replace(/[×]/g, '*')
+    .replace(/:/g, '/')
+
 function parseNum(s: string) {
   const n = Number(String(s || '').trim().replace(',', '.'))
   return Number.isFinite(n) ? n : NaN
@@ -132,7 +138,7 @@ const nextSmallDivisor = (a: number, b: number) => {
 }
 
 const parseCanonFromText = (tRaw: string): CanonState | null => {
-  const t = strip(tRaw)
+  const t = strip(normalizeMathText(tRaw))
   const low = t.toLowerCase()
 
   // Unknown / mini-algebra: "__ + 8 = 23" or "x + 8 = 23"
@@ -737,8 +743,9 @@ const getLastMathLikeUserText = (messages?: any[]) => {
     // Skip stop/ack-only
     if (/^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b/i.test(t)) continue
     if (isStopSignal(t)) continue
+    const norm = normalizeMathText(t)
     // Math-like: has digits plus an operator or fraction
-    if (/\d/.test(t) && (/[+\-*/=]/.test(t) || /(\d+)\s*\/\s*(\d+)/.test(t) || /[×x:]/.test(t))) return t
+    if (/\d/.test(norm) && (/[+\-*/=]/.test(norm) || /(\d+)\s*\/\s*(\d+)/.test(norm))) return norm
   }
   return ''
 }
