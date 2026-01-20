@@ -1,14 +1,12 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserProfile } from '@/utils/auth';
 import { extractMoneyLike } from './skills/ocrUtils'
-import {
-  getDutchTimeWordProblemSteps,
-  solveDutchTimeHoursOnly,
-  solveDutchTimeWordProblem,
-} from './skills/timeDutch'
+// NOTE: Time tutoring is handled by the main tutor policy + model.
+// Keep domain helpers out of the request flow to avoid brittle, "baked-in" responses.
 import { searchWikimedia } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
+import { applyTutorPolicy } from './tutorPolicy'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -785,158 +783,8 @@ OUTPUT-CONTRACT (CRITICAL)
       )
     }
 
-    // Deterministic guardrail for common Dutch time word problems (prevents model mistakes like 2pm -> 2am).
-    if (wantsPreciseReading && ocrTranscript && ocrConfidence === 'high') {
-      const solved = solveDutchTimeWordProblem(ocrTranscript)
-      const steps = getDutchTimeWordProblemSteps(ocrTranscript)
-      if (solved && steps) {
-        const lang = String(userLanguage || 'nl')
-        // Always stay scaffolded: guide method, avoid the final time/option (Blueprint V9).
-        const msg = (() => {
-          const { startHHMM, afterHoursHHMM, hoursPart, minsPart } = steps
-
-          // Split into 2–3 micro-tasks with blanks. Do NOT reveal the final end time or option.
-          return lang === 'en'
-            ? [
-                `Step by step (you fill it in):`,
-                `- **Mini-step 1**: 2 pm → **${startHHMM}** (24h time).`,
-                `- **Mini-step 2**: ${startHHMM} + ${hoursPart} hours = **__ : __**`,
-                `- **Mini-step 3**: Then add the last ${minsPart} minutes → **__ : __**`,
-                `Now look at the answer options: which one matches your final time?`,
-              ].join('\n')
-            : [
-                `Stap voor stap (jij vult het in):`,
-                `- **Mini-stap 1**: 2 uur ’s middags → **${startHHMM}** (24-uurs tijd).`,
-                `- **Mini-stap 2**: ${startHHMM} + ${hoursPart} uur = **__ : __**`,
-                `- **Mini-stap 3**: Tel dan de laatste ${minsPart} minuten erbij → **__ : __**`,
-                `Kijk nu naar de antwoordopties: welke past bij jouw eindtijd?`,
-              ].join('\n')
-        })()
-
-        return new Response(
-          JSON.stringify({
-            message: msg,
-            action: 'none',
-            topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
-      }
-    }
-
-    // Follow-up text questions (without re-uploading the image) should still respect "’s middags" -> 24h.
-    // This prevents regressions like treating 2pm as 2am in subsequent turns.
-    const isDutchClockTimeSession = (() => {
-      const msgs = Array.isArray(messages) ? messages.slice(-12) : []
-      const blob = msgs
-        .map((m: any) => String(m?.content || ''))
-        .join('\n')
-        .toLowerCase()
-      // IMPORTANT: This should ONLY trigger for clock-time problems (e.g. 14:00 + duration),
-      // NOT for generic “how many hours” word problems (travel, speed, etc.).
-      const hasClockMarkers =
-        /\b\d{1,2}:\d{2}\b/.test(blob) ||
-        /24-?uurs/.test(blob) ||
-        /tijdrekenen|tijdstip|klok|eindtijd|begintijd/.test(blob) ||
-        /\'s\s+(ochtends|middags|avonds|nachts)/.test(blob) ||
-        /kaars/.test(blob)
-      const hasOurTimeScaffold =
-        /mini-?stap/.test(blob) && (/__\s*:\s*__/.test(blob) || /14:00|19:25|24-?uurs/.test(blob))
-      return hasClockMarkers || hasOurTimeScaffold
-    })()
-
-    const isShortAttempt = /^\s*\d{1,2}(:\d{2})?\s*$/.test(String(lastMessageContent || ''))
-    if (isDutchClockTimeSession && isShortAttempt) {
-      const lang = String(userLanguage || 'nl')
-      const t = String(lastMessageContent || '').trim()
-      const isHourOnly = /^\d{1,2}$/.test(t)
-      const lastAssistantText = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        for (let i = arr.length - 2; i >= 0; i--) {
-          const m = arr[i]
-          if (m?.role && m.role !== 'user') return String(m?.content || '')
-        }
-        return ''
-      })()
-      const lastAssistantLower = lastAssistantText.toLowerCase()
-      const askedMinutesConversion =
-        /hoeveel\s+minu?t/i.test(lastAssistantText) ||
-        (lastAssistantLower.includes('minuten') && /omzetten|zet\s+om|naar\s+minuten/.test(lastAssistantLower))
-
-      const findStartTime = (() => {
-        const msgs = Array.isArray(messages) ? messages.slice(-12) : []
-        const blob = msgs.map((m: any) => String(m?.content || '')).join('\n')
-        const m = blob.match(/\b(\d{1,2}):(\d{2})\b/)
-        if (!m) return null
-        const hh = String(m[1]).padStart(2, '0')
-        const mm = String(m[2]).padStart(2, '0')
-        return `${hh}:${mm}`
-      })()
-
-      const msg =
-        lang === 'en'
-          ? askedMinutesConversion
-            ? [
-                `Got it — we’ll work with **${t} minutes**.`,
-                `Now add that to the start time${findStartTime ? ` (**${findStartTime}**)` : ''}.`,
-                `Do it in 2 tiny steps: +60 minutes → **__ : __**, then +35 minutes → **__ : __**.`,
-                `What time do you get after the **+60 minutes** step?`,
-              ].join('\n')
-            : isHourOnly
-              ? [
-                  `Nice — you wrote **${t}**.`,
-                  `Write the time with minutes as **__ : __** and tell me what it is.`,
-                ].join('\n')
-              : [
-                  `Good attempt. Let’s do the next micro-step (no final answer yet):`,
-                  `Write your next time as **__ : __** (with minutes).`,
-                ].join('\n')
-          : askedMinutesConversion
-            ? [
-                `Oké — we rekenen met **${t} minuten**.`,
-                `Tel dat op bij de starttijd${findStartTime ? ` (**${findStartTime}**)` : ''}.`,
-                `Doe het in 2 mini-stappen: +60 minuten → **__ : __**, daarna +35 minuten → **__ : __**.`,
-                `Welke tijd krijg je na de **+60 minuten** stap?`,
-              ].join('\n')
-            : isHourOnly
-              ? [
-                  `Mooi — jij schreef **${t}**.`,
-                  `Schrijf de tijd mét minuten als **__ : __** en stuur die.`,
-                ].join('\n')
-              : [
-                  `Goede poging. We doen de volgende micro-stap (nog geen eindantwoord):`,
-                  `Schrijf je volgende tijd als **__ : __** (met minuten).`,
-                ].join('\n')
-
-      return new Response(
-        JSON.stringify({ message: msg, action: 'none', topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const hoursOnly = solveDutchTimeHoursOnly(lastMessageContent)
-    if (hoursOnly) {
-      const lang = String(userLanguage || 'nl')
-      const msg =
-        lang === 'en'
-          ? [
-              `Let’s do only this step (no final answer yet).`,
-              `Mini-step 1: 2 pm → **${hoursOnly.startHHMM}** (24h time).`,
-              `Mini-step 2: ${hoursOnly.startHHMM} + ${hoursOnly.durHours} hours = **__ : __**`,
-              `What hour do you get?`,
-            ].join('\n')
-          : [
-              `We doen alleen deze stap (nog geen eindantwoord).`,
-              `Mini-stap 1: 2 uur ’s middags → **${hoursOnly.startHHMM}** (24-uurs tijd).`,
-              `Mini-stap 2: ${hoursOnly.startHHMM} + ${hoursOnly.durHours} uur = **__ : __**`,
-              `Welk uur krijg je?`,
-            ].join('\n')
-
-      return new Response(
-        JSON.stringify({ message: msg, action: 'none', topic: lang === 'en' ? 'Time calculation' : 'Tijdrekenen' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
+    // NOTE: We intentionally do NOT short-circuit into deterministic time tutoring here.
+    // Those special-case flows created brittle, "baked-in" behavior that conflicted with the tutor philosophy.
 
     // Final pass: answer using transcript as ground truth (no guessing).
     const finalUserParts = (() => {
@@ -1062,74 +910,8 @@ OUTPUT-CONTRACT (CRITICAL)
       payload.message = toned || cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
-    // LOW-FRICTION MOVE LINTER (POLICY-FIRST):
-    // Rewrite "guess questions" (schatten/meer-of-minder/denk je dat...) and "meta questions"
-    // (schrijf je berekening / wat is je volgende stap) into a concrete compute/fill-blank move,
-    // unless the user is explicitly stuck (escape hatch).
-    const getLastNonTrivialUserText = () => {
-      const arr = Array.isArray(messages) ? messages : []
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role !== 'user') continue
-        const t = String(m?.content || '').trim()
-        if (!t) continue
-        if (
-          /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
-            t
-          )
-        )
-          continue
-        return t
-      }
-      return ''
-    }
-
-    const extractFrac = (text: string): { a: string; b: string } | null => {
-      const t = String(text || '')
-      const m = t.match(/(\d+)\s*\/\s*(\d+)/)
-      if (!m) return null
-      return { a: m[1], b: m[2] }
-    }
-
-    const lowFrictionRewrite = () => {
-      const msg = String(payload?.message || '').trim()
-      if (!msg) return
-
-      const userIsStuck = isStuckSignal(String(lastMessageContent || ''))
-      const bannedGuess =
-        /(schat|schatten|meer\s+of\s+minder|denk\s+je\s+dat|zou\s+het\s+kunnen|past\s+.*\b(vaker|meer)\b)/i.test(msg)
-      const bannedMeta =
-        /(schrijf\s+je\s+berekening|wat\s+is\s+je\s+volgende\s+stap|volgende\s+stap\s*\(1\s*korte\s*zin\))/i.test(msg)
-
-      if (!bannedGuess && !(bannedMeta && !userIsStuck)) return
-
-      const lastUser = getLastNonTrivialUserText()
-      const frac = extractFrac(lastUser)
-      const lang = String(userLanguage || 'nl')
-
-      if (frac) {
-        const b = frac.b
-        payload.message =
-          lang === 'en'
-            ? [
-                `Let’s do it step by step (no final answer yet).`,
-                `Start with: **${b} × 10 = __**. What is it?`,
-              ].join('\n')
-            : [
-                `We doen het stap voor stap (nog geen eindantwoord).`,
-                `Begin met: **${b} × 10 = __**. Wat is dat?`,
-              ].join('\n')
-        return
-      }
-
-      // Generic fallback: ask for one concrete computation or fill-blank.
-      payload.message =
-        lang === 'en'
-          ? `Let’s do one concrete step: write **one** calculation you can do right now (e.g. 12×10=120).`
-          : `We doen één concrete stap: schrijf **één** berekening die je nu kunt doen (bijv. 12×10=120).`
-    }
-
-    lowFrictionRewrite()
+    // Apply the central tutor policy (policy-first) after sanitization.
+    payload = applyTutorPolicy(payload, { userLanguage, messages, lastUserText: lastMessageContent })
 
     // ANTI-PARROT (NO "SAME QUESTION" FOLLOW-UP):
     // If the user asks a direct calculation like "184/16" and the model just re-asks the same question
