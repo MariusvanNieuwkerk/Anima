@@ -902,7 +902,10 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   // Grammar canon engine (12 core topics, 11 languages).
   // Runs before math canon. Never overrides closures like ack/yes-no.
   if (!(lastUser && (isStopSignal(lastUser) || isAckOnly(lastUser) || isBareYesNo(lastUser)))) {
-    const looksLikeMath = /\d/.test(lastNonTrivialUser) && /[+\-*/=]/.test(lastNonTrivialUser)
+    const looksLikeMath = (() => {
+      const s = normalizeMathText(lastNonTrivialUser)
+      return /\d/.test(s) && /[+\-*/=]/.test(s)
+    })()
     if (!looksLikeMath) {
       const hit = routeGrammarTopic(lastNonTrivialUser, lang11)
       if (hit) {
@@ -919,6 +922,33 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   const canonSeed = lastMathUser || lastNonTrivialUser
   const canon = parseCanonFromText(canonSeed)
   if (canon && !(lastUser && (isStopSignal(lastUser) || isAckOnly(lastUser) || isBareYesNo(lastUser)))) {
+    // If the model asked for the full subtraction result (a−b=__) we rewrite to the canon first step.
+    if (canon.kind === 'sub') {
+      const m = normalizeMathText(String(out.message || ''))
+      if (/\bvul\s+in\b/i.test(m) && /__/.test(m) && /=/.test(m) && /-/.test(m)) {
+        // If it contains "a - b = __" (the full original subtraction), that's a lazy step → rewrite.
+        const a = canon.a
+        const b = canon.b
+        if (Number.isFinite(a) && Number.isFinite(b)) {
+          const aS = String(a)
+          const bS = String(b)
+          const hasAB = m.includes(aS) && m.includes(bS)
+          // Heuristic: if the asked expression includes both original numbers and NOT the tens-step (a - bT),
+          // treat as full-answer prompt and rewrite to canon.
+          const bT = Math.trunc((b as number) / 10) * 10
+          const hasTensStep = m.includes(String(bT))
+          if (hasAB && !hasTensStep) {
+            const step0 = canonStep(lang, canon, messages, lastUser)
+            if (step0) {
+              out.message = step0
+              out.action = out.action || 'none'
+              return out
+            }
+          }
+        }
+      }
+    }
+
     // Deterministic escape hatch if the student is stuck.
     if (lastUser && isStuckSignal(lastUser)) {
       const attempts = countRecentAttempts(messages)

@@ -89,6 +89,9 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Na correct antwoord vraagt Anima `__−7=__`.
 - Na correct eindantwoord: bevestig kort en stop.
 
+**Must-not**
+- Niet starten met `Vul in: 82 − 47 = __`.
+
 ---
 
 ## 5-2b) Aftrekken (unicode minus) (NL)
