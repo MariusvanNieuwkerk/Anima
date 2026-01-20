@@ -1,3 +1,7 @@
+import type { SupportedLang } from './grammar/i18n'
+import { routeGrammarTopic } from './grammar/routeMap'
+import { grammarCanonStep } from './grammar/grammarCanon'
+
 export type TutorPolicyContext = {
   userLanguage?: string
   messages?: any[]
@@ -786,6 +790,12 @@ const inferConcreteStep = (lang: string, messages: any[], lastUserText: string) 
 export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext): TutorPayload {
   const out: TutorPayload = { ...payload }
   const lang = String(ctx.userLanguage || 'nl')
+  const lang11: SupportedLang = ((): SupportedLang => {
+    const l = String(ctx.userLanguage || 'nl').toLowerCase()
+    if (l === 'nl' || l === 'en' || l === 'fr' || l === 'de' || l === 'es' || l === 'it' || l === 'pt' || l === 'da' || l === 'sv' || l === 'no' || l === 'fi')
+      return l
+    return 'nl'
+  })()
   const lastUser = strip(ctx.lastUserText)
   const messages = Array.isArray(ctx.messages) ? ctx.messages : []
   const prevAssistant = getPrevAssistantText(messages)
@@ -802,6 +812,20 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     out.message = lang === 'en' ? closuresEn[v] : closuresNl[v]
     out.action = out.action || 'none'
     return out
+  }
+
+  // Grammar canon engine (12 core topics, 11 languages).
+  // Runs before math canon. Never overrides closures like ack/yes-no.
+  if (!(lastUser && (isStopSignal(lastUser) || isAckOnly(lastUser) || isBareYesNo(lastUser)))) {
+    const looksLikeMath = /\d/.test(lastNonTrivialUser) && /[+\-*/=]/.test(lastNonTrivialUser)
+    if (!looksLikeMath) {
+      const hit = routeGrammarTopic(lastNonTrivialUser, lang11)
+      if (hit) {
+        out.message = grammarCanonStep(hit.topic, { lang: lang11, messages, lastUserText: String(ctx.lastUserText || '') })
+        out.action = out.action || 'none'
+        return out
+      }
+    }
   }
 
   // 0) Canonical math engine override (consistency): if we can parse a known math skill,

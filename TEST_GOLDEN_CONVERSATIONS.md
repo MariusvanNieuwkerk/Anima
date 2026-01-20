@@ -365,6 +365,47 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima vraagt 1 invulstap: `3,4 × 1000 = __ (meter)`.
 
+---
+
+## 21) Grammatica (NL): persoonsvorm vinden (canon) (NL)
+**User**
+1. `Wat is de persoonsvorm in: "Morgen loopt Tim naar school."`
+
+**Must**
+- Anima vraagt 1 invulstap: **Persoonsvorm = __** en toont de zin.
+- Geen meta (“schrijf je analyse”), geen lange uitleg.
+
+---
+
+## 22) Grammatica (NL): onderwerp vinden (canon) (NL)
+**User**
+1. `Onderwerp in: "De hond blaft."`
+
+**Must**
+- Anima vraagt 1 invulstap: **Onderwerp = __** en toont de zin.
+
+---
+
+## 23) Grammar (EN): question type (canon) (EN)
+**Setup**: set language to English.
+
+**User**
+1. `What kind of question is: "Are you coming?"`
+
+**Must**
+- Anima gives a single **Choose** step (A/B/C) for question type + shows the sentence.
+
+---
+
+## 24) Grammar (multi-language smoke) (FR/DE/ES/IT/PT/DA/SV/NO/FI)
+**Setup**: set language to one of: French/German/Spanish/Italian/Portuguese/Danish/Swedish/Norwegian/Finnish.
+
+**User**
+1. `Find the subject in: "John eats."`
+
+**Must**
+- Anima returns a single fill/choose step (no long explanation), in the selected language.
+
 ### Extra: deterministische closing-variant check (ACK-only)
 Run test #1 drie keer in een nieuwe sessie met verschillende aantallen user-berichten ervoor (0/1/2 extra user turns) en check:
 - de gekozen afsluitvraag roteert voorspelbaar (op basis van user message count).
