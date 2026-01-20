@@ -129,6 +129,10 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima bevestigt kort, én geeft meteen de **volgende** micro‑stap (geen “Super!” als hele boodschap).
 - Nog steeds geen eindantwoord als het nog een tussenstap is.
 
+**Must-not**
+- Geen gokvraag (“denk je dat…?”, “past het vaker dan…?”).
+- Geen meta‑vraag (“schrijf je berekening”, “wat is je volgende stap”) zolang de leerling niet vastzit.
+
 ---
 
 ## 5f) Directe rekenvraag + correct getal → bevestig en stop (NL)
@@ -139,6 +143,16 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Anima bevestigt kort (bv. “Juist.”) en **stopt** (geen eenheden-vraag, geen “volgende stap”).
+
+---
+
+## 5g) Delen (low-friction flow) (NL)
+**User**
+1. `wat is 184/16`
+
+**Must**
+- Anima start met een concrete compute/fill‑blank stap (bv. `16×10 = __`).
+- Geen gokvragen (“denk je dat…”), geen meta‑vragen (“schrijf je berekening…”).
 
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
