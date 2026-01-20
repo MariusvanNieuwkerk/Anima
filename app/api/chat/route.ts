@@ -1062,6 +1062,75 @@ OUTPUT-CONTRACT (CRITICAL)
       payload.message = toned || cleaned || 'Er ging iets mis bij het genereren van een antwoord.'
     }
 
+    // LOW-FRICTION MOVE LINTER (POLICY-FIRST):
+    // Rewrite "guess questions" (schatten/meer-of-minder/denk je dat...) and "meta questions"
+    // (schrijf je berekening / wat is je volgende stap) into a concrete compute/fill-blank move,
+    // unless the user is explicitly stuck (escape hatch).
+    const getLastNonTrivialUserText = () => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role !== 'user') continue
+        const t = String(m?.content || '').trim()
+        if (!t) continue
+        if (
+          /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
+            t
+          )
+        )
+          continue
+        return t
+      }
+      return ''
+    }
+
+    const extractFrac = (text: string): { a: string; b: string } | null => {
+      const t = String(text || '')
+      const m = t.match(/(\d+)\s*\/\s*(\d+)/)
+      if (!m) return null
+      return { a: m[1], b: m[2] }
+    }
+
+    const lowFrictionRewrite = () => {
+      const msg = String(payload?.message || '').trim()
+      if (!msg) return
+
+      const userIsStuck = isStuckSignal(String(lastMessageContent || ''))
+      const bannedGuess =
+        /(schat|schatten|meer\s+of\s+minder|denk\s+je\s+dat|zou\s+het\s+kunnen|past\s+.*\b(vaker|meer)\b)/i.test(msg)
+      const bannedMeta =
+        /(schrijf\s+je\s+berekening|wat\s+is\s+je\s+volgende\s+stap|volgende\s+stap\s*\(1\s*korte\s*zin\))/i.test(msg)
+
+      if (!bannedGuess && !(bannedMeta && !userIsStuck)) return
+
+      const lastUser = getLastNonTrivialUserText()
+      const frac = extractFrac(lastUser)
+      const lang = String(userLanguage || 'nl')
+
+      if (frac) {
+        const b = frac.b
+        payload.message =
+          lang === 'en'
+            ? [
+                `Let’s do it step by step (no final answer yet).`,
+                `Start with: **${b} × 10 = __**. What is it?`,
+              ].join('\n')
+            : [
+                `We doen het stap voor stap (nog geen eindantwoord).`,
+                `Begin met: **${b} × 10 = __**. Wat is dat?`,
+              ].join('\n')
+        return
+      }
+
+      // Generic fallback: ask for one concrete computation or fill-blank.
+      payload.message =
+        lang === 'en'
+          ? `Let’s do one concrete step: write **one** calculation you can do right now (e.g. 12×10=120).`
+          : `We doen één concrete stap: schrijf **één** berekening die je nu kunt doen (bijv. 12×10=120).`
+    }
+
+    lowFrictionRewrite()
+
     // ANTI-PARROT (NO "SAME QUESTION" FOLLOW-UP):
     // If the user asks a direct calculation like "184/16" and the model just re-asks the same question
     // ("Wat is de uitkomst van 184 gedeeld door 16?"), rewrite it into a real micro-step.

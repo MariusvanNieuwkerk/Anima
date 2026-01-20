@@ -154,6 +154,9 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima start met een concrete compute/fill‑blank stap (bv. `16×10 = __`).
 - Geen gokvragen (“denk je dat…”), geen meta‑vragen (“schrijf je berekening…”).
 
+**Must-not**
+- Geen “schatten / meer of minder …” vraag.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
