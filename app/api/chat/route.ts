@@ -1068,6 +1068,10 @@ OUTPUT-CONTRACT (CRITICAL)
       /^\s*\d+([.,]\d+)?\s*$/.test(userAnswerTextForStop) ||
       /^\s*[a-fA-F]\s*$/.test(userAnswerTextForStop) ||
       /^\s*\d{1,2}:\d{2}\s*$/.test(userAnswerTextForStop)
+    const prevAssistantIsComprehensionCheck = /(\bsnap\s+je\b|\bbegrijp\s+je\b|\bis\s+dat\s+duidelijk\b|\bvolg\s+je\b|\bmake\s+sense\b|\bdo\s+you\s+understand\b)/i.test(
+      prevAssistantTextForStop
+    )
+    const userSaidYes = /^(ja|yes|yep)\b[!.]*$/i.test(userAnswerTextForStop)
 
     const isConfirmation = (() => {
       const m = String(payload?.message || '').trim().toLowerCase()
@@ -1076,6 +1080,45 @@ OUTPUT-CONTRACT (CRITICAL)
         m
       )
     })()
+    const isTinyConfirmation =
+      isConfirmation && String(payload?.message || '').trim().length <= 12 && !/\d/.test(String(payload?.message || ''))
+
+    // If the student answers "ja" to a comprehension check ("Snap je?"), we should continue with the next micro-step,
+    // not stop with a bare "Super!".
+    if (prevAssistantAskedForStop && prevAssistantIsComprehensionCheck && userSaidYes && isTinyConfirmation) {
+      const lang = String(userLanguage || 'nl')
+      const prevNonTrivialUser = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        for (let i = arr.length - 2; i >= 0; i--) {
+          const m = arr[i]
+          if (m?.role !== 'user') continue
+          const t = String(m?.content || '').trim()
+          if (!t) continue
+          if (
+            /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
+              t
+            )
+          )
+            continue
+          return t
+        }
+        return ''
+      })()
+      const frac = prevNonTrivialUser.match(/(\d+)\s*\/\s*(\d+)/)
+      if (frac) {
+        const a = frac[1]
+        const b = frac[2]
+        payload.message =
+          lang === 'en'
+            ? `Great. Now compute: how many times does ${b} fit into ${a}? Start with ${b}×10 = __. What is it?`
+            : `Mooi. Dan gaan we rekenen: hoeveel keer past ${b} in ${a}? Begin met ${b}×10 = __. Wat is dat?`
+      } else {
+        payload.message =
+          lang === 'en'
+            ? `Great. Next micro-step: write the first calculation you would do (1 short line).`
+            : `Mooi. Volgende micro-stap: schrijf de eerste berekening die je nu doet (1 korte zin).`
+      }
+    }
 
     const hasCompletionMarker = (() => {
       const m = String(payload?.message || '').toLowerCase()
@@ -1108,7 +1151,7 @@ OUTPUT-CONTRACT (CRITICAL)
       return out.trim()
     }
 
-    if (prevAssistantAskedForStop && userLooksLikeAnswer && (isConfirmation || hasCompletionMarker)) {
+    if (prevAssistantAskedForStop && userLooksLikeAnswer && !prevAssistantIsComprehensionCheck && (isConfirmation || hasCompletionMarker)) {
       const clipped = stripAfterFirstQuestion(String(payload.message || ''))
       const first = takeFirstSentenceNoQuestion(clipped)
       payload.message = first || clipped || 'Juist.'
