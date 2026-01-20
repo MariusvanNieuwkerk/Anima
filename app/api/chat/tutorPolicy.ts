@@ -21,6 +21,11 @@ export type TutorPayload = {
 
 const strip = (s: any) => String(s || '').trim()
 
+export type TutorDebugEvent = {
+  name: string
+  details?: Record<string, any>
+}
+
 const normalizeMathText = (t: string) =>
   String(t || '')
     // Normalize many hyphen/minus variants to "-"
@@ -877,7 +882,18 @@ const inferConcreteStep = (lang: string, messages: any[], lastUserText: string) 
 }
 
 export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext): TutorPayload {
+  return applyTutorPolicyWithDebug(payload, ctx).payload
+}
+
+export function applyTutorPolicyWithDebug(
+  payload: TutorPayload,
+  ctx: TutorPolicyContext
+): { payload: TutorPayload; debug: TutorDebugEvent[] } {
   const out: TutorPayload = { ...payload }
+  const debug: TutorDebugEvent[] = []
+  const mark = (name: string, details?: Record<string, any>) => {
+    debug.push({ name, details })
+  }
   const lang = String(ctx.userLanguage || 'nl')
   const lang11: SupportedLang = ((): SupportedLang => {
     const l = String(ctx.userLanguage || 'nl').toLowerCase()
@@ -909,6 +925,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     return { a: Number(mm[1]), b: Number(mm[2]) }
   })()
   if (fullSubBlank && Number.isFinite(fullSubBlank.a) && Number.isFinite(fullSubBlank.b)) {
+    mark('hardblock_sub_full_blank', { a: fullSubBlank.a, b: fullSubBlank.b })
     const a = fullSubBlank.a
     const b = fullSubBlank.b
     const bT = Math.trunc(b / 10) * 10
@@ -918,20 +935,21 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
         ? `Rewrite: ${a} - ${b} = ${a} - ${bT} - ${bU}`
         : `Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // NOTE: Canonical math engine runs AFTER stop/ack-only logic below.
 
   // 1) Stop signals (student control)
   if (lastUser && isStopSignal(lastUser)) {
+    mark('stop_signal', { lastUser })
     const closuresNl = ['Oké. Tot later.', 'Helemaal goed. Tot zo.', 'Prima. Laat maar weten als je nog iets hebt.']
     const closuresEn = ['Okay. See you later.', 'All good. Talk soon.', 'Sure. Let me know if you need anything else.']
     const turn = messages.filter((m: any) => m?.role === 'user').length
     const v = ((turn % 3) + 3) % 3
     out.message = lang === 'en' ? closuresEn[v] : closuresNl[v]
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // Grammar canon engine (12 core topics, 11 languages).
@@ -944,9 +962,10 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     if (!looksLikeMath) {
       const hit = routeGrammarTopic(lastNonTrivialUser, lang11)
       if (hit) {
+        mark('grammar_route', { topic: hit.topic, confidence: hit.confidence })
         out.message = grammarCanonStep(hit.topic, { lang: lang11, messages, lastUserText: String(ctx.lastUserText || '') })
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
     }
   }
@@ -973,11 +992,12 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
           const bT = Math.trunc((b as number) / 10) * 10
           const hasTensStep = m.includes(String(bT))
           if (hasAB && !hasTensStep) {
+            mark('rewrite_sub_from_lazy_full_blank', { a, b, bT })
             const step0 = canonStep(lang, canon, messages, lastUser)
             if (step0) {
               out.message = step0
               out.action = out.action || 'none'
-              return out
+              return { payload: out, debug }
             }
           }
         }
@@ -986,6 +1006,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
 
     // Deterministic escape hatch if the student is stuck.
     if (lastUser && isStuckSignal(lastUser)) {
+      mark('math_escape_hatch', { canon: canon.kind })
       const attempts = countRecentAttempts(messages)
       const base = canonStep(lang, canon, messages, lastUser) || inferConcreteStep(lang, messages, lastUser)
       if (attempts <= 1) {
@@ -994,12 +1015,12 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
             ? `Rule: do it in one tiny step.\n${base}`
             : `Regel: doe het in één mini-stap.\n${base}`
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
       if (attempts <= 3) {
         out.message = lang === 'en' ? `We start together:\n${base}` : `We starten samen:\n${base}`
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
       if (canon.kind === 'add' || canon.kind === 'sub' || canon.kind === 'mul') {
         const a = canon.a!
@@ -1010,23 +1031,25 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
             ? `Answer: **${ans}**.\nWhy: split → compute parts → combine.\nTry: ${a + 1} ${canon.kind === 'sub' ? '-' : canon.kind === 'mul' ? '×' : '+'} ${b} = __`
             : `Antwoord: **${ans}**.\nWaarom: splits → reken delen → combineer.\nProbeer: ${a + 1} ${canon.kind === 'sub' ? '-' : canon.kind === 'mul' ? '×' : '+'} ${b} = __`
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
       out.message = base
       out.action = out.action || 'none'
-      return out
+      return { payload: out, debug }
     }
 
     const step = canonStep(lang, canon, messages, lastUser)
     if (step) {
+      mark('math_canon_step', { canon: canon.kind })
       out.message = step
       out.action = out.action || 'none'
-      return out
+      return { payload: out, debug }
     }
   }
 
   // 2) Bare yes/no with no pending question: treat as "we're done" (no wedervraag).
   if (lastUser && isBareYesNo(lastUser) && !/\?\s*$/.test(prevAssistant)) {
+    mark('bare_yes_no_close', { lastUser })
     const closuresNl = [
       'Top. Als je nog iets wilt weten, typ het maar.',
       'Helder. Je mag altijd een nieuwe vraag sturen.',
@@ -1041,16 +1064,17 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     const v = ((turn % 3) + 3) % 3
     out.message = lang === 'en' ? closuresEn[v] : closuresNl[v]
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // 3) ACK-only handling: if previous assistant asked a question, re-ask for the answer; else close.
   if (lastUser && isAckOnly(lastUser)) {
     if (/\?\s*$/.test(prevAssistant)) {
+      mark('ack_only_answer_last_q')
       out.message =
         lang === 'en' ? `Got it. What’s your answer to my last question?` : `Top. Wat is jouw antwoord op mijn laatste vraag?`
       out.action = out.action || 'none'
-      return out
+      return { payload: out, debug }
     }
 
     // If we're in an active canonical math flow, treat ACK-only as "continue" (not as conversation end).
@@ -1065,9 +1089,10 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     if (looksLikeCanonMathStep) {
       const step = canonStep(lang, canon2!, messages, lastUser)
       if (step) {
+        mark('ack_only_continue_math_canon', { canon: canon2!.kind })
         out.message = step
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
     }
 
@@ -1085,7 +1110,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     const v = ((turn % 3) + 3) % 3
     out.message = lang === 'en' ? closuresEn[v] : closuresNl[v]
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // 3b) If the assistant asked a comprehension check and the student answers yes/no,
@@ -1094,7 +1119,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     if (isPraiseOnly(out.message)) {
       out.message = inferConcreteStep(lang, messages, lastUser)
       out.action = out.action || 'none'
-      return out
+      return { payload: out, debug }
     }
   }
 
@@ -1104,12 +1129,13 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     return /\b(we\s+zijn\s+klaar|klaar\.?$|dat\s+is\s+het|that'?s\s+it|we'?re\s+done|done\.)\b/i.test(m)
   })()
   if (hasCompletionMarker && /\?/.test(String(out?.message || ''))) {
+    mark('strip_question_after_completion')
     out.message =
       stripAfterFirstQuestion(String(out.message || '')) ||
       takeFirstSentenceNoQuestion(String(out.message || '')) ||
       (lang === 'en' ? 'Done.' : 'Klaar.')
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // 5) Arithmetic handling:
@@ -1132,31 +1158,34 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
           prevAssistant.includes(String(seedOp.a)) &&
           prevAssistant.includes(String(seedOp.b))
         if (askedFullExpression) {
+          mark('stop_after_final_fill', { seed: canonSeed })
           out.message = lang === 'en' ? 'Correct.' : 'Juist.'
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
 
         if (isDirectArithmeticUserQuery(lastNonTrivialUser)) {
+          mark('direct_arithmetic_stop')
           out.message = lang === 'en' ? 'Exactly.' : 'Juist.'
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
         // Micro-step correct: do not stop. If the model replies with praise-only, force a concrete next step.
         if (isPraiseOnly(out.message)) {
+          mark('avoid_praise_only_continue')
           out.message = inferConcreteStep(lang, messages, lastUser)
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
         // Otherwise, let the model continue naturally.
-        return out
+        return { payload: out, debug }
       }
       out.message =
         lang === 'en'
           ? `Almost. Fill in: **${prevOp.a} ${prevOp.op} ${prevOp.b} = __**.`
           : `Bijna. Vul in: **${prevOp.a} ${prevOp.op} ${prevOp.b} = __**.`
       out.action = out.action || 'none'
-      return out
+      return { payload: out, debug }
     }
   }
 
@@ -1188,14 +1217,14 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
               ? `Fill in: **${aN} − ${expectedBx10} = __**.`
               : `Vul in: **${aN} − ${expectedBx10} = __**.`
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
         out.message =
           lang === 'en'
             ? `Almost. Fill in: **${bN} × 10 = __**.`
             : `Bijna. Vul in: **${bN} × 10 = __**.`
         out.action = out.action || 'none'
-        return out
+        return { payload: out, debug }
       }
 
       const prevAskedRemainder = /\b(hoeveel\s+blijft\s+er\s+over|blijft\s+er\s+over|remainder|rest)\b/i.test(prev)
@@ -1210,7 +1239,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
               ? `Next step: **${bN} × 1 = __**. What is it?`
               : `Volgende stap: **${bN} × 1 = __**. Wat is dat?`
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
         if (Number.isFinite(expectedRem)) {
           out.message =
@@ -1218,7 +1247,7 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
               ? `Fill in: **${aN} − ${used} = __**.`
               : `Vul in: **${aN} − ${used} = __**.`
           out.action = out.action || 'none'
-          return out
+          return { payload: out, debug }
         }
       }
     }
@@ -1239,9 +1268,10 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     return false
   })()
   if (looksLikeGenericOutcomePrompt) {
+    mark('rewrite_generic_outcome_prompt')
     out.message = inferConcreteStep(lang, messages, lastUser)
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   const looksLikeParrotedDivisionQuestion = (() => {
@@ -1255,13 +1285,14 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
     return true
   })()
   if (looksLikeParrotedDivisionQuestion) {
+    mark('rewrite_parroted_division_question')
     const { b } = fracFromUser!
     out.message =
       lang === 'en'
         ? `Start with: **${b} × 10 = __**. What is it?`
         : `Begin met: **${b} × 10 = __**. Wat is dat?`
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // 7) Low-friction linter: eliminate guess/meta questions (policy-first) into concrete compute/fill-blank.
@@ -1270,20 +1301,23 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
   const bannedMeta =
     /(schrijf\s+je\s+berekening|wat\s+is\s+je\s+volgende\s+stap|volgende\s+stap\s*\(1\s*korte\s*zin\))/i.test(msg)
   if (bannedGuess || bannedMeta) {
+    mark('rewrite_low_friction', { bannedGuess, bannedMeta })
     out.message = inferConcreteStep(lang, messages, lastUser)
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
   // 8) Final anti-repeat: if assistant repeats itself, replace with a concrete next step.
   const lastAssistantInHistory = prevAssistant
   const nowMsg = typeof out.message === 'string' ? out.message : ''
   if (lastAssistantInHistory && normalizeForRepeat(nowMsg) && normalizeForRepeat(nowMsg) === normalizeForRepeat(lastAssistantInHistory)) {
+    mark('anti_repeat_triggered')
     out.message = inferConcreteStep(lang, messages, lastUser)
     out.action = out.action || 'none'
-    return out
+    return { payload: out, debug }
   }
 
-  return out
+  mark('no_policy_change')
+  return { payload: out, debug }
 }
 

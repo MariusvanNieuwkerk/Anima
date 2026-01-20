@@ -6,7 +6,7 @@ import { extractMoneyLike } from './skills/ocrUtils'
 import { searchWikimedia } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
-import { applyTutorPolicy } from './tutorPolicy'
+import { applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -911,7 +911,24 @@ OUTPUT-CONTRACT (CRITICAL)
     }
 
     // Apply the central tutor policy (policy-first) after sanitization.
-    payload = applyTutorPolicy(payload, { userLanguage, messages, lastUserText: lastMessageContent })
+    const debugEnabled = process.env.ANIMA_DEBUG_MATH === '1'
+    if (debugEnabled) {
+      const before = String(payload?.message || '')
+      const res = applyTutorPolicyWithDebug(payload, { userLanguage, messages, lastUserText: lastMessageContent })
+      payload = res.payload
+      const after = String(payload?.message || '')
+      console.log('[ANIMA_DEBUG_MATH]', {
+        git: process.env.VERCEL_GIT_COMMIT_SHA || null,
+        deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
+        userLanguage,
+        lastUserText: String(lastMessageContent || ''),
+        before,
+        after,
+        debug: res.debug,
+      })
+    } else {
+      payload = applyTutorPolicy(payload, { userLanguage, messages, lastUserText: lastMessageContent })
+    }
     // NOTE: Tutor-flow postprocessing lives in tutorPolicy.ts (anti-parrot, stop markers, ack-only, anti-repeat, etc.).
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
