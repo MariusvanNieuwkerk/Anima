@@ -60,7 +60,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Anima geeft **1–3 zinnen** uitleg (bv. Bastille/Begin revolutie).
-- Anima stelt **1 mini-checkvraag** om door te gaan.
+- Anima geeft **1 concrete mini-actie** om door te gaan (Compute/Fill-blank/Choose).
 
 **Must-not**
 - Niet opnieuw alleen de jaartallen herhalen zonder de gevraagde context.
@@ -163,7 +163,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 2. `ik snap het niet`
 
 **Must**
-- Level 1: **regel-hint** + mini-checkvraag.
+- Level 1: **regel-hint** + **1 concrete mini-actie** (Compute/Fill-blank).
 - Geen eindantwoord.
 
 ---
@@ -227,7 +227,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - `action` is `display_formula` en `formula.latex` is een $$...$$ blok.
-- Chat bevat korte uitleg + 1 mini-checkvraag (bv. “Welke term is b in jouw opgave?”).
+- Chat bevat korte uitleg + 1 concrete mini-actie (bijv. “Vul in: in \(ax^2+bx+c\) is \(b = __\).”).
 
 ---
 

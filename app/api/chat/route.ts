@@ -64,7 +64,7 @@ export async function POST(req: Request) {
           'ADAPTIVE PACING & TONE (JUNIOR 6-12):',
           '- Pacing: ULTRA-kort. Max 2 zinnen per bericht.',
           '- I Do / We Do / You Do: 1 zin uitleg (I Do), 1 zin samen stap (We Do), eindig met 1 mini-actie (You Do).',
-          '- Interactie: na elke zin 1 simpele checkvraag (bijv. "Zie je de rode stip?").',
+          '- Interactie: laat de leerling steeds 1 mini-actie doen (liefst invullen/rekenen). Geen begrip-checks als standaard.',
           "- Toon: enthousiast, warm, veel complimenten. Gebruik simpele metaforen (pizza/lego).",
           '- Visueel: je kunt GEEN afbeeldingen genereren (geen DALL·E/Flux), maar je kunt WEL bestaande afbeeldingen opzoeken via `show_image` (Wikimedia). Zeg dus niet “ik kan geen afbeeldingen”, maar: “Ik zoek het voor je op.” en vul het bord.',
         ].join('\n')
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
           'ADAPTIVE PACING & TONE (TEEN 13-16):',
           '- Pacing: normaal. Focus op de kern, geen lange lappen tekst.',
           '- I Do / We Do / You Do: korte methode (I Do), 1 gezamenlijke tussenstap (We Do), dan jij (You Do).',
-          '- Interactie: daag uit ("Wat is de volgende stap?").',
+          '- Interactie: één concrete actie per beurt (Compute/Fill-blank). Geen meta-vragen.',
           "- Toon: real talk. Niet neerbuigend. Erken dat school soms saai is. Vermijd te veel emoji’s.",
           '- Visueel: je kunt GEEN afbeeldingen genereren, maar je kunt WEL `show_image` (Wikimedia) en `show_map` (Leaflet) gebruiken wanneer passend. Gebruik LaTeX voor formules.',
         ].join('\n')
@@ -82,8 +82,8 @@ export async function POST(req: Request) {
       return [
         'ADAPTIVE PACING & TONE (STUDENT 17+):',
         '- Pacing: hoog tempo, informatie-dicht maar helder.',
-        '- I Do / We Do / You Do: conceptueel kader (I Do), snelle check op begrip (We Do), dan een gerichte oefenactie (You Do).',
-        '- Interactie: conceptueel ("Snap je de logica hierachter?").',
+        '- I Do / We Do / You Do: conceptueel kader (I Do), 1 concrete tussenstap (We Do), dan 1 gerichte oefenactie (You Do).',
+        '- Interactie: één concrete actie per beurt. Geen begrip-checks als standaard.',
         '- Toon: professioneel, efficiënt, academische partner.',
         '- Visueel: je kunt GEEN afbeeldingen genereren, maar je kunt WEL `show_image` (Wikimedia) en `show_map` (Leaflet) gebruiken wanneer passend. Gebruik LaTeX waar relevant.',
       ].join('\n')
@@ -131,7 +131,7 @@ INTENT-PROTOCOL (STRIKT)
   - Geef nooit een bericht dat alleen uit lof bestaat (“Super!”, “Top!”). Als je bevestigt, geef meteen de volgende concrete stap (tenzij je stopt volgens de stopcriteria).
 - VASTLOPEN (escape hatch 3-level):
   - Wat telt als "poging": alleen echt werk (stap/redenering/bewerking), niet alleen "ok/ja" en niet alleen een los getal.
-  - Level 1: regel-hint + mini-checkvraag (geen eindantwoord).
+  - Level 1: regel-hint + 1 concrete mini-actie (Compute/Fill-blank). Geen begrip-checkvraag als standaard.
   - Level 2: werk precies 1 stap uit met 1 blanco "__" (nog geen eindantwoord).
   - Level 3: (na ≥3 echte pogingen) eindantwoord + 2 korte zinnen waarom + 1 mini transfer-oefenvraag. Kort houden.
 
@@ -801,12 +801,12 @@ OUTPUT-CONTRACT (CRITICAL)
       const addon =
         lang === 'en'
           ? escapeHatchLevel === 1
-            ? `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 1): The student is stuck. Give 1 short rule/formula hint + 1 tiny check question. Do NOT give the final answer. Keep it short. Output valid JSON only.]`
+            ? `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 1): The student is stuck. Give 1 short rule/formula hint + 1 concrete mini-action (Compute/Fill-blank). Do NOT give the final answer. Keep it short. Output valid JSON only.]`
             : escapeHatchLevel === 2
               ? `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 2): The student is stuck and has already tried. Work out exactly ONE step (leave 1 blank like "__") and ask them to fill it in. Do NOT give the final answer yet. Output valid JSON only.]`
               : `\n\n[SYSTEM OVERRIDE (ESCAPE HATCH LEVEL 3): The student is stuck after 3 real attempts. You MAY give the final answer now. Format: final answer + 2 short 'why' sentences + 1 mini transfer practice question (same idea, new numbers). Keep it concise. Output valid JSON only.]`
           : escapeHatchLevel === 1
-            ? `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 1): De leerling zit vast. Geef 1 korte regel-hint (formule/werkwijze) + 1 mini-checkvraag. Geef GEEN eindantwoord. Houd het kort. Output ALLEEN geldige JSON.]`
+            ? `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 1): De leerling zit vast. Geef 1 korte regel-hint (formule/werkwijze) + 1 concrete mini-actie (Compute/Fill-blank). Geef GEEN eindantwoord. Houd het kort. Output ALLEEN geldige JSON.]`
             : escapeHatchLevel === 2
               ? `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 2): De leerling zit vast en heeft al geprobeerd. Werk precies ÉÉN stap concreet uit (laat 1 blanco zoals "__") en laat de leerling die invullen. Nog GEEN eindantwoord. Output ALLEEN geldige JSON.]`
               : `\n\n[SYSTEEM OVERRIDE (ESCAPE HATCH LEVEL 3): De leerling zit vast na 3 échte pogingen. Je MAG nu het eindantwoord geven. Format: eindantwoord + 2 korte zinnen 'waarom' + 1 mini transfer-oefenvraag (zelfde idee, nieuwe getallen). Houd het kort. Output ALLEEN geldige JSON.]`
@@ -912,126 +912,7 @@ OUTPUT-CONTRACT (CRITICAL)
 
     // Apply the central tutor policy (policy-first) after sanitization.
     payload = applyTutorPolicy(payload, { userLanguage, messages, lastUserText: lastMessageContent })
-
-    // ANTI-PARROT (NO "SAME QUESTION" FOLLOW-UP):
-    // If the user asks a direct calculation like "184/16" and the model just re-asks the same question
-    // ("Wat is de uitkomst van 184 gedeeld door 16?"), rewrite it into a real micro-step.
-    const lastNonTrivialUserText = (() => {
-      const arr = Array.isArray(messages) ? messages : []
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role !== 'user') continue
-        const t = String(m?.content || '').trim()
-        if (!t) continue
-        // Skip pure acknowledgements / stop signals
-        if (
-          /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
-            t
-          )
-        )
-          continue
-        return t
-      }
-      return ''
-    })()
-
-    const fracFromUser = (() => {
-      const t = String(lastNonTrivialUserText || '')
-      // Matches "184/16" or "184 / 16"
-      const m = t.match(/(\d+)\s*\/\s*(\d+)/)
-      if (!m) return null
-      return { a: m[1], b: m[2] }
-    })()
-
-    const looksLikeParrotedDivisionQuestion = (() => {
-      if (!fracFromUser) return false
-      const msg = String(payload?.message || '')
-      const low = msg.toLowerCase()
-      if (!/\?\s*$/.test(msg.trim())) return false
-      // Must mention both numbers and the division phrasing
-      if (!low.includes(fracFromUser.a) || !low.includes(fracFromUser.b)) return false
-      if (!/(gedeeld\s+door|delen\s+door|\/)/.test(low)) return false
-      if (!/(wat\s+is|uitkomst|hoeveel)/.test(low)) return false
-      return true
-    })()
-
-    if (looksLikeParrotedDivisionQuestion) {
-      const lang = String(userLanguage || 'nl')
-      const { a, b } = fracFromUser!
-      payload.message =
-        lang === 'en'
-          ? [
-              `Let’s do it step by step (no final answer yet).`,
-              `Start with: **${b} × 10 = __**. What is it?`,
-            ].join('\n')
-          : [
-              `We doen het stap voor stap (nog geen eindantwoord).`,
-              `Begin met: **${b} × 10 = __**. Wat is dat?`,
-            ].join('\n')
-    }
-
-    // STOP GUARDRAIL (SERVER-SIDE, MINIMAL):
-    // Only enforce stopping when the model itself signals completion ("we zijn klaar", "dat is het")
-    // or when the user explicitly sends a stop signal. Do NOT stop merely because an intermediate
-    // step was correct (otherwise the tutor halts mid-explanation).
-    const prevAssistantTextForStop = (() => {
-      const arr = Array.isArray(messages) ? messages : []
-      for (let i = arr.length - 2; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role && m.role !== 'user') return String(m?.content || '')
-      }
-      return ''
-    })()
-    const prevAssistantAskedForStop = /\?\s*$/.test(prevAssistantTextForStop.trim())
-    const userAnswerTextForStop = String(lastMessageContent || '').trim()
-    const userLooksLikeAnswer =
-      /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(userAnswerTextForStop) ||
-      /^\s*\d+([.,]\d+)?\s*$/.test(userAnswerTextForStop) ||
-      /^\s*[a-fA-F]\s*$/.test(userAnswerTextForStop) ||
-      /^\s*\d{1,2}:\d{2}\s*$/.test(userAnswerTextForStop)
-    const prevAssistantIsComprehensionCheck = /(\bsnap\s+je\b|\bbegrijp\s+je\b|\bis\s+dat\s+duidelijk\b|\bvolg\s+je\b|\bmake\s+sense\b|\bdo\s+you\s+understand\b)/i.test(
-      prevAssistantTextForStop
-    )
-    const userSaidYes = /^(ja|yes|yep)\b[!.]*$/i.test(userAnswerTextForStop)
-
-    const hasCompletionMarker = (() => {
-      const m = String(payload?.message || '').toLowerCase()
-      return /\b(we\s+zijn\s+klaar|klaar\.?$|dat\s+is\s+het|that'?s\s+it|we'?re\s+done|done\.)\b/i.test(m)
-    })()
-
-    const stripAfterFirstQuestion = (s: string) => {
-      const t = String(s || '').trim()
-      if (!t) return ''
-      const q = t.indexOf('?')
-      if (q === -1) return t
-      const before = t.slice(0, q).trim()
-      // If we cut right after a colon, keep going until next sentence end.
-      return (before.endsWith(':') ? before.slice(0, -1) : before).trim() + '.'
-    }
-
-    const takeFirstSentenceNoQuestion = (s: string) => {
-      const t = String(s || '').trim()
-      if (!t) return ''
-      let out = ''
-      for (let i = 0; i < t.length; i++) {
-        const ch = t[i]
-        if (ch === '\n') break
-        if (ch === '?' || ch === '!' || ch === '.') {
-          out += ch === '?' ? '.' : ch
-          break
-        }
-        out += ch
-      }
-      return out.trim()
-    }
-
-    // If the model itself claims completion, do not end with a new question.
-    if (hasCompletionMarker && /\?/.test(String(payload?.message || ''))) {
-      payload.message =
-        stripAfterFirstQuestion(String(payload.message || '')) ||
-        takeFirstSentenceNoQuestion(String(payload.message || '')) ||
-        (String(userLanguage || 'nl') === 'en' ? 'Done.' : 'Klaar.')
-    }
+    // NOTE: Tutor-flow postprocessing lives in tutorPolicy.ts (anti-parrot, stop markers, ack-only, anti-repeat, etc.).
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
     if (!payload.formula) {
@@ -1269,230 +1150,6 @@ OUTPUT-CONTRACT (CRITICAL)
             : `\n\nIk kon geen **betrouwbare foto / erkende plaat** vinden die echt goed bij je vraag past.\nBedoel je een **foto** (echt object) of een **schoolboek-schema**? (Ik toon alleen foto’s/erkende platen.)`
         payload.message = `${String(payload.message || '').trim()}${extra}`.trim()
       }
-    }
-
-    // ACK-ONLY GUARDRAIL:
-    // If the user only acknowledges ("ok/ja/top/...") and doesn't ask anything new,
-    // do NOT continue with extra content. Ask 1 short next-step question.
-    const lastUserText = String(lastMessageContent || '').trim()
-    const isBareYesNo =
-      lastUserText.length > 0 &&
-      lastUserText.length <= 8 &&
-      !/[?¿]/.test(lastUserText) &&
-      /^(ja|nee|yes|no|yep|nope)\b[!.]*$/i.test(lastUserText)
-    const isStopSignal =
-      lastUserText.length > 0 &&
-      lastUserText.length <= 32 &&
-      !/[?¿]/.test(lastUserText) &&
-      /^(niets|nee\s+hoor|laat\s+maar|stop|klaar|geen\s+vragen|geen\s+verdere\s+vragen|that'?s\s+all|nothing|no\s+thanks)\b[!.]*$/i.test(
-        lastUserText
-      )
-
-    const prevAssistantTextForAck = (() => {
-      const arr = Array.isArray(messages) ? messages : []
-      for (let i = arr.length - 2; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role && m.role !== 'user') return String(m?.content || '')
-      }
-      return ''
-    })()
-    const prevAssistantAskedForAck = /\?\s*$/.test(prevAssistantTextForAck.trim())
-    // NOTE: "ja/nee/yes/no" are treated as *answers* to a yes/no question, not as ACK-only.
-    // We only treat lightweight acknowledgements like "ok/top/dankjewel" as ACK-only.
-    const isAckOnly =
-      lastUserText.length > 0 &&
-      lastUserText.length <= 24 &&
-      !/[?¿]/.test(lastUserText) &&
-      /^(ok(é|ay)?|klopt|top|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?)\b[!.]*$/i.test(lastUserText)
-
-    // If the student says "stop / niets / laat maar", treat as conversation complete and stop cleanly.
-    if (isStopSignal) {
-      const lang = String(userLanguage || 'nl')
-      const userTurnIndex = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        return arr.filter((m: any) => m?.role === 'user').length
-      })()
-      const variant = ((userTurnIndex % 3) + 3) % 3
-      const closuresNl = ['Oké. Tot later.', 'Helemaal goed. Tot zo.', 'Prima. Laat maar weten als je nog iets hebt.']
-      const closuresEn = ['Okay. See you later.', 'All good. Talk soon.', 'Sure. Let me know if you need anything else.']
-      payload.message = lang === 'en' ? closuresEn[variant] : closuresNl[variant]
-      payload.action = payload.action || 'none'
-    }
-
-    // If the student clearly acknowledges with a bare yes/no BUT there's no pending yes/no question,
-    // treat it as "conversation complete" and stop without a wedervraag.
-    if (isBareYesNo && !prevAssistantAskedForAck) {
-      const lang = String(userLanguage || 'nl')
-      const userTurnIndex = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        return arr.filter((m: any) => m?.role === 'user').length
-      })()
-      const variant = ((userTurnIndex % 3) + 3) % 3
-
-      const closuresNl = [
-        'Top. Als je nog iets wilt weten, typ het maar.',
-        'Helder. Je mag altijd een nieuwe vraag sturen.',
-        'Oké. Zeg het maar als je nog iets nodig hebt.',
-      ]
-      const closuresEn = [
-        'Got it. If you have another question, just type it.',
-        'Clear. Feel free to ask a new question anytime.',
-        'Okay. Tell me if you need anything else.',
-      ]
-      payload.message = lang === 'en' ? closuresEn[variant] : closuresNl[variant]
-    }
-
-    if (isAckOnly) {
-      const lang = String(userLanguage || 'nl')
-      const prevAssistantAsked = prevAssistantAskedForAck
-
-      const userTurnIndex = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        return arr.filter((m: any) => m?.role === 'user').length
-      })()
-      const variant = ((userTurnIndex % 3) + 3) % 3
-
-      const closingVariantsNl = [
-        'Top. Wil je een voorbeeld, of heb je een nieuwe vraag?',
-        'Helder. Wil je 1 oefenvraag, of wil je iets anders vragen?',
-        'Oké. Zullen we één voorbeeld doen, of ga je door met een nieuwe vraag?',
-      ]
-      const closingVariantsEn = [
-        'Got it. Do you want an example, or do you have a new question?',
-        'Clear. Do you want 1 practice question, or do you want to ask something else?',
-        'Okay. Should we do one example, or do you have a new question?',
-      ]
-
-      payload.message =
-        lang === 'en'
-          ? prevAssistantAsked
-            ? `Got it. What’s your answer to my last question? (1 short line)`
-            : [
-                'Got it. If you have another question, just type it.',
-                'Clear. Feel free to ask a new question anytime.',
-                'Okay. Tell me if you need anything else.',
-              ][variant]
-          : prevAssistantAsked
-            ? `Top. Wat is jouw antwoord op mijn laatste vraag? (1 korte zin)`
-            : [
-                'Top. Als je nog iets wilt weten, typ het maar.',
-                'Helder. Je mag altijd een nieuwe vraag sturen.',
-                'Oké. Zeg het maar als je nog iets nodig hebt.',
-              ][variant]
-    }
-
-    // FINAL ANTI-REPEAT SAFETY NET:
-    // If the model repeats the exact same assistant message as the previous assistant turn,
-    // replace it with a "continue" scaffold (prevents getting stuck in a loop).
-    const normalizeForRepeat = (s: string) =>
-      String(s || '')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .replace(/[“”"']/g, '')
-        // Keep common punctuation; drop other symbols (ASCII-safe; avoids unicode property escapes).
-        .replace(/[^a-z0-9\s:.,!?€$]/g, '')
-        // Ignore small praise/confirmation prefixes so we catch near-duplicates like "Super!" vs "Precies!"
-        .replace(/^(?:super|precies|juist|exact|helemaal\s+goed|goed\s+zo|top|ok[ée]?|oke|klopt)\b[!.,:;\-–— ]*/i, '')
-        .trim()
-
-    const lastAssistantInHistory = (() => {
-      const arr = Array.isArray(messages) ? messages : []
-      for (let i = arr.length - 2; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role && m.role !== 'user') {
-          return String(m?.content || '')
-        }
-      }
-      return ''
-    })()
-
-    const nowMsg = typeof payload.message === 'string' ? payload.message : ''
-    if (lastAssistantInHistory && normalizeForRepeat(nowMsg) && normalizeForRepeat(nowMsg) === normalizeForRepeat(lastAssistantInHistory)) {
-      const lang = String(userLanguage || 'nl')
-      const userText = String(lastMessageContent || '').trim()
-      const isShortConfirm = /^(ja|ok(é)?|klopt|yes|yep|nope|nee)\b/i.test(userText)
-      const isShortNumber = /^\d+([.,]\d+)?$/.test(userText)
-      const isYes = /^(ja|yes|yep)\b/i.test(userText)
-      const isNo = /^(nee|no|nope)\b/i.test(userText)
-      const lastAssistantLower = String(lastAssistantInHistory || '').toLowerCase()
-      const looksLikeSimplifyPrompt =
-        /(vereenvoudig|vereenvoudigen|delen\s+door\s+een\s+kleiner|getal\s+delen|kun\s+je\s+\d+.*delen|factor)/.test(lastAssistantLower)
-      const hasUnitContext = /\b(€|euro|cent|km|meter|cm|mm|kg|gram|liter|ml|uur|minuut|minuten|seconde|%|procent)\b/i.test(
-        lastAssistantInHistory
-      )
-
-      const parseNum = (s: string) => {
-        const n = Number(String(s || '').trim().replace(',', '.'))
-        return Number.isFinite(n) ? n : NaN
-      }
-
-      const extractSimpleOp = (text: string): { a: number; b: number; op: '+' | '-' | '*' | '/' } | null => {
-        const t = String(text || '')
-        // NL/EN patterns: "wat is 92 / 2?" / "what is 92/2?"
-        const m =
-          t.match(/(?:wat\s+is|what\s+is)\s+(-?\d+(?:[.,]\d+)?)\s*([+\-*/:])\s*(-?\d+(?:[.,]\d+)?)/i) ||
-          t.match(/(-?\d+(?:[.,]\d+)?)\s*([+\-*/:])\s*(-?\d+(?:[.,]\d+)?)/)
-        if (!m) return null
-        const a = parseNum(m[1])
-        const rawOp = m[2]
-        const b = parseNum(m[3])
-        if (!Number.isFinite(a) || !Number.isFinite(b)) return null
-        const op = rawOp === ':' ? '/' : (rawOp as any)
-        if (op !== '+' && op !== '-' && op !== '*' && op !== '/') return null
-        return { a, b, op }
-      }
-
-      const op = extractSimpleOp(lastAssistantInHistory)
-      const userN = isShortNumber ? parseNum(userText) : NaN
-      const expected = (() => {
-        if (!op) return NaN
-        if (op.op === '+') return op.a + op.b
-        if (op.op === '-') return op.a - op.b
-        if (op.op === '*') return op.a * op.b
-        if (op.op === '/') return op.b === 0 ? NaN : op.a / op.b
-        return NaN
-      })()
-      const isArithmeticQuestion = !!op && Number.isFinite(expected) && isShortNumber && Number.isFinite(userN)
-      const isCorrectArithmetic = isArithmeticQuestion && Math.abs(userN - expected) < 1e-9
-
-      payload.message =
-        lang === 'en'
-          ? [
-              `Ok.`,
-              isShortNumber
-                ? isArithmeticQuestion
-                  ? isCorrectArithmetic
-                    ? `Exactly.`
-                    : `Almost. Try again: ${op!.a} ${op!.op} ${op!.b} = __`
-                  : hasUnitContext
-                    ? `You wrote **${userText}**. What does that number represent (units: €, km, minutes…)?`
-                    : `You wrote **${userText}**. Write your calculation in 1 short line.`
-                : looksLikeSimplifyPrompt && isYes
-                  ? `Great. Which **smaller number** can you divide **both** numbers by? (Try 2 or 3.)`
-                  : looksLikeSimplifyPrompt && isNo
-                    ? `Ok. Then we’ll skip simplifying. Start with: compute **23×10** = __. What is it?`
-                    : isShortConfirm && (isYes || isNo)
-                      ? `Got it. Answer in 1 short line: what’s your next step?`
-                      : `What is your next step? (1 short line)`,
-            ].join('\n')
-          : [
-              `Oké.`,
-              isShortNumber
-                ? isArithmeticQuestion
-                  ? isCorrectArithmetic
-                    ? `Juist.`
-                    : `Bijna. Probeer nog eens: ${op!.a} ${op!.op} ${op!.b} = __`
-                  : hasUnitContext
-                    ? `Jij schreef **${userText}**. Waar staat dat getal voor (eenheid: €, km, minuten…)?`
-                    : `Jij schreef **${userText}**. Schrijf je berekening in 1 korte zin.`
-                : looksLikeSimplifyPrompt && isYes
-                  ? `Top. Door welk **kleiner getal** kun je **beide** getallen delen? (Probeer 2 of 3.)`
-                  : looksLikeSimplifyPrompt && isNo
-                    ? `Oké. Dan slaan we vereenvoudigen over. Begin met: **23×10** = __. Wat is dat?`
-                    : isShortConfirm && (isYes || isNo)
-                      ? `Helder. Antwoord in 1 korte zin: wat is je volgende stap?`
-                      : `Wat is je volgende stap? (1 korte zin)`,
-            ].join('\n')
     }
 
     return new Response(JSON.stringify(payload), {
