@@ -80,6 +80,17 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5a) Optellen (canon: splits → tientallen → eenheden → samen) (NL)
+**User**
+1. `Los op: 47 + 28`
+
+**Must**
+- Anima start met de canon: **splitsen** of direct de **tientallen-som** (één concrete stap).
+- Anima gebruikt daarna consequent de volgende stappen (tientallen → eenheden → samenvoegen), steeds **één** invulstap per beurt.
+
+**Must-not**
+- Geen “schrijf je berekening” / “wat is je volgende stap”.
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 
@@ -180,6 +191,20 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Geen eindantwoord.
 
 ---
+
+## 6a) “Ik snap het niet” (canon) → escaleer 1→2→3 (NL)
+**Setup**: Gebruik een simpele som zodat level 3 verifieerbaar is.
+
+**User**
+1. `Los op: 17 + 28`
+2. `ik snap het niet`
+3. `ik snap het niet`
+4. `ik snap het niet`
+
+**Must**
+- Bij de eerste “ik snap het niet”: **regel-hint + 1 mini-actie** (level 1).
+- Bij de tweede: **samen starten** met 1 stap en 1 blank (level 2).
+- Bij de derde (na meerdere pogingen): **eindantwoord + 2 korte waarom-zinnen + 1 mini transfer-vraag** (level 3).
 
 ## 7) Vastlopen met 1 echte poging → Escape Hatch level 2 (NL)
 **User**
