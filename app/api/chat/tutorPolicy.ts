@@ -287,7 +287,37 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     // Canon: rewrite as a - tens - ones
     const bT = Math.trunc(b / 10) * 10
     const bU = b - bT
-    if (!/=\s*.*-\s*\d+/i.test(prevAssistant) && !/maak\s+het/i.test(prevAssistant)) {
+    const lastAssistantBlankPrompt = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role === 'user') continue
+        const t = String(m?.content || '')
+        if (!t.includes('__')) continue
+        if (new RegExp(`\\b${a}\\s*[−-]\\s*${bT}\\b`).test(t)) return `${a} − ${bT}`
+        if (new RegExp(`\\b${a - bT}\\s*[−-]\\s*${bU}\\b`).test(t)) return `${a - bT} − ${bU}`
+      }
+      return ''
+    })()
+
+    // ACK-only on a blank => re-ask same blank (do not rewind).
+    if (!/^\d+/.test(lastUser) && lastAssistantBlankPrompt) {
+      return ask(`Vul in: ${lastAssistantBlankPrompt} = __`, `Fill in: ${lastAssistantBlankPrompt} = __`)
+    }
+
+    const rewriteWasIntroduced = (() => {
+      const arr = Array.isArray(messages) ? messages : []
+      const re = new RegExp(`\\b${a}\\s*[−-]\\s*${b}\\s*=\\s*${a}\\s*[−-]\\s*${bT}\\s*[−-]\\s*${bU}`, 'i')
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const m = arr[i]
+        if (m?.role === 'user') continue
+        const t = String(m?.content || '')
+        if (re.test(t)) return true
+      }
+      return false
+    })()
+
+    if (!rewriteWasIntroduced) {
       return ask(`Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`, `Rewrite: ${a} − ${b} = ${a} − ${bT} − ${bU}`)
     }
     if (new RegExp(`\\b${a}\\s*[−-]\\s*${bT}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
@@ -297,7 +327,7 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     if (new RegExp(`\\b${a - bT}\\s*[−-]\\s*${bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
       const userN = parseNum(lastUser)
       const ans = a - b
-      if (Math.abs(userN - ans) < 1e-9) return ask(`Juist. Check: ${ans}+${b}=${a}.`, `Correct. Check: ${ans}+${b}=${a}.`)
+      if (Math.abs(userN - ans) < 1e-9) return ask(`Juist.`, `Correct.`)
     }
     return ask(`Vul in: ${a} − ${bT} = __`, `Fill in: ${a} − ${bT} = __`)
   }

@@ -80,6 +80,27 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5-2) Aftrekken (canon: rewrite → tientallen → eenheden → stop) (NL)
+**User**
+1. `Los op: 82 - 47`
+
+**Must**
+- Anima start met de rewrite (bv. `82−47 = 82−40−7`) en vraagt daarna `82−40=__`.
+- Na correct antwoord vraagt Anima `__−7=__`.
+- Na correct eindantwoord: bevestig kort en stop.
+
+---
+
+## 5-3) Aftrekken (ACK op invulvraag → herhaal invulvraag, geen rewind) (NL)
+**Setup**: Ga door tot Anima vraagt: `Vul in: 82 − 40 = __`.
+
+**User**
+1. `ok`
+
+**Must**
+- Anima herhaalt `82 − 40 = __` (of vraagt ultrakort om het getal).
+- Anima gaat niet terug naar de rewrite-stap.
+
 ## 5a) Optellen (canon: splits → tientallen → eenheden → samen) (NL)
 **User**
 1. `Los op: 47 + 28`
