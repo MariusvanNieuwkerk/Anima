@@ -129,6 +129,17 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima bevestigt kort, én geeft meteen de **volgende** micro‑stap (geen “Super!” als hele boodschap).
 - Nog steeds geen eindantwoord als het nog een tussenstap is.
 
+---
+
+## 5f) Directe rekenvraag + correct getal → bevestig en stop (NL)
+**Setup**: Anima stelt een directe rekenvraag, bijv. `Wat is 92/2?`
+
+**User**
+1. `46`
+
+**Must**
+- Anima bevestigt kort (bv. “Juist.”) en **stopt** (geen eenheden-vraag, geen “volgende stap”).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

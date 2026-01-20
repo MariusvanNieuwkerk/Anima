@@ -143,6 +143,11 @@ QUALITY GATE: liever geen visual dan een foute.
 
 MATH: gebruik LaTeX in message voor formules (inline $...$ of blok $$...$$).
 
+REKEN-STOPREGEL (BELANGRIJK, STUDENT-PROOF)
+- Als jij een *directe rekenvraag* stelt (bijv. "Wat is 92/2?" of "Wat is 17+28?") en de leerling antwoordt met een getal:
+  - Als het antwoord correct is: bevestig kort en STOP (geen nieuwe vraag, geen eenheden-vraag).
+  - Vraag NIET naar eenheden tenzij de vraag duidelijk een verhaalsom is met eenheden/context.
+
 OUTPUT-CONTRACT (CRITICAL)
 - Geef ALLEEN geldige JSON terug, zonder extra tekst ervoor/erna.
 - message = natuurlijke taal (met LaTeX waar nodig). NOOIT JSON/code in message.
@@ -1555,13 +1560,56 @@ OUTPUT-CONTRACT (CRITICAL)
       const lastAssistantLower = String(lastAssistantInHistory || '').toLowerCase()
       const looksLikeSimplifyPrompt =
         /(vereenvoudig|vereenvoudigen|delen\s+door\s+een\s+kleiner|getal\s+delen|kun\s+je\s+\d+.*delen|factor)/.test(lastAssistantLower)
+      const hasUnitContext = /\b(€|euro|cent|km|meter|cm|mm|kg|gram|liter|ml|uur|minuut|minuten|seconde|%|procent)\b/i.test(
+        lastAssistantInHistory
+      )
+
+      const parseNum = (s: string) => {
+        const n = Number(String(s || '').trim().replace(',', '.'))
+        return Number.isFinite(n) ? n : NaN
+      }
+
+      const extractSimpleOp = (text: string): { a: number; b: number; op: '+' | '-' | '*' | '/' } | null => {
+        const t = String(text || '')
+        // NL/EN patterns: "wat is 92 / 2?" / "what is 92/2?"
+        const m =
+          t.match(/(?:wat\s+is|what\s+is)\s+(-?\d+(?:[.,]\d+)?)\s*([+\-*/:])\s*(-?\d+(?:[.,]\d+)?)/i) ||
+          t.match(/(-?\d+(?:[.,]\d+)?)\s*([+\-*/:])\s*(-?\d+(?:[.,]\d+)?)/)
+        if (!m) return null
+        const a = parseNum(m[1])
+        const rawOp = m[2]
+        const b = parseNum(m[3])
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+        const op = rawOp === ':' ? '/' : (rawOp as any)
+        if (op !== '+' && op !== '-' && op !== '*' && op !== '/') return null
+        return { a, b, op }
+      }
+
+      const op = extractSimpleOp(lastAssistantInHistory)
+      const userN = isShortNumber ? parseNum(userText) : NaN
+      const expected = (() => {
+        if (!op) return NaN
+        if (op.op === '+') return op.a + op.b
+        if (op.op === '-') return op.a - op.b
+        if (op.op === '*') return op.a * op.b
+        if (op.op === '/') return op.b === 0 ? NaN : op.a / op.b
+        return NaN
+      })()
+      const isArithmeticQuestion = !!op && Number.isFinite(expected) && isShortNumber && Number.isFinite(userN)
+      const isCorrectArithmetic = isArithmeticQuestion && Math.abs(userN - expected) < 1e-9
 
       payload.message =
         lang === 'en'
           ? [
               `Ok.`,
               isShortNumber
-                ? `You wrote **${userText}**. What does that number represent (units: €, km, minutes…)?`
+                ? isArithmeticQuestion
+                  ? isCorrectArithmetic
+                    ? `Exactly.`
+                    : `Almost. Try again: ${op!.a} ${op!.op} ${op!.b} = __`
+                  : hasUnitContext
+                    ? `You wrote **${userText}**. What does that number represent (units: €, km, minutes…)?`
+                    : `You wrote **${userText}**. Write your calculation in 1 short line.`
                 : looksLikeSimplifyPrompt && isYes
                   ? `Great. Which **smaller number** can you divide **both** numbers by? (Try 2 or 3.)`
                   : looksLikeSimplifyPrompt && isNo
@@ -1573,7 +1621,13 @@ OUTPUT-CONTRACT (CRITICAL)
           : [
               `Oké.`,
               isShortNumber
-                ? `Jij schreef **${userText}**. Waar staat dat getal voor (eenheid: €, km, minuten…)?`
+                ? isArithmeticQuestion
+                  ? isCorrectArithmetic
+                    ? `Juist.`
+                    : `Bijna. Probeer nog eens: ${op!.a} ${op!.op} ${op!.b} = __`
+                  : hasUnitContext
+                    ? `Jij schreef **${userText}**. Waar staat dat getal voor (eenheid: €, km, minuten…)?`
+                    : `Jij schreef **${userText}**. Schrijf je berekening in 1 korte zin.`
                 : looksLikeSimplifyPrompt && isYes
                   ? `Top. Door welk **kleiner getal** kun je **beide** getallen delen? (Probeer 2 of 3.)`
                   : looksLikeSimplifyPrompt && isNo
