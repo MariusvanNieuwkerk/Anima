@@ -477,6 +477,54 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 100 = __ (meter)`, `Fill in: ${v} ÷ 100 = __ (meters)`)
     }
 
+    // Canon (money €→cent / cent→€)
+    const euro = raw.match(/€\s*(\d+(?:[.,]\d+)?)/) || raw.match(/(\d+(?:[.,]\d+)?)\s*euro\b/i)
+    const cent = raw.match(/(\d+(?:[.,]\d+)?)\s*cent\b/i)
+    if (euro && /\bcent\b/i.test(raw) && !/\b×\s*100\b/.test(prevAssistant)) {
+      const v = parseNum(euro[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} × 100 = __ (cent)`, `Fill in: ${v} × 100 = __ (cents)`)
+    }
+    if (cent && (/\beuro\b/i.test(raw) || /€/.test(raw)) && !/\b÷\s*100\b/.test(prevAssistant)) {
+      const v = parseNum(cent[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 100 = __ (euro)`, `Fill in: ${v} ÷ 100 = __ (euros)`)
+    }
+
+    // Canon (mass kg→g / g→kg)
+    const kg = raw.match(/(\d+(?:[.,]\d+)?)\s*kg\b/i)
+    const g = raw.match(/(\d+(?:[.,]\d+)?)\s*g(?:ram)?\b/i)
+    if (kg && /\bg\b/i.test(raw) && !/\b×\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(kg[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} × 1000 = __ (gram)`, `Fill in: ${v} × 1000 = __ (grams)`)
+    }
+    if (g && /\bkg\b/i.test(raw) && !/\b÷\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(g[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 1000 = __ (kg)`, `Fill in: ${v} ÷ 1000 = __ (kg)`)
+    }
+
+    // Canon (volume L→ml / ml→L)
+    const l = raw.match(/(\d+(?:[.,]\d+)?)\s*l(?:iter)?\b/i)
+    const ml = raw.match(/(\d+(?:[.,]\d+)?)\s*ml\b/i)
+    if (l && /\bml\b/i.test(raw) && !/\b×\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(l[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} × 1000 = __ (ml)`, `Fill in: ${v} × 1000 = __ (ml)`)
+    }
+    if (ml && /\bl\b/i.test(raw) && !/\b÷\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(ml[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 1000 = __ (liter)`, `Fill in: ${v} ÷ 1000 = __ (liters)`)
+    }
+
+    // Canon (distance km→m / m→km)
+    const km = raw.match(/(\d+(?:[.,]\d+)?)\s*km\b/i)
+    const m = raw.match(/(\d+(?:[.,]\d+)?)\s*m\b/i)
+    if (km && /\bm\b/i.test(raw) && !/\b×\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(km[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} × 1000 = __ (meter)`, `Fill in: ${v} × 1000 = __ (meters)`)
+    }
+    if (m && /\bkm\b/i.test(raw) && !/\b÷\s*1000\b/.test(prevAssistant)) {
+      const v = parseNum(m[1])
+      if (Number.isFinite(v)) return ask(`Vul in: ${v} ÷ 1000 = __ (km)`, `Fill in: ${v} ÷ 1000 = __ (km)`)
+    }
+
     return ask(`Vul in: 1 uur = __ minuten`, `Fill in: 1 hour = __ minutes`)
   }
 

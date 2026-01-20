@@ -329,6 +329,42 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima vraagt 1 invulstap: `250 ÷ 100 = __ (meter)`.
 
+---
+
+## 17) Eenheden (€ → cent) (canon) (NL)
+**User**
+1. `€2,50 naar cent`
+
+**Must**
+- Anima vraagt 1 invulstap: `2,5 × 100 = __ (cent)` (of equivalent).
+
+---
+
+## 18) Eenheden (kg → g) (canon) (NL)
+**User**
+1. `1,2 kg naar gram`
+
+**Must**
+- Anima vraagt 1 invulstap: `1,2 × 1000 = __ (gram)`.
+
+---
+
+## 19) Eenheden (L → ml) (canon) (NL)
+**User**
+1. `0,75 liter naar ml`
+
+**Must**
+- Anima vraagt 1 invulstap: `0,75 × 1000 = __ (ml)`.
+
+---
+
+## 20) Eenheden (km → m) (canon) (NL)
+**User**
+1. `3,4 km naar meter`
+
+**Must**
+- Anima vraagt 1 invulstap: `3,4 × 1000 = __ (meter)`.
+
 ### Extra: deterministische closing-variant check (ACK-only)
 Run test #1 drie keer in een nieuwe sessie met verschillende aantallen user-berichten ervoor (0/1/2 extra user turns) en check:
 - de gekozen afsluitvraag roteert voorspelbaar (op basis van user message count).
