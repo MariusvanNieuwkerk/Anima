@@ -1539,24 +1539,37 @@ OUTPUT-CONTRACT (CRITICAL)
       const userText = String(lastMessageContent || '').trim()
       const isShortConfirm = /^(ja|ok(é)?|klopt|yes|yep|nope|nee)\b/i.test(userText)
       const isShortNumber = /^\d+([.,]\d+)?$/.test(userText)
+      const isYes = /^(ja|yes|yep)\b/i.test(userText)
+      const isNo = /^(nee|no|nope)\b/i.test(userText)
+      const lastAssistantLower = String(lastAssistantInHistory || '').toLowerCase()
+      const looksLikeSimplifyPrompt =
+        /(vereenvoudig|vereenvoudigen|delen\s+door\s+een\s+kleiner|getal\s+delen|kun\s+je\s+\d+.*delen|factor)/.test(lastAssistantLower)
 
       payload.message =
         lang === 'en'
           ? [
-              `Ok — let’s move to the **next step** (no repeating).`,
+              `Ok.`,
               isShortNumber
-                ? `You wrote **${userText}**. What does that represent in the story (units: €, cent, km, hours…)?`
-                : `What is the **next micro-step** you should do according to the question text?`,
-              `Write just that next step (1 short line).`,
+                ? `You wrote **${userText}**. What does that number represent (units: €, km, minutes…)?`
+                : looksLikeSimplifyPrompt && isYes
+                  ? `Great. Which **smaller number** can you divide **both** numbers by? (Try 2 or 3.)`
+                  : looksLikeSimplifyPrompt && isNo
+                    ? `Ok. Then we’ll skip simplifying. Start with: compute **23×10** = __. What is it?`
+                    : isShortConfirm && (isYes || isNo)
+                      ? `Got it. Answer in 1 short line: what’s your next step?`
+                      : `What is your next step? (1 short line)`,
             ].join('\n')
           : [
-              `Oké — we gaan door met de **volgende stap** (geen herhaling).`,
+              `Oké.`,
               isShortNumber
-                ? `Jij schreef **${userText}**. Waar staat dat getal voor in de som (eenheid: €, cent, km, uur…)?`
-                : isShortConfirm
-                  ? `Top. Wat is nu de **volgende micro-stap** volgens de tekst van de vraag?`
-                  : `Wat is nu de **volgende micro-stap** die je moet doen?`,
-              `Schrijf alleen die volgende stap (1 korte zin).`,
+                ? `Jij schreef **${userText}**. Waar staat dat getal voor (eenheid: €, km, minuten…)?`
+                : looksLikeSimplifyPrompt && isYes
+                  ? `Top. Door welk **kleiner getal** kun je **beide** getallen delen? (Probeer 2 of 3.)`
+                  : looksLikeSimplifyPrompt && isNo
+                    ? `Oké. Dan slaan we vereenvoudigen over. Begin met: **23×10** = __. Wat is dat?`
+                    : isShortConfirm && (isYes || isNo)
+                      ? `Helder. Antwoord in 1 korte zin: wat is je volgende stap?`
+                      : `Wat is je volgende stap? (1 korte zin)`,
             ].join('\n')
     }
 
