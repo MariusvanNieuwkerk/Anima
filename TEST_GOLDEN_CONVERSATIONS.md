@@ -102,6 +102,18 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima bevestigt kort (bv. “Juist.”) en **stopt** (geen nieuwe micro-stap zoals `7+8=__`).
 
+---
+
+## 5a-3) Optellen (ACK op “Schrijf …” → ga door, niet stoppen) (NL)
+**Setup**: Start met `Los op: 47 + 28` zodat Anima begint met `Schrijf: 47=40+7 en 28=20+8.`
+
+**User**
+1. `ok`
+
+**Must**
+- Anima **stopt niet**.
+- Anima gaat door met de volgende canon-stap, bijv. `Vul in: 40 + 20 = __`.
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 

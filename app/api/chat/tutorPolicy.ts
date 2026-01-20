@@ -919,6 +919,25 @@ export function applyTutorPolicy(payload: TutorPayload, ctx: TutorPolicyContext)
       out.action = out.action || 'none'
       return out
     }
+
+    // If we're in an active canonical math flow, treat ACK-only as "continue" (not as conversation end).
+    // This prevents cases like: "Schrijf: 47=40+7 ..." → user: "ok" → assistant closes.
+    const canonSeed2 = lastMathUser || lastNonTrivialUser
+    const canon2 = parseCanonFromText(canonSeed2)
+    const looksLikeCanonMathStep =
+      !!canon2 &&
+      (/^(schrijf|vul\s+in|begin\s+met|maak)\b/i.test(prevAssistant) ||
+        prevAssistant.includes('__') ||
+        /×|\/|\b\d+\s*[+\-*/]\s*\d+/.test(prevAssistant))
+    if (looksLikeCanonMathStep) {
+      const step = canonStep(lang, canon2!, messages, lastUser)
+      if (step) {
+        out.message = step
+        out.action = out.action || 'none'
+        return out
+      }
+    }
+
     const closuresNl = [
       'Top. Als je nog iets wilt weten, typ het maar.',
       'Helder. Je mag altijd een nieuwe vraag sturen.',
