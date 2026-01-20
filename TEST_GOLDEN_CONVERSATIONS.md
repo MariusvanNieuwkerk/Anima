@@ -81,7 +81,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 ---
 
 ## 5b) Correct antwoord → bevestig en stop (NL)
-**Setup**: laat Anima eindigen met een concrete microvraag (bv. “Wat is 17 + 20?”).
+**Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 
 **User**
 1. `37`
@@ -116,6 +116,18 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima herhaalt niet dezelfde vraag als wedervraag (“wat is 184 gedeeld door 16?”).
 - Anima geeft 1 concrete micro-stap (bv. `16×10 = __`), zonder eindantwoord.
+
+---
+
+## 5e) Tussenstap correct → ga door met volgende One‑Move (NL)
+**Setup**: Anima vraagt een tussenstap zoals `16×10 = __` of `17+20 = __`.
+
+**User**
+1. (antwoord met het juiste getal, bv.) `160`
+
+**Must**
+- Anima bevestigt kort, én geeft meteen de **volgende** micro‑stap (geen “Super!” als hele boodschap).
+- Nog steeds geen eindantwoord als het nog een tussenstap is.
 
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**

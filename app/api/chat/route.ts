@@ -117,13 +117,14 @@ NORTH STAR (DE 7 PRINCIPES — HOUD DIT ALTIJD AAN)
 2) Kort is pedagogisch: geen lappen tekst, geen rambling, geen extra weetjes als het niet nodig is.
 3) Context eerst: bepaal altijd of dit (A) kennisvraag, (B) opgave/probleem, of (C) vastlopen is.
 4) Methode vóór uitkomst (bij opgaven): geef structuur + 1 stap; geen eindantwoord in de eerste beurt.
-5) Stop als het klaar is: als het doel bereikt is (vraag beantwoord / leerling heeft juiste antwoord) en er is geen open micro-opdracht: bevestig kort en STOP (geen wedervraag).
+5) Stop als het klaar is: stop alleen als de leerling de **concrete eindoutput** heeft gegeven (eindantwoord/definitie/gevraagde tekst) of expliciet stopt. “Ja/ok” telt nooit als bewijs.
 6) Visuals zijn een hefboom, niet een ritueel: gebruik visuals wanneer ze begrip aantoonbaar versnellen (grafiek/kaart/figuur/anatomie) of als de leerling erom vraagt.
 7) Frustratie = valve: bij vastlopen escaleer je deterministisch (escape hatch).
 
 INTENT-PROTOCOL (STRIKT)
 - KENNISVRAAG: geef een direct antwoord in 1–3 zinnen. Daarna mag je stoppen met 1 korte afsluitzin (zonder vraagteken). Geen druk.
 - OPGAVE/PROBLEEM: geef 1–2 zinnen methode + eindig met EXACT 1 micro-opdracht (1 vraag of 1 invulplek). Geen eindantwoord in beurt 1.
+- BELANGRIJK: Geef nooit een bericht dat alleen uit lof bestaat (“Super!”, “Top!”). Als je bevestigt, geef meteen de volgende One‑Move (tenzij je stopt volgens de stopcriteria).
 - VASTLOPEN (escape hatch 3-level):
   - Wat telt als "poging": alleen echt werk (stap/redenering/bewerking), niet alleen "ok/ja" en niet alleen een los getal.
   - Level 1: regel-hint + mini-checkvraag (geen eindantwoord).
@@ -1107,9 +1108,10 @@ OUTPUT-CONTRACT (CRITICAL)
             ].join('\n')
     }
 
-    // STOP-AFTER-CORRECT GUARDRAIL (SERVER-SIDE):
-    // If the user answered a pending question and the model confirms correctness,
-    // strip any follow-up questions/extra coaching and stop (no wedervraag).
+    // STOP GUARDRAIL (SERVER-SIDE, MINIMAL):
+    // Only enforce stopping when the model itself signals completion ("we zijn klaar", "dat is het")
+    // or when the user explicitly sends a stop signal. Do NOT stop merely because an intermediate
+    // step was correct (otherwise the tutor halts mid-explanation).
     const prevAssistantTextForStop = (() => {
       const arr = Array.isArray(messages) ? messages : []
       for (let i = arr.length - 2; i >= 0; i--) {
@@ -1129,53 +1131,6 @@ OUTPUT-CONTRACT (CRITICAL)
       prevAssistantTextForStop
     )
     const userSaidYes = /^(ja|yes|yep)\b[!.]*$/i.test(userAnswerTextForStop)
-
-    const isConfirmation = (() => {
-      const m = String(payload?.message || '').trim().toLowerCase()
-      // Include common Dutch confirmations used in practice (e.g. "precies!", "super!").
-      return /^(juist|exact|precies|super|top|mooi|helemaal\s+goed|goed\s+zo|klopt|correct|dat\s+klopt|that'?s\s+right|correct!|exact!|right!)/.test(
-        m
-      )
-    })()
-    const isTinyConfirmation =
-      isConfirmation && String(payload?.message || '').trim().length <= 12 && !/\d/.test(String(payload?.message || ''))
-
-    // If the student answers "ja" to a comprehension check ("Snap je?"), we should continue with the next micro-step,
-    // not stop with a bare "Super!".
-    if (prevAssistantAskedForStop && prevAssistantIsComprehensionCheck && userSaidYes && isTinyConfirmation) {
-      const lang = String(userLanguage || 'nl')
-      const prevNonTrivialUser = (() => {
-        const arr = Array.isArray(messages) ? messages : []
-        for (let i = arr.length - 2; i >= 0; i--) {
-          const m = arr[i]
-          if (m?.role !== 'user') continue
-          const t = String(m?.content || '').trim()
-          if (!t) continue
-          if (
-            /^(ja|nee|yes|no|yep|nope|ok(é|ay)?|top|klopt|prima|goed|thanks|thank\s+you|dank(je|jewel|u)?|niets|laat\s+maar|stop|klaar)\b/i.test(
-              t
-            )
-          )
-            continue
-          return t
-        }
-        return ''
-      })()
-      const frac = prevNonTrivialUser.match(/(\d+)\s*\/\s*(\d+)/)
-      if (frac) {
-        const a = frac[1]
-        const b = frac[2]
-        payload.message =
-          lang === 'en'
-            ? `Great. Now compute: how many times does ${b} fit into ${a}? Start with ${b}×10 = __. What is it?`
-            : `Mooi. Dan gaan we rekenen: hoeveel keer past ${b} in ${a}? Begin met ${b}×10 = __. Wat is dat?`
-      } else {
-        payload.message =
-          lang === 'en'
-            ? `Great. Next micro-step: write the first calculation you would do (1 short line).`
-            : `Mooi. Volgende micro-stap: schrijf de eerste berekening die je nu doet (1 korte zin).`
-      }
-    }
 
     const hasCompletionMarker = (() => {
       const m = String(payload?.message || '').toLowerCase()
@@ -1208,13 +1163,12 @@ OUTPUT-CONTRACT (CRITICAL)
       return out.trim()
     }
 
-    if (prevAssistantAskedForStop && userLooksLikeAnswer && !prevAssistantIsComprehensionCheck && (isConfirmation || hasCompletionMarker)) {
-      const clipped = stripAfterFirstQuestion(String(payload.message || ''))
-      const first = takeFirstSentenceNoQuestion(clipped)
-      payload.message = first || clipped || 'Juist.'
-    } else if ((isConfirmation || hasCompletionMarker) && /\?/.test(String(payload?.message || ''))) {
-      // Even if we can't prove the previous turn was a question, never end a "correct/done" message with a new question.
-      payload.message = stripAfterFirstQuestion(String(payload.message || '')) || takeFirstSentenceNoQuestion(String(payload.message || '')) || 'Juist.'
+    // If the model itself claims completion, do not end with a new question.
+    if (hasCompletionMarker && /\?/.test(String(payload?.message || ''))) {
+      payload.message =
+        stripAfterFirstQuestion(String(payload.message || '')) ||
+        takeFirstSentenceNoQuestion(String(payload.message || '')) ||
+        (String(userLanguage || 'nl') === 'en' ? 'Done.' : 'Klaar.')
     }
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
