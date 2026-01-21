@@ -866,6 +866,15 @@ const isPraiseOnly = (t: string) => {
   return false
 }
 
+const isProblemStatement = (t: string) => {
+  const s = strip(t).toLowerCase()
+  if (!s) return false
+  if (/^(los\s+op|bereken|wat\s+is|what\s+is)\b/.test(s)) return true
+  // Bare expression like "82-47" or "17 + 28"
+  if (/^\s*-?\d/.test(s) && /[+\-*/:×x]/.test(s)) return true
+  return false
+}
+
 const inferConcreteStep = (lang: string, messages: any[], lastUserText: string) => {
   const prevAssistant = getPrevAssistantText(messages)
   const lastNonTrivialUser = getLastNonTrivialUserText(messages)
@@ -1015,6 +1024,27 @@ export function applyTutorPolicyWithDebug(
   const canonSeed = lastMathUser || lastNonTrivialUser
   const canon = parseCanonFromText(canonSeed)
   if (canon && !(lastUser && (isStopSignal(lastUser) || isAckOnly(lastUser) || isBareYesNo(lastUser)))) {
+    // If the user repeats a full problem statement (e.g. "Los op: 82-47") inside the same thread,
+    // treat it as a fresh start and ignore prior canon history. This prevents "jumping to the end".
+    const userCanon = parseCanonFromText(lastUser)
+    const shouldRestartCanon = (() => {
+      if (!isProblemStatement(lastUser)) return false
+      if (!userCanon) return false
+      if (userCanon.kind !== canon.kind) return true // different kind => definitely a new start
+      if (userCanon.kind === 'div') return userCanon.divA === canon.divA && userCanon.divB === canon.divB
+      if (userCanon.kind === 'percent') return userCanon.pct === canon.pct
+      if (userCanon.kind === 'units') return true
+      if (userCanon.kind === 'order_ops' || userCanon.kind === 'negatives') return strip(userCanon.raw) === strip(canon.raw)
+      // add/sub/mul/unknown/frac_simplify
+      if (Number.isFinite((userCanon as any).a) && Number.isFinite((canon as any).a) && Number.isFinite((userCanon as any).b) && Number.isFinite((canon as any).b)) {
+        return (userCanon as any).a === (canon as any).a && (userCanon as any).b === (canon as any).b
+      }
+      return true
+    })()
+    const canonMessages = shouldRestartCanon ? [] : messages
+    const canonState = shouldRestartCanon && userCanon ? userCanon : canon
+    if (shouldRestartCanon) mark('canon_restart', { kind: canonState.kind })
+
     // If the model asked for the full subtraction result (a−b=__) we rewrite to the canon first step.
     if (canon.kind === 'sub') {
       const m = normalizeMathText(String(out.message || ''))
@@ -1032,7 +1062,7 @@ export function applyTutorPolicyWithDebug(
           const hasTensStep = m.includes(String(bT))
           if (hasAB && !hasTensStep) {
             mark('rewrite_sub_from_lazy_full_blank', { a, b, bT })
-            const step0 = canonStep(lang, canon, messages, lastUser, ageBand)
+            const step0 = canonStep(lang, canonState, canonMessages, lastUser, ageBand)
             if (step0) {
               out.message = step0
               out.action = out.action || 'none'
@@ -1047,7 +1077,8 @@ export function applyTutorPolicyWithDebug(
     if (lastUser && isStuckSignal(lastUser)) {
       mark('math_escape_hatch', { canon: canon.kind })
       const attempts = countRecentAttempts(messages)
-      const base = canonStep(lang, canon, messages, lastUser, ageBand) || inferConcreteStep(lang, messages, lastUser)
+      const base =
+        canonStep(lang, canonState, canonMessages, lastUser, ageBand) || inferConcreteStep(lang, canonMessages, lastUser)
       if (attempts <= 1) {
         out.message =
           lang === 'en'
@@ -1077,7 +1108,7 @@ export function applyTutorPolicyWithDebug(
       return { payload: out, debug }
     }
 
-    const step = canonStep(lang, canon, messages, lastUser, ageBand)
+    const step = canonStep(lang, canonState, canonMessages, lastUser, ageBand)
     if (step) {
       mark('math_canon_step', { canon: canon.kind })
       out.message = step

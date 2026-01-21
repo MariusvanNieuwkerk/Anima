@@ -116,6 +116,20 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Anima herhaalt `82 − 40 = __` (of vraagt ultrakort om het getal).
 - Anima gaat niet terug naar de rewrite-stap.
 
+---
+
+## 5-2c) Aftrekken (zelfde som opnieuw → restart canon, niet doorspringen) (NL)
+**Setup**: Maak de som af tot Anima bevestigt met `Juist.`.
+
+**User**
+1. `Los op: 82 - 47`
+
+**Must**
+- Anima start opnieuw met de canon-beginstap (splits/rewrite) en vraagt weer `82−40=__` (niet `42−7=__`).
+
+**Must-not**
+- Niet meteen doorspringen naar de laatste stap op basis van vorige context.
+
 ## 5a) Optellen (canon: splits → tientallen → eenheden → samen) (NL)
 **User**
 1. `Los op: 47 + 28`
