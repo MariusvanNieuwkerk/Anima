@@ -191,6 +191,20 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must-not**
 - Niet rewinden naar de start van de vermenigvuldiging.
 
+---
+
+## 5a-6) Vermenigvuldigen (eindantwoord → bevestig en stop, geen reset) (NL)
+**Setup**: Start met `Los op: 23 × 14` en ga door tot Anima vraagt: `Vul in: 230 + 92 = __`.
+
+**User**
+1. `322`
+
+**Must**
+- Anima bevestigt kort (bv. `Juist.`) en **stopt**.
+
+**Must-not**
+- Niet terugvallen naar `23×14 = 23×(10+4). Vul in: 23×10 = __` of andere herstart/repeat.
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 

@@ -485,10 +485,8 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     if (new RegExp(`\\b${a * bT}\\s*\\+\\s*${a * bU}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - a * b) < 1e-9) {
-        return ask(
-          `Juist. Check: ${Math.round(a)}×${Math.round(b)} ligt rond ${Math.round(Math.round(a / 10) * 10)}×${Math.round(Math.round(b / 10) * 10)}.`,
-          `Correct. Check: ${Math.round(a)}×${Math.round(b)} is close to ${Math.round(Math.round(a / 10) * 10)}×${Math.round(Math.round(b / 10) * 10)}.`
-        )
+        // Final answer for a homework-style multiplication: confirm and stop (no extra check text).
+        return ask(`Juist.`, `Correct.`)
       }
     }
     return ask(`Vul in: ${a}×${bT} = __`, `Fill in: ${a}×${bT} = __`)
