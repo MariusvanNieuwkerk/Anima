@@ -376,11 +376,18 @@ function parseProblem(text: string): ParsedProblem | null {
     const base = parseNum(pct[2])
     if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
   }
-  // Order of operations: any arithmetic with parentheses.
-  if (/[()]/.test(t) && /[+\-*/]/.test(t) && /\d/.test(t)) {
+  // Order of operations:
+  // - Any arithmetic with parentheses, OR
+  // - Any arithmetic with MULTIPLE operators (e.g. "3 + 4*5") so precedence matters.
+  // IMPORTANT: do NOT hijack simple one-op canons like "17 + 28" or "184/16".
+  if (/[+\-*/()]/.test(t) && /\d/.test(t)) {
     const core = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
     const toks = tokenizeExpr(core)
-    if (toks) return { kind: 'order_ops', expr: stringifyTokens(toks) }
+    if (toks) {
+      const opCount = toks.filter((x) => x.t === 'op').length
+      const hasParens = toks.some((x) => x.t === 'lp' || x.t === 'rp')
+      if (hasParens || opCount >= 2) return { kind: 'order_ops', expr: stringifyTokens(toks) }
+    }
   }
   // Fraction simplify: "vereenvoudig 12/18" or "breuk 12/18 vereenvoudigen"
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(t)) {
@@ -410,7 +417,15 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/[=]/.test(t)) return false
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
-  if (/[()]/.test(core) && /[+\-*/]/.test(core) && /\d/.test(core)) return true
+  // Any expression with parentheses, or with multiple operators, should start the order-ops canon.
+  if (/[+\-*/()]/.test(core) && /\d/.test(core)) {
+    const toks = tokenizeExpr(core)
+    if (toks) {
+      const opCount = toks.filter((x) => x.t === 'op').length
+      const hasParens = toks.some((x) => x.t === 'lp' || x.t === 'rp')
+      if (hasParens || opCount >= 2) return true
+    }
+  }
   if (/(?:\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(?:\d+(?:[.,]\d+)?)/i.test(core)) return true
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(core) && /(\d+)\s*\/\s*(\d+)/.test(core)) return true
   return /^\d+\s*(?:[+\-]|\*|\/)\s*\d+$/.test(core)
