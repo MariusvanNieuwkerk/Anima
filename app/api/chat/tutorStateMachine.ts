@@ -437,9 +437,9 @@ function negativesWhy(lang: string, ageBand: AgeBand, expr: string): { nl: strin
 function negativesStuckHint(lang: string, expr: string): string {
   const e = String(expr || '').replace(/\s+/g, '')
   // Keep it short: 1 rule sentence max.
-  if (/--/.test(e)) return lang === 'en' ? `Rule: minus a negative becomes plus.` : `Regel: min min wordt plus.`
-  if (/\+-/.test(e) || /\+\(-/.test(e)) return lang === 'en' ? `Rule: adding a negative is subtraction.` : `Regel: plus een negatief is aftrekken.`
-  if (/^-\d+(?:[.,]\d+)?\+\d/.test(e)) return lang === 'en' ? `Rule: −a + b is the same as b − a.` : `Regel: −a + b is hetzelfde als b − a.`
+  if (/--/.test(e)) return lang === 'en' ? `Rule: minus minus = plus.` : `Regel: min min = plus.`
+  if (/\+-/.test(e) || /\+\(-/.test(e)) return lang === 'en' ? `Rule: adding a negative = subtraction.` : `Regel: plus een negatief getal = aftrekken.`
+  if (/^-\d+(?:[.,]\d+)?\+\d/.test(e)) return lang === 'en' ? `Rule: −a + b = b − a.` : `Regel: −a + b = b − a.`
   return lang === 'en' ? `Rule: watch the minus sign.` : `Regel: let op het min‑teken.`
 }
 
