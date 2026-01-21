@@ -273,7 +273,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Anima vraagt expliciet om de **quotiënt-som** (bijv. `10 + 1 = __ (quotiënt)`).
-- Daarna stopt Anima met een korte bevestiging + **check** (bijv. `16×11 + 8 = 184.`) **zonder vraagteken**.
+- Daarna stopt Anima met een korte bevestiging + **check** (bijv. `Quotiënt: 11, rest: 8. Check: 16×11 + 8 = 184.`) **zonder vraagteken**.
 
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**

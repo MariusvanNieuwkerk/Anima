@@ -142,6 +142,32 @@ const findLastUserNumber = (messages: any[]) => {
   return NaN
 }
 
+// For division canon: find the most recent "remainder" the student computed in response to a subtraction blank
+// like "184 − 160 = __" or "24 − 16 = __". This avoids confusing other numeric answers (e.g. "16" for "16×1").
+const findLastDivisionRemainder = (messages: any[]) => {
+  const arr = Array.isArray(messages) ? messages : []
+  for (let i = arr.length - 1; i >= 1; i--) {
+    const user = arr[i]
+    if (user?.role !== 'user') continue
+    const userT = strip(user?.content)
+    if (!userIsNumberLike(userT)) continue
+    const userN = parseNum(userT)
+    if (!Number.isFinite(userN)) continue
+
+    // Find the closest preceding assistant message.
+    let j = i - 1
+    while (j >= 0 && arr[j]?.role === 'user') j--
+    if (j < 0) continue
+    const prevA = String(arr[j]?.content || '')
+    const m = prevA.match(/(\d+)\s*[−-]\s*(\d+)\s*=\s*__/)
+    if (!m) continue
+
+    // If the user answered a subtraction blank, treat it as a remainder.
+    return userN
+  }
+  return NaN
+}
+
 const countAssistantMatches = (messages: any[], re: RegExp) => {
   const arr = Array.isArray(messages) ? messages : []
   let n = 0
@@ -450,7 +476,7 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const prod = parseNum(lastUser)
       if (Math.abs(prod - b) < 1e-9) {
         // Find the last remainder number in history (user's last remainder).
-        const rem = findLastUserNumber(messages)
+        const rem = findLastDivisionRemainder(messages)
         if (Number.isFinite(rem) && rem >= b) return ask(`Vul in: ${rem} − ${b} = __`, `Fill in: ${rem} − ${b} = __`)
       }
       return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
@@ -485,7 +511,7 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const userN = parseNum(lastUser)
       if (Math.abs(userN - expQ) < 1e-9) {
         // Determine current rest from the last user remainder number in the thread.
-        const rest = findLastUserNumber(messages)
+        const rest = findLastDivisionRemainder(messages)
         if (Number.isFinite(rest)) {
           return ask(
             `Juist. Quotiënt: **${expQ}**, rest: **${rest}**. Check: ${b}×${expQ}+${rest}=${a}.`,
