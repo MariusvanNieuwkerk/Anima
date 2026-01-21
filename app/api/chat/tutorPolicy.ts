@@ -466,7 +466,8 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
           return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
         }
         // Finish requires an explicit quotient compute step first.
-        return finishWithQuotientStep(startChunk, expectedRem)
+        const q = Math.floor((a - expectedRem) / b)
+        return finishWithQuotientStep(q, expectedRem)
       }
       return ask(`Vul in: ${total} − ${used} = __`, `Fill in: ${total} − ${used} = __`)
     }
@@ -490,13 +491,11 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const expected = r0 - sub
       const userN = parseNum(lastUser)
       if (Math.abs(userN - expected) < 1e-9) {
-        // Determine how many ×1 steps were taken: count occurrences of "×1" prompts after start.
-        const onesCount = countAssistantMatches(messages, new RegExp(`\\b${b}\\s*[×x*]\\s*1\\b`))
-        const q = startChunk + onesCount
         const rest = expected
         if (rest >= b) {
           return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
         }
+        const q = Math.floor((a - rest) / b)
         return finishWithQuotientStep(q, rest)
       }
       return ask(`Vul in: ${r0} − ${sub} = __`, `Fill in: ${r0} − ${sub} = __`)
