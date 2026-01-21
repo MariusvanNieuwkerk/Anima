@@ -460,11 +460,11 @@ function unknownHint(lang: string, ageBand: AgeBand, op: '+' | '-', b: number): 
   const isJunior = ageBand === 'junior'
   if (op === '+') {
     if (lang === 'en') return isJunior ? `Undo +${b} by subtracting ${b}.` : `Undo +${b} → subtract ${b}.`
-    return isJunior ? `Draai +${b} terug door ${b} eraf te halen.` : `Terugdraaien: +${b} → −${b}.`
+    return isJunior ? `Keer om: +${b} → −${b}.` : `Keer om: +${b} → −${b}.`
   }
   // op === '-'
   if (lang === 'en') return isJunior ? `Undo −${b} by adding ${b}.` : `Undo −${b} → add ${b}.`
-  return isJunior ? `Draai −${b} terug door ${b} erbij te tellen.` : `Terugdraaien: −${b} → +${b}.`
+  return isJunior ? `Keer om: −${b} → +${b}.` : `Keer om: −${b} → +${b}.`
 }
 
 function parseProblem(text: string): ParsedProblem | null {
