@@ -193,7 +193,15 @@ const parseCanonFromText = (tRaw: string): CanonState | null => {
 
   // Negatives: ONLY trigger when there is an actual negative number present
   // e.g. "-3 + 7" or "5 - -2". Do NOT treat normal subtraction like "82 - 47" as negatives.
-  const hasNegativeNumber = /(^|[^\d])-\s*\d/.test(t) && /-\s*\d/.test(t) && !/^\s*\d+\s*-\s*\d+\s*$/.test(t)
+  // NOTE: Be careful with prefixes like "Los op:"; "82 - 47" is still normal subtraction.
+  // We only treat it as "negatives" when:
+  // - it starts with a negative number (possibly after a short prefix), OR
+  // - it contains a double-minus (subtracting a negative), OR
+  // - it uses +, *, /, ( with a negative operand (e.g. "5 + -2", "3 * -4", "( -3 + 7 )").
+  const hasNegativeNumber =
+    /^\s*(?:(?:wat|what)\s+is|los\s+op|bereken)?\s*[: ]*\s*-\s*\d/.test(t) ||
+    /-\s*-\s*\d/.test(t) ||
+    /[+*/(]\s*-\s*\d/.test(t)
   if (hasNegativeNumber && /[+\-*/:×x]/.test(t) && /\d/.test(t)) {
     return { kind: 'negatives', expr: t, raw: t }
   }
