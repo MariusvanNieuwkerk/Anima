@@ -309,6 +309,39 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Daarna stopt Anima met een korte bevestiging + **check** (bijv. `Quotiënt: 11, rest: 8. Check: 16×11 + 8 = 184.`) **zonder vraagteken**.
 - (Junior) Mag ook 1 extra stap doen zodat het kind het eindantwoord invult (bv. `184 ÷ 16 = __ (rest 8)`), en daarna kort bevestigen.
 
+---
+
+## 5j) Breuk vereenvoudigen (canon: deel teller/noemer → herhaal tot klaar) (NL)
+**User**
+1. `Vereenvoudig 12/18`
+
+**Must**
+- Anima vraagt één invulstap, bv. `Vul in: 12 ÷ 2 = __` (niet meteen het eindantwoord).
+- Daarna: `Vul in: 18 ÷ 2 = __`.
+- Daarna vervolgt Anima deterministisch (bv. nieuwe breuk `6/9` en dan delen door `3`) tot de breuk niet verder kan.
+- Als de breuk klaar is: Anima bevestigt kort en **stopt**.
+
+---
+
+## 5j-2) Breuk vereenvoudigen (ACK op invulvraag → herhaal dezelfde stap, geen rewind) (NL)
+**Setup**: Start met `Vereenvoudig 12/18` en ga door tot Anima vraagt: `Vul in: 12 ÷ 2 = __` (of een equivalente delingsstap).
+
+**User**
+1. `ok`
+
+**Must**
+- Anima **stopt niet**.
+- Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
+
+---
+
+## 5j-3) Breuk vereenvoudigen (al vereenvoudigd → bevestig en stop) (NL)
+**User**
+1. `Vereenvoudig 3/8`
+
+**Must**
+- Anima zegt dat dit al vereenvoudigd is (bv. `Deze breuk is al vereenvoudigd: 3/8. Juist.`) en **stopt**.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

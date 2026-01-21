@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac'
 
 export type TutorSMState =
   | {
@@ -12,6 +12,16 @@ export type TutorSMState =
       step: 'bx_start' | 'a_minus_used' | 'bx1' | 'rem_minus_b' | 'q_sum' | 'final'
       used?: number
       rem?: number
+    }
+  | {
+      v: 1
+      kind: 'frac'
+      n: number
+      d: number
+      turn: number
+      step: 'n_div' | 'd_div'
+      div: number
+      n2?: number
     }
   | {
       v: 1
@@ -128,6 +138,11 @@ function coachJunior(lang: string, ageBand: AgeBand, turn: number, nlMid: string
 
 function parseProblem(text: string): { kind: TutorSMKind; a: number; b: number } | null {
   const t = normalizeMathText(text)
+  // Fraction simplify: "vereenvoudig 12/18" or "breuk 12/18 vereenvoudigen"
+  if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(t)) {
+    const fm = t.match(/(\d+)\s*\/\s*(\d+)/)
+    if (fm) return { kind: 'frac', a: Number(fm[1]), b: Number(fm[2]) }
+  }
   // Division: "184/16" or "wat is 184/16" or "los op: 184/16"
   const div = t.match(/(?:wat\s+is|what\s+is|los\s+op|bereken)?\s*[: ]*\s*(\d+)\s*\/\s*(\d+)/i)
   if (div) return { kind: 'div', a: Number(div[1]), b: Number(div[2]) }
@@ -151,7 +166,20 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/[=]/.test(t)) return false
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(core) && /(\d+)\s*\/\s*(\d+)/.test(core)) return true
   return /^\d+\s*(?:[+\-]|\*|\/)\s*\d+$/.test(core)
+}
+
+function smallestCommonDivisor(n: number, d: number): number | null {
+  if (!Number.isFinite(n) || !Number.isFinite(d)) return null
+  const a = Math.abs(Math.trunc(n))
+  const b = Math.abs(Math.trunc(d))
+  if (a === 0 || b === 0) return null
+  const max = Math.min(15, Math.min(a, b))
+  for (let k = 2; k <= max; k++) {
+    if (a % k === 0 && b % k === 0) return k
+  }
+  return null
 }
 
 export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
@@ -164,6 +192,25 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'frac') {
+      const n = Math.trunc(problem.a)
+      const d = Math.trunc(problem.b)
+      const div = smallestCommonDivisor(n, d)
+      if (!div) {
+        const msg =
+          lang === 'en'
+            ? `Already simplified: ${n}/${d}. Correct.`
+            : `Deze breuk is al vereenvoudigd: ${n}/${d}. Juist.`
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+      }
+      const prompt = lang === 'en' ? `Fill in: ${n} ÷ ${div} = __` : `Vul in: ${n} ÷ ${div} = __`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, 0, `We delen teller en noemer door ${div}.`, `We divide top and bottom by ${div}.`, prompt), action: 'none' },
+        nextState: { v: 1, kind: 'frac', n, d, turn: 0, step: 'n_div', div },
+      }
+    }
+
     if (problem.kind === 'div') {
       const a = problem.a
       const b = problem.b
@@ -275,6 +322,59 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   const canAnswer = isNumberLike(lastUser)
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
+
+  if (state.kind === 'frac') {
+    const promptN = () => (lang === 'en' ? `Fill in: ${state.n} ÷ ${state.div} = __` : `Vul in: ${state.n} ÷ ${state.div} = __`)
+    const promptD = () => (lang === 'en' ? `Fill in: ${state.d} ÷ ${state.div} = __` : `Vul in: ${state.d} ÷ ${state.div} = __`)
+
+    if (!canAnswer) {
+      const p = state.step === 'n_div' ? promptN() : promptD()
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, p, { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'n_div') {
+      const expected = state.n / state.div
+      if (Math.abs(userN - expected) < 1e-9) {
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, `Mooi—nu de noemer.`, `Nice—now the bottom.`, promptD()), action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'd_div', n2: expected },
+        }
+      }
+      return { handled: true, payload: { message: promptN(), action: 'none' }, nextState: state }
+    }
+
+    // d_div
+    const expectedD = state.d / state.div
+    if (Math.abs(userN - expectedD) < 1e-9) {
+      const n2 = Number(state.n2)
+      const d2 = expectedD
+      const div2 = smallestCommonDivisor(n2, d2)
+      if (div2) {
+        const pre =
+          ageBand === 'junior'
+            ? lang === 'en'
+              ? `New fraction: ${n2}/${d2}. `
+              : `Nieuwe breuk: ${n2}/${d2}. `
+            : ''
+        const nextPrompt = lang === 'en' ? `${pre}Fill in: ${n2} ÷ ${div2} = __` : `${pre}Vul in: ${n2} ÷ ${div2} = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, `Nog een keer delen.`, `Divide once more.`, nextPrompt), action: 'none' },
+          nextState: { v: 1, kind: 'frac', n: n2, d: d2, turn: state.turn + 1, step: 'n_div', div: div2 },
+        }
+      }
+      const msg =
+        lang === 'en' ? `Correct. Simplified: ${n2}/${d2}.` : `Juist. Vereenvoudigd: ${n2}/${d2}.`
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+    }
+    return { handled: true, payload: { message: promptD(), action: 'none' }, nextState: state }
+  }
 
   if (state.kind === 'add') {
     const { a, b, aT, aU, bT, bU, tensSum, onesSum } = state
