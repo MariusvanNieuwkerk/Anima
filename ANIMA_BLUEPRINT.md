@@ -144,7 +144,7 @@ A. De 3 Tutor Modi (Instelbaar door Kind) Het kind kiest zijn eigen "Coach Stijl
 2. 🧭 Verkenner (De Gids) - Default: Nieuwsgierig, onderzoekend. Escape: De Analogie.
 3. 🌱 Groei (Het Maatje): Warm, geduldig, emojis. Escape: Scaffolding (Samen starten).
 B. Global Scaling (De Smart Slider)
-* Smart Age Slider: Een slider van 6 tot 18+. Ouders stellen dit eenmalig in.
+* Smart Age Slider: Een slider van 6 tot 18+ (instelbaar via Instellingen/Master Menu).
 * AI Impact: De leeftijd stuurt de toon en complexiteit van de System Prompt.
 * Taal: Zoekbare lijst (NL, EN, ES, etc.).
 C. Ouderlijke Controle: "Diep-Lees Modus"
@@ -163,9 +163,9 @@ Fase 1: UX & Core Experience (AFGEROND)
 * [x] Chat Logic, Vision, Board & Settings.
 * [x] Visual Stack Replacement (Flux -> Maffs/LaTeX).
 Fase 2: Authenticatie & Rollen (NU)
-* [ ] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
+* [x] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
 * [ ] Ouder Dashboard: Bouwen van de "Glow Feed" & Diep-Lees Modus toggle.
-* [ ] Integratie Leaflet (Kaarten) in de Board Manager.
+* [x] Integratie Leaflet (Kaarten) in de Board Manager.
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
 * [ ] Tech Debt Cleanup.
