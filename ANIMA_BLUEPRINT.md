@@ -107,6 +107,14 @@ C. De Leraar ("De Regisseur")
     * Model: Google Gemini 2.0 Flash (Text & Vision).
     * System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd.
     * Tooling: Strict defined tools (plot_graph, display_formula, show_image, show_map).
+* Deterministische Tutor State Machine (Option A — server-side):
+    * Probleem dat dit oplost: “regex jenga” + text-inference uit chat history → herhaling, verkeerde volgende stap, resets.
+    * Oplossing: een expliciete state machine op de server die per sessie de **canon**, **stap** en relevante **getallen/context** bijhoudt.
+    * Persistente state: Supabase tabel `tutor_sessions` (key: `session_id`, value: `state` als JSON).
+    * Deterministische transitions: op basis van laatste user input (getal/ACK/stuck/stop) → volgende One‑Move stap.
+    * LLM-bypass: als een canon herkend is, geeft de state machine de volgende stap terug **zonder** LLM-call (maximale stabiliteit).
+    * Leeftijdsstijl: `ageBand` stuurt stapgrootte + korte “warm & speels” coach-zinnen (junior), compacter voor teen/student.
+    * Status (nu): state machine dekt **delen, vermenigvuldigen, optellen, aftrekken** (canons), incl. ACK/stuck/restart/stop gedrag.
 * Visual Engine (The Hybrid Engine):
     * Math Text: remark-math & rehype-katex (LaTeX rendering).
     * Math Visuals: Maffs (Interactive Graphing via React components).
@@ -149,6 +157,7 @@ C. Ouderlijke Controle: "Diep-Lees Modus"
 * [x] Visual Engine: Maffs (Grafieken), LaTeX (Formules) & Wikimedia (Afbeeldingen) geïmplementeerd. Flux & Image Generation verwijderd.
 * [x] UI Warmth Upgrade: Stone-theme & Dot Grid.
 * [x] UX Upgrade: Master Menu & Smart Age Slider Design.
+* [x] Tutor State Machine (Option A): server-side, persistent, deterministisch voor kern reken-canons (delen/vermenigvuldigen/optellen/aftrekken).
 7. Roadmap naar V3
 Fase 1: UX & Core Experience (AFGEROND)
 * [x] Chat Logic, Vision, Board & Settings.
