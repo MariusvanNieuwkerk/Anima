@@ -176,6 +176,20 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima herhaalt de **zelfde invulvraag** (of vraagt ultrakort om het getal), maar gaat **niet terug** naar `Schrijf: 47 = ...`.
 
+---
+
+## 5a-5) Vermenigvuldigen (stuck → kleinere stap, geen rewind) (NL)
+**Setup**: Start met `Los op: 23 × 14` en ga door tot Anima vraagt: `Vul in: 23×4 = __`.
+
+**User**
+1. `weet ik niet`
+
+**Must**
+- Anima maakt de stap kleiner (bv. `Splits: 23 = 20 + 3. Vul in: 20×4 = __`) i.p.v. terug te gaan naar `23×10`.
+
+**Must-not**
+- Niet rewinden naar de start van de vermenigvuldiging.
+
 ## 5b) Correct antwoord → bevestig en stop (NL)
 **Setup**: Anima vraagt expliciet om het **eindantwoord** (niet een tussenstap).
 

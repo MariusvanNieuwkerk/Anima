@@ -100,7 +100,7 @@ type CanonState = {
 }
 
 const isStuckSignal = (t: string) =>
-  /^(ik\s+snap\s+het\s+niet|snap\s+het\s+niet|ik\s+begrijp\s+het\s+niet|geen\s+idee|help|hulp|vast|i\s+don'?t\s+get\s+it|i\s+don'?t\s+understand)\b/i.test(
+  /^(ik\s+snap\s+het\s+niet|snap\s+het\s+niet|ik\s+begrijp\s+het\s+niet|ik\s+weet\s+het\s+niet|weet\s+ik\s+niet|geen\s+idee|help|hulp|vast|i\s+don'?t\s+get\s+it|i\s+don'?t\s+understand)\b/i.test(
     strip(t)
   )
 
@@ -420,6 +420,27 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     // Canon: a×(tens+ones)
     const bT = Math.trunc(b / 10) * 10
     const bU = b - bT
+    const aT = Math.trunc(a / 10) * 10
+    const aU = a - aT
+
+    // If the student is stuck on a multiplication blank, make the step smaller (do not rewind).
+    if (isStuckSignal(lastUserText)) {
+      // If we're stuck on a×bU (e.g. 23×4), split a into tens+ones and ask tens×ones first.
+      if (new RegExp(`\\b${a}\\s*[×x*]\\s*${bU}\\b`).test(prevAssistant)) {
+        if (ageBand === 'junior') {
+          return ask(
+            `Splits: ${a} = ${aT} + ${aU}. Vul in: ${aT}×${bU} = __`,
+            `Split: ${a} = ${aT} + ${aU}. Fill in: ${aT}×${bU} = __`
+          )
+        }
+        return ask(`Vul in: ${aT}×${bU} = __`, `Fill in: ${aT}×${bU} = __`)
+      }
+      // If we're stuck on a×bT (e.g. 23×10), make it even easier: 10×23.
+      if (new RegExp(`\\b${a}\\s*[×x*]\\s*${bT}\\b`).test(prevAssistant)) {
+        return ask(`Vul in: ${bT}×${a} = __`, `Fill in: ${bT}×${a} = __`)
+      }
+    }
+
     if (!/\(\s*\d+\s*\+\s*\d+\s*\)/.test(prevAssistant)) {
       return ask(`${a}×${b} = ${a}×(${bT}+${bU}). Vul in: ${a}×${bT} = __`, `${a}×${b} = ${a}×(${bT}+${bU}). Fill in: ${a}×${bT} = __`)
     }
