@@ -573,9 +573,9 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
           // Junior: let the student write the final answer explicitly (one blank), then confirm.
           if (ageBand === 'junior') {
             return divAsk(
-              `Schrijf nu het antwoord op.`,
+              `Schrijf nu het antwoord op (rest = wat overblijft).`,
               `Vul in: ${a} ÷ ${b} = __ (rest ${rest})`,
-              `Now write the answer.`,
+              `Now write the answer (remainder = what’s left).`,
               `Fill in: ${a} ÷ ${b} = __ (remainder ${rest})`
             )
           }
