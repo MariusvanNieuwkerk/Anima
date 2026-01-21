@@ -186,6 +186,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 **Must**
 - Anima maakt de stap kleiner (bv. `Splits: 23 = 20 + 3. Vul in: 20×4 = __`) i.p.v. terug te gaan naar `23×10`.
+- Als de leerling daarna `80` invult, gaat Anima door (bv. `3×4 = __` of `80+12=__`) en **niet** terug naar `23×10`.
 
 **Must-not**
 - Niet rewinden naar de start van de vermenigvuldiging.

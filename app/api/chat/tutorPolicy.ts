@@ -441,6 +441,35 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       }
     }
 
+    // --- Progression for the "stuck micro-steps" path (split a into aT+aU for a×bU) ---
+    // If we asked aT×bU and student answered correctly, ask aU×bU.
+    if (new RegExp(`\\b${aT}\\s*[×x*]\\s*${bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const expected = aT * bU
+      if (Math.abs(userN - expected) < 1e-9) {
+        return ask(`Vul in: ${aU}×${bU} = __`, `Fill in: ${aU}×${bU} = __`)
+      }
+      return ask(`Vul in: ${aT}×${bU} = __`, `Fill in: ${aT}×${bU} = __`)
+    }
+    // If we asked aU×bU and student answered correctly, ask to add the two parts.
+    if (new RegExp(`\\b${aU}\\s*[×x*]\\s*${bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const expected = aU * bU
+      if (Math.abs(userN - expected) < 1e-9) {
+        return ask(`Vul in: ${aT * bU} + ${aU * bU} = __`, `Fill in: ${aT * bU} + ${aU * bU} = __`)
+      }
+      return ask(`Vul in: ${aU}×${bU} = __`, `Fill in: ${aU}×${bU} = __`)
+    }
+    // If we asked the parts-sum and student answered correctly, we have a×bU. Continue main canon to final add.
+    if (new RegExp(`\\b${aT * bU}\\s*\\+\\s*${aU * bU}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const expected = a * bU
+      if (Math.abs(userN - expected) < 1e-9) {
+        return ask(`Vul in: ${a * bT} + ${a * bU} = __`, `Fill in: ${a * bT} + ${a * bU} = __`)
+      }
+      return ask(`Vul in: ${aT * bU} + ${aU * bU} = __`, `Fill in: ${aT * bU} + ${aU * bU} = __`)
+    }
+
     if (!/\(\s*\d+\s*\+\s*\d+\s*\)/.test(prevAssistant)) {
       return ask(`${a}×${b} = ${a}×(${bT}+${bU}). Vul in: ${a}×${bT} = __`, `${a}×${b} = ${a}×(${bT}+${bU}). Fill in: ${a}×${bT} = __`)
     }
