@@ -7,6 +7,8 @@ import { searchWikimedia } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
+import { createAdminClient } from '@/utils/supabase/admin'
+import { runTutorStateMachine, type TutorSMState } from './tutorStateMachine'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -50,6 +52,7 @@ export async function POST(req: Request) {
     const userAge = data?.userAge || 12;
     const userLanguage = data?.userLanguage || 'nl'; 
     const images = data?.images || (data?.image ? [data.image] : []);
+    const sessionId = typeof data?.sessionId === 'string' ? data.sessionId : null
     
     const targetLanguage = languageMap[userLanguage] || 'Nederlands';
 
@@ -225,6 +228,57 @@ OUTPUT-CONTRACT (CRITICAL)
     const lastMessage = messages[messages.length - 1]
     const lastMessageContent = lastMessage?.content || '';
     let userParts: any[] = [{ text: lastMessageContent }];
+
+    // --- STATEFUL TUTOR (Option A): deterministic state machine per session_id ---
+    // This runs BEFORE any LLM call and avoids inferring state from text.
+    if (images.length === 0 && sessionId) {
+      try {
+        const admin = createAdminClient()
+        const load = await admin
+          .from('tutor_sessions')
+          .select('state')
+          .eq('session_id', sessionId)
+          .maybeSingle()
+        const rawState = (load.data as any)?.state
+        const state: TutorSMState | null = rawState && typeof rawState === 'object' ? (rawState as any) : null
+
+        const sm = runTutorStateMachine({
+          state,
+          lastUserText: String(lastMessageContent || ''),
+          userAge,
+          userLanguage,
+        })
+
+        if (sm.handled) {
+          // Persist next state (or clear).
+          await admin
+            .from('tutor_sessions')
+            .upsert(
+              {
+                session_id: sessionId,
+                user_id: effectiveProfile?.id && effectiveProfile.id !== 'fallback' ? effectiveProfile.id : null,
+                state: sm.nextState || {},
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'session_id' }
+            )
+
+          const payload = {
+            message: applyAgeStyleText(String(sm.payload.message || ''), { userAge, userLanguage }),
+            topic: 'Rekenen',
+            action: 'none',
+          }
+
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+      } catch (e) {
+        // If state store is unavailable (RLS/migration not applied), fall back to existing flow.
+        console.warn('[CHAT API] tutor state machine unavailable:', (e as any)?.message || String(e))
+      }
+    }
 
     // --- DETERMINISTIC CANON PREFLIGHT (math/grammar) ---
     // If tutorPolicy can deterministically respond based on the user's last message alone (no images),

@@ -822,6 +822,7 @@ export default function Workspace() {
         // IMPORTANT: use the latest message list (ref) to preserve context reliably.
         messages: [...messagesRef.current, userMessage],
         data: {
+          sessionId,
           tutorMode,
           userAge: age,
           userLanguage: language,
