@@ -376,6 +376,43 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima vraagt een enkele invulstap zoals `Vul in: 80 ÷ 4 = __ (dat is 25%)` en **stopt** na het correcte antwoord.
 
+---
+
+## 5l) Volgorde van bewerkingen (haakjes) (canon: binnenste haakjes → ×/÷ → +/− → stop) (NL)
+**User**
+1. `bereken (8 + 6) / 2`
+
+**Must**
+- Anima start met een concrete invulstap uit de haakjes (bv. `Vul in: 8 + 6 = __`).
+- Daarna een concrete stap met ÷ (bv. `Vul in: 14 ÷ 2 = __`).
+- Na correct eindgetal: korte bevestiging en **stop**.
+
+**Must-not**
+- Geen eindantwoord in de eerste beurt.
+- Niet buiten de haakjes beginnen.
+
+---
+
+## 5l-2) Volgorde van bewerkingen (precedence: × vóór +) (NL)
+**User**
+1. `bereken 3 + 4 * 5`
+
+**Must**
+- Anima vraagt eerst `Vul in: 4 × 5 = __` (of equivalente ×‑stap).
+- Daarna `Vul in: 3 + 20 = __`.
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5l-3) Volgorde van bewerkingen (ACK op invulvraag → herhaal dezelfde stap) (NL)
+**Setup**: Start met test 5l en ga door tot Anima vraagt: `Vul in: 8 + 6 = __` (of equivalente eerste stap).
+
+**User**
+1. `ok`
+
+**Must**
+- Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

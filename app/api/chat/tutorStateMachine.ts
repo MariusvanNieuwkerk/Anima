@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops'
 
 export type TutorSMState =
   | {
@@ -75,6 +75,16 @@ export type TutorSMState =
       divisor: number
       multiplier: number
       unitValue?: number
+    }
+  | {
+      v: 1
+      kind: 'order_ops'
+      expr: string // normalized internal expression
+      turn: number
+      step: 'compute'
+      prompt: string // pretty subexpression currently asked
+      expected: number
+      nextExpr: string
     }
 
 export type TutorSMInput = {
@@ -173,7 +183,189 @@ function percentWhy(lang: string, unitPct: number, divisor: number): { nl: strin
   return { nl: `% betekent “van de 100”.`, en: `% means “out of 100”.` }
 }
 
-function parseProblem(text: string): { kind: TutorSMKind; a: number; b: number } | null {
+type ParsedProblem =
+  | { kind: 'frac' | 'div' | 'mul' | 'add' | 'sub' | 'percent'; a: number; b: number }
+  | { kind: 'order_ops'; expr: string }
+
+type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
+
+function tokenizeExpr(exprRaw: string): Tok[] | null {
+  const s = strip(exprRaw).replace(/\s+/g, '')
+  if (!s) return null
+  const toks: Tok[] = []
+  let i = 0
+  const pushNum = (raw: string) => {
+    const n = parseNum(raw)
+    if (!Number.isFinite(n)) return false
+    toks.push({ t: 'num', n })
+    return true
+  }
+  const prevIsOpOrLp = () => toks.length === 0 || toks[toks.length - 1].t === 'op' || toks[toks.length - 1].t === 'lp'
+
+  while (i < s.length) {
+    const ch = s[i]
+    if (ch === '(') {
+      toks.push({ t: 'lp' })
+      i++
+      continue
+    }
+    if (ch === ')') {
+      toks.push({ t: 'rp' })
+      i++
+      continue
+    }
+    if (ch === '+' || ch === '*' || ch === '/') {
+      toks.push({ t: 'op', op: ch as any })
+      i++
+      continue
+    }
+    if (ch === '-') {
+      // unary minus becomes part of a number when it appears at start or after an operator or '('
+      if (prevIsOpOrLp()) {
+        let j = i + 1
+        while (j < s.length && /[0-9.,]/.test(s[j])) j++
+        const raw = s.slice(i, j)
+        if (!pushNum(raw)) return null
+        i = j
+        continue
+      }
+      toks.push({ t: 'op', op: '-' })
+      i++
+      continue
+    }
+    if (/[0-9.]/.test(ch) || ch === ',') {
+      let j = i + 1
+      while (j < s.length && /[0-9.,]/.test(s[j])) j++
+      const raw = s.slice(i, j)
+      if (!pushNum(raw)) return null
+      i = j
+      continue
+    }
+    return null
+  }
+  return toks
+}
+
+function formatExprPretty(expr: string): string {
+  const s = strip(expr).replace(/\s+/g, '')
+  // keep it simple but readable: spaces around ops, and nicer symbols
+  return s
+    .replace(/\*/g, '×')
+    .replace(/\//g, '÷')
+    .replace(/-/g, '−')
+    .replace(/([+−×÷])/g, ' $1 ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function findInnermostParens(tokens: Tok[]): { l: number; r: number } | null {
+  const stack: number[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]
+    if (t.t === 'lp') stack.push(i)
+    if (t.t === 'rp') {
+      const l = stack.pop()
+      if (l === undefined) return null
+      // this is the innermost closing paren encountered left-to-right
+      return { l, r: i }
+    }
+  }
+  return null
+}
+
+function chooseNextOp(tokens: Tok[], startIdx: number, endIdx: number): number | null {
+  // returns index of op token to evaluate next within [startIdx, endIdx] inclusive
+  // precedence: * and / first, then + and -, left-to-right
+  for (let i = startIdx; i <= endIdx; i++) {
+    const t = tokens[i]
+    if (t.t === 'op' && (t.op === '*' || t.op === '/')) return i
+  }
+  for (let i = startIdx; i <= endIdx; i++) {
+    const t = tokens[i]
+    if (t.t === 'op' && (t.op === '+' || t.op === '-')) return i
+  }
+  return null
+}
+
+function applyOp(a: number, op: '+' | '-' | '*' | '/', b: number): number {
+  if (op === '+') return a + b
+  if (op === '-') return a - b
+  if (op === '*') return a * b
+  return a / b
+}
+
+function stringifyTokens(tokens: Tok[]): string {
+  return tokens
+    .map((t) => {
+      if (t.t === 'lp') return '('
+      if (t.t === 'rp') return ')'
+      if (t.t === 'op') return t.op
+      // num
+      // keep integers clean
+      return Math.abs(t.n % 1) < 1e-9 ? String(Math.trunc(t.n)) : String(Number(t.n.toFixed(6))).replace(/\.?0+$/, '')
+    })
+    .join('')
+}
+
+function nextOrderOpsStep(expr: string): { promptPretty: string; expected: number; nextExpr: string } | null {
+  const toks0 = tokenizeExpr(expr)
+  if (!toks0 || toks0.length === 0) return null
+
+  // Determine focus range: innermost parentheses content, else full expression.
+  const par = findInnermostParens(toks0)
+  const range = par ? { start: par.l + 1, end: par.r - 1, parL: par.l, parR: par.r } : { start: 0, end: toks0.length - 1, parL: -1, parR: -1 }
+  if (range.start > range.end) return null
+
+  const opIdx = chooseNextOp(toks0, range.start, range.end)
+  if (opIdx === null) {
+    // No ops left in range: if it's inside parentheses with a single number, remove the parens and continue.
+    if (par) {
+      const inner = toks0.slice(range.start, range.end + 1)
+      if (inner.length === 1 && inner[0].t === 'num') {
+        const toks = toks0.slice(0, range.parL).concat(inner as any, toks0.slice(range.parR + 1))
+        return nextOrderOpsStep(stringifyTokens(toks))
+      }
+    }
+    // Already reduced to a number?
+    if (toks0.length === 1 && toks0[0].t === 'num') return null
+    return null
+  }
+
+  const left = toks0[opIdx - 1]
+  const op = toks0[opIdx]
+  const right = toks0[opIdx + 1]
+  if (!left || !right || left.t !== 'num' || right.t !== 'num' || op.t !== 'op') return null
+  const expected = applyOp(left.n, op.op, right.n)
+  if (!Number.isFinite(expected)) return null
+
+  const subexpr = `${stringifyTokens([left as any, op as any, right as any])}`
+  const promptPretty = formatExprPretty(subexpr)
+
+  // Replace [left op right] with expected number.
+  const toks = toks0.slice(0, opIdx - 1).concat([{ t: 'num', n: expected } as Tok], toks0.slice(opIdx + 2))
+
+  // If parentheses now wrap a single number, remove them (to avoid a useless "(5)" step).
+  const par2 = findInnermostParens(toks)
+  if (par2) {
+    const inner = toks.slice(par2.l + 1, par2.r)
+    const hasOp = inner.some((t) => t.t === 'op')
+    if (!hasOp && inner.length === 1 && inner[0].t === 'num') {
+      const simplified = toks.slice(0, par2.l).concat(inner as any, toks.slice(par2.r + 1))
+      return { promptPretty, expected, nextExpr: stringifyTokens(simplified) }
+    }
+  }
+
+  return { promptPretty, expected, nextExpr: stringifyTokens(toks) }
+}
+
+function orderOpsWhy(lang: string, ageBand: AgeBand, expr: string): { nl: string; en: string } {
+  if (ageBand !== 'junior') return { nl: '', en: '' }
+  const hasParens = /[()]/.test(expr)
+  if (hasParens) return { nl: `Eerst rekenen we binnen de haakjes.`, en: `First we do what’s inside the parentheses.` }
+  return { nl: `Eerst keer/delen, daarna plus/min.`, en: `First multiply/divide, then add/subtract.` }
+}
+
+function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
   const pct = t.match(
@@ -183,6 +375,12 @@ function parseProblem(text: string): { kind: TutorSMKind; a: number; b: number }
     const p = parseNum(pct[1])
     const base = parseNum(pct[2])
     if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
+  }
+  // Order of operations: any arithmetic with parentheses.
+  if (/[()]/.test(t) && /[+\-*/]/.test(t) && /\d/.test(t)) {
+    const core = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+    const toks = tokenizeExpr(core)
+    if (toks) return { kind: 'order_ops', expr: stringifyTokens(toks) }
   }
   // Fraction simplify: "vereenvoudig 12/18" or "breuk 12/18 vereenvoudigen"
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(t)) {
@@ -212,6 +410,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/[=]/.test(t)) return false
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/[()]/.test(core) && /[+\-*/]/.test(core) && /\d/.test(core)) return true
   if (/(?:\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(?:\d+(?:[.,]\d+)?)/i.test(core)) return true
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(core) && /(\d+)\s*\/\s*(\d+)/.test(core)) return true
   return /^\d+\s*(?:[+\-]|\*|\/)\s*\d+$/.test(core)
@@ -239,6 +438,27 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'order_ops') {
+      const step = nextOrderOpsStep(problem.expr)
+      if (!step) return { handled: false }
+      const prompt = lang === 'en' ? `Fill in: ${step.promptPretty} = __` : `Vul in: ${step.promptPretty} = __`
+      const why = orderOpsWhy(lang, ageBand, problem.expr)
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, 0, why.nl, why.en, prompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'order_ops',
+          expr: problem.expr,
+          turn: 0,
+          step: 'compute',
+          prompt: step.promptPretty,
+          expected: step.expected,
+          nextExpr: step.nextExpr,
+        },
+      }
+    }
+
     if (problem.kind === 'percent') {
       const p = Number(problem.a)
       const base = Number(problem.b)
@@ -983,6 +1203,47 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
     }
     return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'order_ops') {
+    const prompt = () => (lang === 'en' ? `Fill in: ${state.prompt} = __` : `Vul in: ${state.prompt} = __`)
+
+    if (!canAnswer) {
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    const userN = parseNum(lastUser)
+    if (Math.abs(userN - state.expected) < 1e-9) {
+      const next = state.nextExpr
+      const toks = tokenizeExpr(next)
+      if (toks && toks.length === 1 && toks[0].t === 'num') {
+        const msg = lang === 'en' ? `Correct.` : `Juist.`
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+      }
+      const step2 = nextOrderOpsStep(next)
+      if (!step2) return { handled: false }
+      const nextPrompt = lang === 'en' ? `Fill in: ${step2.promptPretty} = __` : `Vul in: ${step2.promptPretty} = __`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Mooi—volgende stap.`, `Nice—next step.`, nextPrompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'order_ops',
+          expr: next,
+          turn: state.turn + 1,
+          step: 'compute',
+          prompt: step2.promptPretty,
+          expected: step2.expected,
+          nextExpr: step2.nextExpr,
+        },
+      }
+    }
+
+    return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
   }
 
   return { handled: false }
