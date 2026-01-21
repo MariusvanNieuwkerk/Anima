@@ -4,6 +4,7 @@ import { grammarCanonStep } from './grammar/grammarCanon'
 
 export type TutorPolicyContext = {
   userLanguage?: string
+  userAge?: number
   messages?: any[]
   lastUserText?: string
 }
@@ -24,6 +25,15 @@ const strip = (s: any) => String(s || '').trim()
 export type TutorDebugEvent = {
   name: string
   details?: Record<string, any>
+}
+
+type AgeBand = 'junior' | 'teen' | 'student'
+const getAgeBand = (age?: number): AgeBand => {
+  const a = Number(age)
+  if (!Number.isFinite(a)) return 'teen'
+  if (a <= 12) return 'junior'
+  if (a <= 16) return 'teen'
+  return 'student'
 }
 
 const normalizeMathText = (t: string) =>
@@ -231,7 +241,7 @@ const parseCanonFromText = (tRaw: string): CanonState | null => {
   return null
 }
 
-const canonStep = (lang: string, state: CanonState, messages: any[], lastUserText: string) => {
+const canonStep = (lang: string, state: CanonState, messages: any[], lastUserText: string, ageBand: AgeBand) => {
   const lastUser = strip(lastUserText)
   const prevAssistant = getPrevAssistantText(messages)
 
@@ -280,9 +290,21 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     })()
 
     if (!splitWasIntroduced) {
+      if (ageBand === 'junior') {
+        return ask(
+          `Splits: ${a} = ${aT} + ${aU}. Splits: ${b} = ${bT} + ${bU}. Vul in: ${aT} + ${bT} = __`,
+          `Split: ${a} = ${aT} + ${aU}. Split: ${b} = ${bT} + ${bU}. Fill in: ${aT} + ${bT} = __`
+        )
+      }
+      if (ageBand === 'student') {
+        return ask(
+          `Vul in: ${aT} + ${bT} = __`,
+          `Fill in: ${aT} + ${bT} = __`
+        )
+      }
       return ask(
-        `Schrijf: ${a} = ${aT} + ${aU} en ${b} = ${bT} + ${bU}.`,
-        `Write: ${a} = ${aT} + ${aU} and ${b} = ${bT} + ${bU}.`
+        `Schrijf: ${a} = ${aT} + ${aU} en ${b} = ${bT} + ${bU}. Vul in: ${aT} + ${bT} = __`,
+        `Write: ${a} = ${aT} + ${aU} and ${b} = ${bT} + ${bU}. Fill in: ${aT} + ${bT} = __`
       )
     }
     // If previous asked tens sum, continue to ones sum when user answered correctly.
@@ -329,21 +351,6 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       return ask(`Vul in: ${lastAssistantBlankPrompt} = __`, `Fill in: ${lastAssistantBlankPrompt} = __`)
     }
 
-    const rewriteWasIntroduced = (() => {
-      const arr = Array.isArray(messages) ? messages : []
-      const re = new RegExp(`\\b${a}\\s*[−-]\\s*${b}\\s*=\\s*${a}\\s*[−-]\\s*${bT}\\s*[−-]\\s*${bU}`, 'i')
-      for (let i = arr.length - 1; i >= 0; i--) {
-        const m = arr[i]
-        if (m?.role === 'user') continue
-        const t = String(m?.content || '')
-        if (re.test(t)) return true
-      }
-      return false
-    })()
-
-    if (!rewriteWasIntroduced) {
-      return ask(`Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`, `Rewrite: ${a} − ${b} = ${a} − ${bT} − ${bU}`)
-    }
     if (new RegExp(`\\b${a}\\s*[−-]\\s*${bT}\\b`).test(prevAssistant) && /^\d+/.test(lastUser)) {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - (a - bT)) < 1e-9) return ask(`Vul in: ${a - bT} − ${bU} = __`, `Fill in: ${a - bT} − ${bU} = __`)
@@ -353,7 +360,14 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const ans = a - b
       if (Math.abs(userN - ans) < 1e-9) return ask(`Juist.`, `Correct.`)
     }
-    return ask(`Vul in: ${a} − ${bT} = __`, `Fill in: ${a} − ${bT} = __`)
+    // First step (age-aware):
+    // - junior/teen: explicitly show where 40 and 7 come from
+    // - student: keep it compact (straight to tens subtraction)
+    if (ageBand === 'student') return ask(`Vul in: ${a} − ${bT} = __`, `Fill in: ${a} − ${bT} = __`)
+    return ask(
+      `Splits: ${b} = ${bT} + ${bU}. Vul in: ${a} − ${bT} = __`,
+      `Split: ${b} = ${bT} + ${bU}. Fill in: ${a} − ${bT} = __`
+    )
   }
 
   if (state.kind === 'mul' && Number.isFinite(state.a) && Number.isFinite(state.b)) {
@@ -903,6 +917,7 @@ export function applyTutorPolicyWithDebug(
     debug.push({ name, details })
   }
   const lang = String(ctx.userLanguage || 'nl')
+  const ageBand = getAgeBand(ctx.userAge)
   const lang11: SupportedLang = ((): SupportedLang => {
     const l = String(ctx.userLanguage || 'nl').toLowerCase()
     if (l === 'nl' || l === 'en' || l === 'fr' || l === 'de' || l === 'es' || l === 'it' || l === 'pt' || l === 'da' || l === 'sv' || l === 'no' || l === 'fi')
@@ -950,10 +965,13 @@ export function applyTutorPolicyWithDebug(
       })
     const bT = Math.trunc(b / 10) * 10
     const bU = b - bT
-    out.message =
-      lang === 'en'
-        ? `Split: ${b} = ${bT} + ${bU}. Rewrite: ${a} - ${b} = ${a} - ${bT} - ${bU}`
-        : `Splits: ${b} = ${bT} + ${bU}. Maak: ${a} − ${b} = ${a} − ${bT} − ${bU}`
+    out.message = (() => {
+      // Align with the subtraction canon first step (age-aware).
+      if (ageBand === 'student') return lang === 'en' ? `Fill in: ${a} − ${bT} = __` : `Vul in: ${a} − ${bT} = __`
+      return lang === 'en'
+        ? `Split: ${b} = ${bT} + ${bU}. Fill in: ${a} − ${bT} = __`
+        : `Splits: ${b} = ${bT} + ${bU}. Vul in: ${a} − ${bT} = __`
+    })()
     out.action = out.action || 'none'
     return { payload: out, debug }
     }
@@ -1014,7 +1032,7 @@ export function applyTutorPolicyWithDebug(
           const hasTensStep = m.includes(String(bT))
           if (hasAB && !hasTensStep) {
             mark('rewrite_sub_from_lazy_full_blank', { a, b, bT })
-            const step0 = canonStep(lang, canon, messages, lastUser)
+            const step0 = canonStep(lang, canon, messages, lastUser, ageBand)
             if (step0) {
               out.message = step0
               out.action = out.action || 'none'
@@ -1029,7 +1047,7 @@ export function applyTutorPolicyWithDebug(
     if (lastUser && isStuckSignal(lastUser)) {
       mark('math_escape_hatch', { canon: canon.kind })
       const attempts = countRecentAttempts(messages)
-      const base = canonStep(lang, canon, messages, lastUser) || inferConcreteStep(lang, messages, lastUser)
+      const base = canonStep(lang, canon, messages, lastUser, ageBand) || inferConcreteStep(lang, messages, lastUser)
       if (attempts <= 1) {
         out.message =
           lang === 'en'
@@ -1059,7 +1077,7 @@ export function applyTutorPolicyWithDebug(
       return { payload: out, debug }
     }
 
-    const step = canonStep(lang, canon, messages, lastUser)
+    const step = canonStep(lang, canon, messages, lastUser, ageBand)
     if (step) {
       mark('math_canon_step', { canon: canon.kind })
       out.message = step
@@ -1108,7 +1126,7 @@ export function applyTutorPolicyWithDebug(
         prevAssistant.includes('__') ||
         /×|\/|\b\d+\s*[+\-*/]\s*\d+/.test(prevAssistant))
     if (looksLikeCanonMathStep) {
-      const step = canonStep(lang, canon2!, messages, lastUser)
+      const step = canonStep(lang, canon2!, messages, lastUser, ageBand)
       if (step) {
         mark('ack_only_continue_math_canon', { canon: canon2!.kind })
         out.message = step

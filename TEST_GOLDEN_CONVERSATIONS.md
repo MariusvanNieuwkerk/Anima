@@ -85,7 +85,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `Los op: 82 - 47`
 
 **Must**
-- Anima start met de rewrite (bv. `82−47 = 82−40−7`) en vraagt daarna `82−40=__`.
+- Anima start **duidelijk** met het splitsen van 47 (bv. `Splits: 47 = 40 + 7`) of een equivalente rewrite, en vraagt daarna `82−40=__`.
 - Na correct antwoord vraagt Anima `__−7=__`.
 - Na correct eindantwoord: bevestig kort en stop.
 
@@ -99,7 +99,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `Los op: 82 − 47`
 
 **Must**
-- Anima volgt dezelfde canon (rewrite → `82−40=__` → `__−7=__`) en start niet met `82−47=__`.
+- Anima volgt dezelfde canon (splits/rewrite → `82−40=__` → `__−7=__`) en start niet met `82−47=__`.
 
 **Must-not**
 - Niet starten met `Vul in: 82 − 47 = __` (ook niet met andere streepjes zoals `–` of `—`).

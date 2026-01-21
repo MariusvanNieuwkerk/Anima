@@ -233,7 +233,7 @@ OUTPUT-CONTRACT (CRITICAL)
     if (images.length === 0) {
       const preflight = applyTutorPolicyWithDebug(
         { message: '' },
-        { userLanguage, messages, lastUserText: String(lastMessageContent || '') }
+        { userLanguage, userAge, messages, lastUserText: String(lastMessageContent || '') }
       )
       const preMsg = String(preflight?.payload?.message || '').trim()
       const preAction = String(preflight?.payload?.action || 'none')
@@ -956,7 +956,7 @@ OUTPUT-CONTRACT (CRITICAL)
     const debugEnabled = process.env.ANIMA_DEBUG_MATH === '1'
     if (debugEnabled) {
       const before = String(payload?.message || '')
-      const res = applyTutorPolicyWithDebug(payload, { userLanguage, messages, lastUserText: lastMessageContent })
+      const res = applyTutorPolicyWithDebug(payload, { userLanguage, userAge, messages, lastUserText: lastMessageContent })
       payload = res.payload
       const after = String(payload?.message || '')
       console.log('[ANIMA_DEBUG_MATH]', {
@@ -969,7 +969,7 @@ OUTPUT-CONTRACT (CRITICAL)
         debug: res.debug,
       })
     } else {
-      payload = applyTutorPolicy(payload, { userLanguage, messages, lastUserText: lastMessageContent })
+      payload = applyTutorPolicy(payload, { userLanguage, userAge, messages, lastUserText: lastMessageContent })
     }
     // NOTE: Tutor-flow postprocessing lives in tutorPolicy.ts (anti-parrot, stop markers, ack-only, anti-repeat, etc.).
 
