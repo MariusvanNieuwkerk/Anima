@@ -509,7 +509,9 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     }
 
     // If we asked the quotient-sum and the user answered, finalize with remainder + check (no new question).
-    const qSum = prevAssistant.match(/(\d+)\s*\+\s*(\d+)\s*=\s*__\s*\((?:quotiënt|quotient)\)/i)
+    const qSum = prevAssistant.match(
+      /(\d+)\s*\+\s*(\d+)\s*=\s*__\s*\((?:quotiënt|quotient|hoe\s*vaak\??|how\s+many\??)\)/i
+    )
     if (qSum && userIsNumberLike(lastUserText)) {
       const x = Number(qSum[1])
       const y = Number(qSum[2])
