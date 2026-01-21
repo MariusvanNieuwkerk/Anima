@@ -413,6 +413,42 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
 
+---
+
+## 5m) Negatieve getallen (canon: omschrijven → rekenen → stop) (NL)
+**User**
+1. `bereken 7 + -3`
+
+**Must**
+- (Junior) Anima laat omschrijven naar aftrekken, bv. `Schrijf om: 7 + −3 = 7 − __`.
+- Daarna: `Vul in: 7 − 3 = __`.
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet behandelen als gewone optelsom zonder het min‑teken te snappen.
+
+---
+
+## 5m-2) Negatieve getallen (min min wordt plus) (NL)
+**User**
+1. `bereken 5 - -2`
+
+**Must**
+- (Junior) Anima laat omschrijven, bv. `Schrijf om: 5 − −2 = 5 + __`.
+- Daarna: `Vul in: 5 + 2 = __`.
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5m-3) Negatieve getallen (ACK op invulvraag → herhaal dezelfde stap) (NL)
+**Setup**: Start met test 5m-2 en ga door tot Anima vraagt: `Schrijf om: 5 − −2 = 5 + __` (of equivalente omschrijf-stap).
+
+**User**
+1. `ok`
+
+**Must**
+- Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives'
 
 export type TutorSMState =
   | {
@@ -85,6 +85,21 @@ export type TutorSMState =
       prompt: string // pretty subexpression currently asked
       expected: number
       nextExpr: string
+    }
+  | {
+      v: 1
+      kind: 'negatives'
+      expr: string // normalized internal expression (may include unary negatives)
+      turn: number
+      step: 'rewrite' | 'compute'
+      // rewrite-step prompt
+      rewritePrompt?: string
+      rewriteExpected?: number
+      rewriteNextExpr?: string
+      // compute-step prompt
+      prompt?: string
+      expected?: number
+      nextExpr?: string
     }
 
 export type TutorSMInput = {
@@ -186,6 +201,7 @@ function percentWhy(lang: string, unitPct: number, divisor: number): { nl: strin
 type ParsedProblem =
   | { kind: 'frac' | 'div' | 'mul' | 'add' | 'sub' | 'percent'; a: number; b: number }
   | { kind: 'order_ops'; expr: string }
+  | { kind: 'negatives'; expr: string }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
 
@@ -365,6 +381,59 @@ function orderOpsWhy(lang: string, ageBand: AgeBand, expr: string): { nl: string
   return { nl: `Eerst keer/delen, daarna plus/min.`, en: `First multiply/divide, then add/subtract.` }
 }
 
+function hasNegativeNumberToken(tokens: Tok[]): boolean {
+  return tokens.some((t) => t.t === 'num' && Number(t.n) < 0)
+}
+
+function negativesRewritePlan(expr: string): { promptPretty: string; expected: number; nextExpr: string } | null {
+  const toks = tokenizeExpr(expr)
+  if (!toks) return null
+  // Only try a single rewrite on very simple 2-term + / - expressions.
+  const ops = toks.filter((t) => t.t === 'op') as Array<{ t: 'op'; op: '+' | '-' | '*' | '/' }>
+  if (ops.length !== 1) return null
+  if (toks.length !== 3) return null
+  const a = toks[0]
+  const op = toks[1]
+  const b = toks[2]
+  if (a.t !== 'num' || b.t !== 'num' || op.t !== 'op') return null
+  if (op.op !== '+' && op.op !== '-') return null
+
+  const absA = Math.abs(a.n)
+  const absB = Math.abs(b.n)
+
+  // Case 1: -a + b  (b positive) → b − a
+  if (a.n < 0 && op.op === '+' && b.n >= 0) {
+    const nextExpr = `${Math.trunc(b.n) === b.n ? String(Math.trunc(b.n)) : String(b.n)}-${Math.trunc(absA) === absA ? String(Math.trunc(absA)) : String(absA)}`
+    const prettyOrig = formatExprPretty(stringifyTokens(toks))
+    const promptPrettyNL = `Schrijf om: ${prettyOrig} = ${formatExprPretty(String(b.n))} − __`
+    return { promptPretty: promptPrettyNL, expected: absA, nextExpr }
+  }
+
+  // Case 2: a + (−b) → a − b
+  if (a.n >= 0 && op.op === '+' && b.n < 0) {
+    const nextExpr = `${Math.trunc(a.n) === a.n ? String(Math.trunc(a.n)) : String(a.n)}-${Math.trunc(absB) === absB ? String(Math.trunc(absB)) : String(absB)}`
+    const prettyOrig = formatExprPretty(stringifyTokens(toks))
+    const promptPrettyNL = `Schrijf om: ${prettyOrig} = ${formatExprPretty(String(a.n))} − __`
+    return { promptPretty: promptPrettyNL, expected: absB, nextExpr }
+  }
+
+  // Case 3: a − (−b) → a + b
+  if (op.op === '-' && b.n < 0) {
+    const nextExpr = `${Math.trunc(a.n) === a.n ? String(Math.trunc(a.n)) : String(a.n)}+${Math.trunc(absB) === absB ? String(Math.trunc(absB)) : String(absB)}`
+    const prettyOrig = formatExprPretty(stringifyTokens(toks))
+    const promptPrettyNL = `Schrijf om: ${prettyOrig} = ${formatExprPretty(String(a.n))} + __`
+    return { promptPretty: promptPrettyNL, expected: absB, nextExpr }
+  }
+
+  return null
+}
+
+function negativesWhy(lang: string, ageBand: AgeBand, expr: string): { nl: string; en: string } {
+  if (ageBand !== 'junior') return { nl: '', en: '' }
+  if (/--/.test(expr) || /-\s*-/.test(expr)) return { nl: `Min min wordt plus.`, en: `Minus minus becomes plus.` }
+  return { nl: `Let op het min‑teken.`, en: `Watch the minus sign.` }
+}
+
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
@@ -375,6 +444,17 @@ function parseProblem(text: string): ParsedProblem | null {
     const p = parseNum(pct[1])
     const base = parseNum(pct[2])
     if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
+  }
+
+  // Negatives: if the expression contains an actual negative number (unary minus),
+  // route it to a dedicated canon so we don't confuse it with normal subtraction.
+  // Examples: "-3 + 7", "7 + -3", "5 - -2", "5 * -2".
+  {
+    const core = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+    const toks = tokenizeExpr(core)
+    if (toks && hasNegativeNumberToken(toks) && toks.some((x) => x.t === 'op')) {
+      return { kind: 'negatives', expr: stringifyTokens(toks) }
+    }
   }
   // Order of operations:
   // - Any arithmetic with parentheses, OR
@@ -417,6 +497,11 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/[=]/.test(t)) return false
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  // Negatives: contains a unary negative number token and an operator.
+  {
+    const toks = tokenizeExpr(core)
+    if (toks && hasNegativeNumberToken(toks) && toks.some((x) => x.t === 'op')) return true
+  }
   // Any expression with parentheses, or with multiple operators, should start the order-ops canon.
   if (/[+\-*/()]/.test(core) && /\d/.test(core)) {
     const toks = tokenizeExpr(core)
@@ -453,6 +538,51 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'negatives') {
+      const expr = problem.expr
+      const why = negativesWhy(lang, ageBand, expr)
+
+      // Junior: do a single rewrite step when it makes the rule explicit and easier.
+      if (ageBand === 'junior') {
+        const rw = negativesRewritePlan(expr)
+        if (rw) {
+          const prompt = lang === 'en' ? rw.promptPretty.replace(/^Schrijf om:/, 'Rewrite:') : rw.promptPretty
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, 0, why.nl, why.en, prompt), action: 'none' },
+            nextState: {
+              v: 1,
+              kind: 'negatives',
+              expr,
+              turn: 0,
+              step: 'rewrite',
+              rewritePrompt: prompt,
+              rewriteExpected: rw.expected,
+              rewriteNextExpr: rw.nextExpr,
+            },
+          }
+        }
+      }
+
+      const step = nextOrderOpsStep(expr)
+      if (!step) return { handled: false }
+      const prompt = lang === 'en' ? `Fill in: ${step.promptPretty} = __` : `Vul in: ${step.promptPretty} = __`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, 0, why.nl, why.en, prompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'negatives',
+          expr,
+          turn: 0,
+          step: 'compute',
+          prompt: step.promptPretty,
+          expected: step.expected,
+          nextExpr: step.nextExpr,
+        },
+      }
+    }
+
     if (problem.kind === 'order_ops') {
       const step = nextOrderOpsStep(problem.expr)
       if (!step) return { handled: false }
@@ -1258,6 +1388,79 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
     }
 
+    return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'negatives') {
+    if (state.step === 'rewrite') {
+      const prompt = () => String(state.rewritePrompt || '')
+      const expected = Number(state.rewriteExpected)
+      const nextExpr = String(state.rewriteNextExpr || '')
+      if (!canAnswer) {
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+          nextState: state,
+        }
+      }
+      const userN = parseNum(lastUser)
+      if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9 && nextExpr) {
+        const step = nextOrderOpsStep(nextExpr)
+        if (!step) return { handled: false }
+        const pmt = lang === 'en' ? `Fill in: ${step.promptPretty} = __` : `Vul in: ${step.promptPretty} = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, `Yes—nu rekenen.`, `Yes—now compute.`, pmt), action: 'none' },
+          nextState: {
+            v: 1,
+            kind: 'negatives',
+            expr: nextExpr,
+            turn: state.turn + 1,
+            step: 'compute',
+            prompt: step.promptPretty,
+            expected: step.expected,
+            nextExpr: step.nextExpr,
+          },
+        }
+      }
+      return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+    }
+
+    // compute
+    const prompt = () => (lang === 'en' ? `Fill in: ${state.prompt} = __` : `Vul in: ${state.prompt} = __`)
+    if (!canAnswer) {
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+    const expected = Number(state.expected)
+    const userN = parseNum(lastUser)
+    if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) {
+      const next = String(state.nextExpr || '')
+      const toks = tokenizeExpr(next)
+      if (toks && toks.length === 1 && toks[0].t === 'num') {
+        return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      }
+      const step2 = nextOrderOpsStep(next)
+      if (!step2) return { handled: false }
+      const nextPrompt = lang === 'en' ? `Fill in: ${step2.promptPretty} = __` : `Vul in: ${step2.promptPretty} = __`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Mooi—volgende stap.`, `Nice—next step.`, nextPrompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'negatives',
+          expr: next,
+          turn: state.turn + 1,
+          step: 'compute',
+          prompt: step2.promptPretty,
+          expected: step2.expected,
+          nextExpr: step2.nextExpr,
+        },
+      }
+    }
     return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
   }
 
