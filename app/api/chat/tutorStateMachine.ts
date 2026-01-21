@@ -55,6 +55,12 @@ const ageBandOf = (age?: number): AgeBand => {
   return 'student'
 }
 
+function coachJunior(lang: string, ageBand: AgeBand, nl: string, en: string, prompt: string) {
+  if (ageBand !== 'junior') return prompt
+  const why = lang === 'en' ? en : nl
+  return `${why} ${prompt}`.trim()
+}
+
 function parseProblem(text: string): { kind: TutorSMKind; a: number; b: number } | null {
   const t = normalizeMathText(text)
   // Division: "184/16" or "wat is 184/16" or "los op: 184/16"
@@ -82,10 +88,17 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const b = problem.b
         const k0 = Math.floor(a / b)
         const startChunk = k0 >= 10 ? 10 : 1
+        const prompt = lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`
         return {
           handled: true,
           payload: {
-            message: lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`,
+            message: coachJunior(
+              lang,
+              ageBand,
+              `Slim: we beginnen met ${startChunk} groepjes, dat rekent snel.`,
+              `Smart: we start with ${startChunk} groups, that’s fast.`,
+              prompt
+            ),
             action: 'none',
           },
           nextState: { v: 1, kind: 'div', a, b, startChunk, onesAdded: 0, step: 'bx_start' },
@@ -94,13 +107,20 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (problem.kind === 'mul') {
         const bT = Math.trunc(problem.b / 10) * 10
         const bU = problem.b - bT
+        const prompt =
+          lang === 'en'
+            ? `Fill in: ${problem.a}×${bT} = __`
+            : `${problem.a}×${problem.b} = ${problem.a}×(${bT}+${bU}). Vul in: ${problem.a}×${bT} = __`
         return {
           handled: true,
           payload: {
-            message:
-              lang === 'en'
-                ? `Fill in: ${problem.a}×${bT} = __`
-                : `${problem.a}×${problem.b} = ${problem.a}×(${bT}+${bU}). Vul in: ${problem.a}×${bT} = __`,
+            message: coachJunior(
+              lang,
+              ageBand,
+              `Top! Eerst de makkelijke tientallen.`,
+              `Nice! Start with the easy tens.`,
+              prompt
+            ),
             action: 'none',
           },
           nextState: { v: 1, kind: 'mul', a: problem.a, b: problem.b, step: 'ax_bT', bT, bU },
@@ -122,18 +142,29 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
     if (state.step === 'bx_start') {
       if (isStuck(lastUser)) {
+        const prompt = lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`
         return {
           handled: true,
-          payload: { message: lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`, action: 'none' },
+          payload: {
+            message: coachJunior(lang, ageBand, `Geen stress—pak gewoon deze stap.`, `No stress—just do this step.`, prompt),
+            action: 'none',
+          },
           nextState: state,
         }
       }
       const userN = parseNum(lastUser)
       if (Math.abs(userN - qStart) < 1e-9) {
+        const prompt = lang === 'en' ? `Fill in: ${a} − ${qStart} = __` : `Vul in: ${a} − ${qStart} = __`
         return {
           handled: true,
           payload: {
-            message: lang === 'en' ? `Fill in: ${a} − ${qStart} = __` : `Vul in: ${a} − ${qStart} = __`,
+            message: coachJunior(
+              lang,
+              ageBand,
+              `Top! Nu kijken we wat er overblijft.`,
+              `Great! Now see what’s left.`,
+              prompt
+            ),
             action: 'none',
           },
           nextState: { ...state, step: 'a_minus_used', used: qStart },
@@ -141,7 +172,16 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
       return {
         handled: true,
-        payload: { message: lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`, action: 'none' },
+        payload: {
+          message: coachJunior(
+            lang,
+            ageBand,
+            `We maken groepjes van ${b}.`,
+            `We make groups of ${b}.`,
+            lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`
+          ),
+          action: 'none',
+        },
         nextState: state,
       }
     }
@@ -152,9 +192,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const rem = a - used
       if (Math.abs(userN - rem) < 1e-9) {
         if (rem >= b) {
+          const prompt = lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`
           return {
             handled: true,
-            payload: { message: lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`, action: 'none' },
+            payload: {
+              message: coachJunior(lang, ageBand, `Past er nog 1 groepje bij?`, `Does 1 more group fit?`, prompt),
+              action: 'none',
+            },
             nextState: { ...state, step: 'bx1', rem },
           }
         }
@@ -164,10 +208,15 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         return {
           handled: true,
           payload: {
-            message:
+            message: coachJunior(
+              lang,
+              ageBand,
+              `Tel de groepjes bij elkaar.`,
+              `Add the groups together.`,
               lang === 'en'
                 ? `Fill in: ${startChunk} + ${q - startChunk} = __${label}`
-                : `Vul in: ${startChunk} + ${q - startChunk} = __${label}`,
+                : `Vul in: ${startChunk} + ${q - startChunk} = __${label}`
+            ),
             action: 'none',
           },
           nextState: { ...state, step: 'q_sum', rem, onesAdded: Math.max(0, q - startChunk) },
@@ -175,19 +224,38 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
       return {
         handled: true,
-        payload: { message: lang === 'en' ? `Fill in: ${a} − ${used} = __` : `Vul in: ${a} − ${used} = __`, action: 'none' },
+        payload: {
+          message: coachJunior(
+            lang,
+            ageBand,
+            `Wat blijft er over?`,
+            `What is left?`,
+            lang === 'en' ? `Fill in: ${a} − ${used} = __` : `Vul in: ${a} − ${used} = __`
+          ),
+          action: 'none',
+        },
         nextState: state,
       }
     }
 
     if (state.step === 'bx1') {
       if (isStuck(lastUser)) {
-        return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`, action: 'none' }, nextState: state }
+        const prompt = lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, `Pak deze stap.`, `Do this step.`, prompt), action: 'none' },
+          nextState: state,
+        }
       }
       const userN = parseNum(lastUser)
       if (Math.abs(userN - q1) < 1e-9) {
         const rem = state.rem ?? a - qStart
-        return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${rem} − ${b} = __` : `Vul in: ${rem} − ${b} = __`, action: 'none' }, nextState: { ...state, step: 'rem_minus_b' } }
+        const prompt = lang === 'en' ? `Fill in: ${rem} − ${b} = __` : `Vul in: ${rem} − ${b} = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, `Haal nog ${b} weg.`, `Subtract ${b} once.`, prompt), action: 'none' },
+          nextState: { ...state, step: 'rem_minus_b' },
+        }
       }
       return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`, action: 'none' }, nextState: state }
     }
@@ -201,13 +269,14 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const q = startChunk + onesAdded
         const label =
           ageBand === 'junior' ? (lang === 'en' ? ' (how many?)' : ' (hoe vaak?)') : lang === 'en' ? ' (quotient)' : ' (quotiënt)'
+        const prompt =
+          lang === 'en'
+            ? `Fill in: ${startChunk} + ${q - startChunk} = __${label}`
+            : `Vul in: ${startChunk} + ${q - startChunk} = __${label}`
         return {
           handled: true,
           payload: {
-            message:
-              lang === 'en'
-                ? `Fill in: ${startChunk} + ${q - startChunk} = __${label}`
-                : `Vul in: ${startChunk} + ${q - startChunk} = __${label}`,
+            message: coachJunior(lang, ageBand, `Tel de groepjes bij elkaar.`, `Add the groups together.`, prompt),
             action: 'none',
           },
           nextState: { ...state, step: 'q_sum', rem, onesAdded },
@@ -222,9 +291,20 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const q = Math.floor((a - rem) / b)
       if (Math.abs(userN - q) < 1e-9) {
         if (ageBand === 'junior') {
+          const prompt =
+            lang === 'en' ? `Fill in: ${a} ÷ ${b} = __ (remainder ${rem})` : `Vul in: ${a} ÷ ${b} = __ (rest ${rem})`
           return {
             handled: true,
-            payload: { message: lang === 'en' ? `Fill in: ${a} ÷ ${b} = __ (remainder ${rem})` : `Vul in: ${a} ÷ ${b} = __ (rest ${rem})`, action: 'none' },
+            payload: {
+              message: coachJunior(
+                lang,
+                ageBand,
+                `Schrijf nu het antwoord op (rest = wat overblijft).`,
+                `Now write the answer (remainder = what’s left).`,
+                prompt
+              ),
+              action: 'none',
+            },
             nextState: { ...state, step: 'final' },
           }
         }
@@ -278,7 +358,15 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (isStuck(lastUser)) return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${a}×${bT} = __` : `Vul in: ${a}×${bT} = __`, action: 'none' }, nextState: state }
       const userN = parseNum(lastUser)
       if (Math.abs(userN - axbT) < 1e-9) {
-        return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${a}×${bU} = __` : `Vul in: ${a}×${bU} = __`, action: 'none' }, nextState: { ...state, step: 'ax_bU', axbT } }
+        const prompt = lang === 'en' ? `Fill in: ${a}×${bU} = __` : `Vul in: ${a}×${bU} = __`
+        return {
+          handled: true,
+          payload: {
+            message: coachJunior(lang, ageBand, `Top—nu de losse ${bU}.`, `Great—now the ${bU}.`, prompt),
+            action: 'none',
+          },
+          nextState: { ...state, step: 'ax_bU', axbT },
+        }
       }
       return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${a}×${bT} = __` : `Vul in: ${a}×${bT} = __`, action: 'none' }, nextState: state }
     }
@@ -302,7 +390,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - axbU) < 1e-9) {
         const axbT2 = (state as any).axbT ?? axbT
-        return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${axbT2} + ${axbU} = __` : `Vul in: ${axbT2} + ${axbU} = __`, action: 'none' }, nextState: { ...state, step: 'sum', axbT: axbT2, axbU } }
+        const prompt = lang === 'en' ? `Fill in: ${axbT2} + ${axbU} = __` : `Vul in: ${axbT2} + ${axbU} = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, `Nu tel je ze bij elkaar op.`, `Now add them together.`, prompt), action: 'none' },
+          nextState: { ...state, step: 'sum', axbT: axbT2, axbU },
+        }
       }
       return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${a}×${bU} = __` : `Vul in: ${a}×${bU} = __`, action: 'none' }, nextState: state }
     }
@@ -314,7 +407,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
       const x = (state as any).axbT ?? axbT
       const y = (state as any).axbU ?? axbU
-      return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${x} + ${y} = __` : `Vul in: ${x} + ${y} = __`, action: 'none' }, nextState: state }
+      const prompt = lang === 'en' ? `Fill in: ${x} + ${y} = __` : `Vul in: ${x} + ${y} = __`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, `Laatste stap: tel op.`, `Last step: add.`, prompt), action: 'none' },
+        nextState: state,
+      }
     }
   }
 

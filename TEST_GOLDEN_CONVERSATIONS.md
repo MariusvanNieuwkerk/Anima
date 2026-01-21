@@ -294,6 +294,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima **herhaalt die aftrek-vraag niet**.
 - Anima gaat door met de volgende micro‑stap, bijv. `16×1 = __`.
+- (Junior) Mag vooraf 1 korte coach-zin hebben (bv. “Past er nog 1 groepje bij?”).
 
 ---
 
