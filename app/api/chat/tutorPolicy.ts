@@ -36,6 +36,24 @@ const getAgeBand = (age?: number): AgeBand => {
   return 'student'
 }
 
+export function applyAgeStyleText(message: string, ctx: { userAge?: number; userLanguage?: string }): string {
+  const t = String(message || '').trim()
+  if (!t) return t
+  // Don't touch one-move fill blanks / compute prompts.
+  if (t.includes('__')) return t
+
+  const ageBand = getAgeBand(ctx.userAge)
+  const maxSentences = ageBand === 'teen' ? 3 : 2
+
+  // Keep only first paragraph for brevity.
+  const firstPara = t.split(/\n\s*\n/)[0].trim()
+
+  // Cheap sentence extraction (good enough for NL/EN).
+  const parts = firstPara.split(/(?<=[.!?])\s+/).filter(Boolean)
+  if (parts.length <= maxSentences) return firstPara
+  return parts.slice(0, maxSentences).join(' ').trim()
+}
+
 const normalizeMathText = (t: string) =>
   String(t || '')
     // Normalize many hyphen/minus variants to "-"

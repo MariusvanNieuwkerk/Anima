@@ -6,7 +6,7 @@ import { extractMoneyLike } from './skills/ocrUtils'
 import { searchWikimedia } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
-import { applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
+import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -251,6 +251,8 @@ OUTPUT-CONTRACT (CRITICAL)
         : false
 
       if (preDeterministic && preMsg && (preAction === 'none' || preAction === '')) {
+        // Apply age-style trimming (does not affect one-move blanks).
+        preflight.payload.message = applyAgeStyleText(String(preflight.payload.message || ''), { userAge, userLanguage })
         if (process.env.ANIMA_DEBUG_MATH === '1') {
           console.log('[ANIMA_DEBUG_MATH][preflight]', {
             git: process.env.VERCEL_GIT_COMMIT_SHA || null,
@@ -958,6 +960,7 @@ OUTPUT-CONTRACT (CRITICAL)
       const before = String(payload?.message || '')
       const res = applyTutorPolicyWithDebug(payload, { userLanguage, userAge, messages, lastUserText: lastMessageContent })
       payload = res.payload
+      payload.message = applyAgeStyleText(String(payload.message || ''), { userAge, userLanguage })
       const after = String(payload?.message || '')
       console.log('[ANIMA_DEBUG_MATH]', {
         git: process.env.VERCEL_GIT_COMMIT_SHA || null,
@@ -970,6 +973,7 @@ OUTPUT-CONTRACT (CRITICAL)
       })
     } else {
       payload = applyTutorPolicy(payload, { userLanguage, userAge, messages, lastUserText: lastMessageContent })
+      payload.message = applyAgeStyleText(String(payload.message || ''), { userAge, userLanguage })
     }
     // NOTE: Tutor-flow postprocessing lives in tutorPolicy.ts (anti-parrot, stop markers, ack-only, anti-repeat, etc.).
 
