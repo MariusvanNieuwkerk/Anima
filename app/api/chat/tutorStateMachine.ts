@@ -434,6 +434,15 @@ function negativesWhy(lang: string, ageBand: AgeBand, expr: string): { nl: strin
   return { nl: `Let op het min‑teken.`, en: `Watch the minus sign.` }
 }
 
+function negativesStuckHint(lang: string, expr: string): string {
+  const e = String(expr || '').replace(/\s+/g, '')
+  // Keep it short: 1 rule sentence max.
+  if (/--/.test(e)) return lang === 'en' ? `Rule: minus a negative becomes plus.` : `Regel: min min wordt plus.`
+  if (/\+-/.test(e) || /\+\(-/.test(e)) return lang === 'en' ? `Rule: adding a negative is subtraction.` : `Regel: plus een negatief is aftrekken.`
+  if (/^-\d+(?:[.,]\d+)?\+\d/.test(e)) return lang === 'en' ? `Rule: −a + b is the same as b − a.` : `Regel: −a + b is hetzelfde als b − a.`
+  return lang === 'en' ? `Rule: watch the minus sign.` : `Regel: let op het min‑teken.`
+}
+
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
@@ -559,6 +568,31 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
               rewritePrompt: prompt,
               rewriteExpected: rw.expected,
               rewriteNextExpr: rw.nextExpr,
+            },
+          }
+        }
+      }
+
+      // Teen: if a simple rewrite exists, jump straight to the easier rewritten compute (no extra rewrite step).
+      if (ageBand === 'teen') {
+        const rw = negativesRewritePlan(expr)
+        if (rw) {
+          const step = nextOrderOpsStep(rw.nextExpr)
+          if (!step) return { handled: false }
+          const hint = negativesStuckHint(lang, expr)
+          const prompt = lang === 'en' ? `Fill in: ${step.promptPretty} = __` : `Vul in: ${step.promptPretty} = __`
+          return {
+            handled: true,
+            payload: { message: [hint, prompt].filter(Boolean).join(' '), action: 'none' },
+            nextState: {
+              v: 1,
+              kind: 'negatives',
+              expr: rw.nextExpr,
+              turn: 0,
+              step: 'compute',
+              prompt: step.promptPretty,
+              expected: step.expected,
+              nextExpr: step.nextExpr,
             },
           }
         }
@@ -1397,9 +1431,14 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const expected = Number(state.rewriteExpected)
       const nextExpr = String(state.rewriteNextExpr || '')
       if (!canAnswer) {
+        // Teen/junior: add a tiny rule-hint when the student is stuck/ACKs.
+        const hint = ageBand === 'student' ? '' : negativesStuckHint(lang, state.expr)
         return {
           handled: true,
-          payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+          payload: {
+            message: coachJunior(lang, ageBand, state.turn, hint, hint, prompt(), { forceTone: 'mid' }),
+            action: 'none',
+          },
           nextState: state,
         }
       }
@@ -1429,9 +1468,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     // compute
     const prompt = () => (lang === 'en' ? `Fill in: ${state.prompt} = __` : `Vul in: ${state.prompt} = __`)
     if (!canAnswer) {
+      const hint = ageBand === 'student' ? '' : negativesStuckHint(lang, state.expr)
       return {
         handled: true,
-        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+        payload: {
+          message: coachJunior(lang, ageBand, state.turn, hint, hint, prompt(), { forceTone: 'mid' }),
+          action: 'none',
+        },
         nextState: state,
       }
     }
