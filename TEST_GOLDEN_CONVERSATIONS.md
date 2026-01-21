@@ -342,6 +342,40 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima zegt dat dit al vereenvoudigd is (bv. `Deze breuk is al vereenvoudigd: 3/8. Juist.`) en **stopt**.
 
+---
+
+## 5k) Percentages (canon: p% van basis → 1 stap tegelijk → stop) (NL)
+**User**
+1. `wat is 20% van 150`
+
+**Must**
+- Anima start met een concrete compute/fill‑blank stap (bv. `Vul in: 150 ÷ 10 = __ (dat is 10%)` of `Vul in: 150 ÷ 5 = __ (dat is 20%)`). (Junior: mag vooraf 1 korte “waarom”-zin.)
+- Daarna vraagt Anima de volgende micro‑stap (bv. `Vul in: 15 × 2 = __ (dat is 20%)`) en **stopt** na het correcte eindgetal.
+
+**Must-not**
+- Niet starten met een “definitie”-canon zoals `20% = 20/100` zonder de “van 150”-context.
+- Geen gokvragen / meta‑vragen.
+
+---
+
+## 5k-2) Percentages (ACK op invulvraag → herhaal dezelfde stap, geen rewind) (NL)
+**Setup**: Start met `wat is 20% van 150` en ga door tot Anima vraagt: `Vul in: 150 ÷ 10 = __` (of equivalente eerste stap).
+
+**User**
+1. `ok`
+
+**Must**
+- Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
+
+---
+
+## 5k-3) Percentages (25% shortcut → kwart) (NL)
+**User**
+1. `wat is 25% van 80`
+
+**Must**
+- Anima vraagt een enkele invulstap zoals `Vul in: 80 ÷ 4 = __ (dat is 25%)` en **stopt** na het correcte antwoord.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent'
 
 export type TutorSMState =
   | {
@@ -63,6 +63,18 @@ export type TutorSMState =
       aU?: number
       aTxbU?: number
       aUxbU?: number
+    }
+  | {
+      v: 1
+      kind: 'percent'
+      p: number
+      base: number
+      turn: number
+      step: 'unit' | 'scale'
+      unitPct: number
+      divisor: number
+      multiplier: number
+      unitValue?: number
     }
 
 export type TutorSMInput = {
@@ -136,8 +148,42 @@ function coachJunior(lang: string, ageBand: AgeBand, turn: number, nlMid: string
   return mid ? `${mid} ${prompt}`.trim() : prompt
 }
 
+function percentPlan(pRaw: number): { unitPct: number; divisor: number; multiplier: number } {
+  const p = Number(pRaw)
+  // Shortcuts:
+  // 50% = 1/2, 25% = 1/4, 20% = 1/5, 10% = 1/10
+  if (Math.abs(p - 50) < 1e-9) return { unitPct: 50, divisor: 2, multiplier: 1 }
+  if (Math.abs(p - 25) < 1e-9) return { unitPct: 25, divisor: 4, multiplier: 1 }
+  if (Math.abs(p - 20) < 1e-9) return { unitPct: 20, divisor: 5, multiplier: 1 }
+  if (Math.abs(p - 10) < 1e-9) return { unitPct: 10, divisor: 10, multiplier: 1 }
+
+  // Multiples of 10%: compute 10% first, then scale.
+  if (Number.isFinite(p) && Math.abs(p % 10) < 1e-9) return { unitPct: 10, divisor: 10, multiplier: p / 10 }
+
+  // Default: compute 1% (= ÷100) then scale by p.
+  return { unitPct: 1, divisor: 100, multiplier: p }
+}
+
+function percentWhy(lang: string, unitPct: number, divisor: number): { nl: string; en: string } {
+  if (unitPct === 50 && divisor === 2) return { nl: `50% is de helft.`, en: `50% is half.` }
+  if (unitPct === 25 && divisor === 4) return { nl: `25% is een kwart.`, en: `25% is a quarter.` }
+  if (unitPct === 20 && divisor === 5) return { nl: `20% is één vijfde.`, en: `20% is one fifth.` }
+  if (unitPct === 10 && divisor === 10) return { nl: `10% is delen door 10.`, en: `10% is divide by 10.` }
+  if (unitPct === 1 && divisor === 100) return { nl: `1% is delen door 100.`, en: `1% is divide by 100.` }
+  return { nl: `% betekent “van de 100”.`, en: `% means “out of 100”.` }
+}
+
 function parseProblem(text: string): { kind: TutorSMKind; a: number; b: number } | null {
   const t = normalizeMathText(text)
+  // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
+  const pct = t.match(
+    /(?:wat\s+is|what\s+is|los\s+op|bereken)?\s*[: ]*\s*(\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(\d+(?:[.,]\d+)?)/i
+  )
+  if (pct) {
+    const p = parseNum(pct[1])
+    const base = parseNum(pct[2])
+    if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
+  }
   // Fraction simplify: "vereenvoudig 12/18" or "breuk 12/18 vereenvoudigen"
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(t)) {
     const fm = t.match(/(\d+)\s*\/\s*(\d+)/)
@@ -166,6 +212,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/[=]/.test(t)) return false
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/(?:\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(?:\d+(?:[.,]\d+)?)/i.test(core)) return true
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(core) && /(\d+)\s*\/\s*(\d+)/.test(core)) return true
   return /^\d+\s*(?:[+\-]|\*|\/)\s*\d+$/.test(core)
 }
@@ -192,6 +239,43 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'percent') {
+      const p = Number(problem.a)
+      const base = Number(problem.b)
+      const { unitPct, divisor, multiplier } = percentPlan(p)
+      const why = percentWhy(lang, unitPct, divisor)
+
+      // For older learners: allow a compact single-step for integer percent.
+      if (ageBand === 'student' && Number.isFinite(p) && Number.isFinite(base) && Math.abs(p % 1) < 1e-9) {
+        const pInt = Number(p.toFixed(0))
+        const prompt = lang === 'en' ? `Fill in: ${base} × ${pInt} ÷ 100 = __` : `Vul in: ${base} × ${pInt} ÷ 100 = __`
+        return {
+          handled: true,
+          payload: { message: prompt, action: 'none' },
+          nextState: {
+            v: 1,
+            kind: 'percent',
+            p,
+            base,
+            turn: 0,
+            step: 'unit',
+            unitPct: 1,
+            divisor: 100,
+            multiplier: p,
+          },
+        }
+      }
+
+      const unitLabel = lang === 'en' ? `(${unitPct}% step)` : `(dat is ${unitPct}%)`
+      const prompt =
+        lang === 'en' ? `Fill in: ${base} ÷ ${divisor} = __ ${unitLabel}` : `Vul in: ${base} ÷ ${divisor} = __ ${unitLabel}`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, 0, why.nl, why.en, prompt), action: 'none' },
+        nextState: { v: 1, kind: 'percent', p, base, turn: 0, step: 'unit', unitPct, divisor, multiplier },
+      }
+    }
+
     if (problem.kind === 'frac') {
       const n = Math.trunc(problem.a)
       const d = Math.trunc(problem.b)
@@ -830,6 +914,75 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         nextState: state,
       }
     }
+  }
+
+  if (state.kind === 'percent') {
+    const p = state.p
+    const base = state.base
+    const { unitPct, divisor, multiplier } = state
+
+    const promptUnit = () => {
+      const unitLabel = lang === 'en' ? `(${unitPct}% step)` : `(dat is ${unitPct}%)`
+      return lang === 'en' ? `Fill in: ${base} ÷ ${divisor} = __ ${unitLabel}` : `Vul in: ${base} ÷ ${divisor} = __ ${unitLabel}`
+    }
+    const promptScale = (unitValue: number) => {
+      const pLabel = lang === 'en' ? `(${p}% )` : `(dat is ${p}%)`
+      return lang === 'en'
+        ? `Fill in: ${unitValue} × ${multiplier} = __ ${pLabel}`
+        : `Vul in: ${unitValue} × ${multiplier} = __ ${pLabel}`
+    }
+
+    if (!canAnswer) {
+      const pmt = state.step === 'unit' ? promptUnit() : promptScale(Number(state.unitValue))
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, pmt, { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'unit') {
+      // Student compact path: unitPct=1, divisor=100, multiplier=p, but prompt may have been "base×p÷100".
+      // We accept the final answer directly if multiplier != 1 and unitPct==1 (compact branch), otherwise we do the unit step.
+      if (ageBand === 'student' && state.unitPct === 1 && state.divisor === 100 && Math.abs(p % 1) < 1e-9) {
+        const expected = (base * p) / 100
+        if (Math.abs(userN - expected) < 1e-9) {
+          const msg = lang === 'en' ? `Correct.` : `Juist.`
+          return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+        }
+        const pInt = Number(p.toFixed(0))
+        const prompt = lang === 'en' ? `Fill in: ${base} × ${pInt} ÷ 100 = __` : `Vul in: ${base} × ${pInt} ÷ 100 = __`
+        return { handled: true, payload: { message: prompt, action: 'none' }, nextState: state }
+      }
+
+      const expectedUnit = base / divisor
+      if (Math.abs(userN - expectedUnit) < 1e-9) {
+        if (Math.abs(multiplier - 1) < 1e-9) {
+          const msg =
+            lang === 'en'
+              ? `Correct: ${p}% of ${base} = ${userN}.`
+              : `Juist: ${p}% van ${base} = ${userN}.`
+          return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+        }
+        const prompt = promptScale(userN)
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, `Mooi—nu vermenigvuldigen.`, `Nice—now multiply.`, prompt), action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: userN },
+        }
+      }
+      return { handled: true, payload: { message: promptUnit(), action: 'none' }, nextState: state }
+    }
+
+    // scale
+    const unitValue = Number(state.unitValue)
+    const expected = unitValue * multiplier
+    if (Math.abs(userN - expected) < 1e-9) {
+      const msg = lang === 'en' ? `Correct: ${p}% of ${base} = ${userN}.` : `Juist: ${p}% van ${base} = ${userN}.`
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+    }
+    return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }
   }
 
   return { handled: false }
