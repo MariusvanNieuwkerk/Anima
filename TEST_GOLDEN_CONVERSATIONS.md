@@ -449,6 +449,43 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima herhaalt de **zelfde invulvraag** (geen rewind, geen doorspringen).
 
+---
+
+## 5n) Unknowns / mini‑algebra (canon: draai bewerking om → x invullen → stop) (NL)
+**User**
+1. `x + 8 = 23`
+
+**Must**
+- Anima geeft 1 korte regel-hint (teen/junior) en vraagt daarna één invulstap om de bewerking terug te draaien, bv. `Vul in: 23 − 8 = __`.
+- Daarna vraagt Anima: `Vul in: x = __`.
+- Na correct antwoord: korte bevestiging en **stop**.
+
+**Must-not**
+- Geen eindantwoord in de eerste beurt.
+- Geen meta‑vragen (“wat is je volgende stap?”).
+
+---
+
+## 5n-2) Unknowns / mini‑algebra (aftrekken terugdraaien) (NL)
+**User**
+1. `__ − 7 = 15`
+
+**Must**
+- Anima vraagt eerst `Vul in: 15 + 7 = __`.
+- Daarna `Vul in: x = __` (of `__ = __`).
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5n-3) Unknowns / mini‑algebra (ACK/stuck → herhaal dezelfde stap) (NL)
+**Setup**: Start met test 5n en ga door tot Anima vraagt: `Vul in: 23 − 8 = __`.
+
+**User**
+1. `weet ik niet`
+
+**Must**
+- Anima geeft 1 korte regel-hint en herhaalt **dezelfde invulvraag** (`23 − 8 = __`).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

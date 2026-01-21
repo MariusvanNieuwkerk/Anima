@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives' | 'unknown'
 
 export type TutorSMState =
   | {
@@ -101,6 +101,17 @@ export type TutorSMState =
       expected?: number
       nextExpr?: string
     }
+  | {
+      v: 1
+      kind: 'unknown'
+      // Equation form: x op b = c
+      op: '+' | '-'
+      b: number
+      c: number
+      turn: number
+      step: 'inverse' | 'x_value'
+      expected: number
+    }
 
 export type TutorSMInput = {
   state: TutorSMState | null
@@ -202,6 +213,7 @@ type ParsedProblem =
   | { kind: 'frac' | 'div' | 'mul' | 'add' | 'sub' | 'percent'; a: number; b: number }
   | { kind: 'order_ops'; expr: string }
   | { kind: 'negatives'; expr: string }
+  | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
 
@@ -443,6 +455,18 @@ function negativesStuckHint(lang: string, expr: string): string {
   return lang === 'en' ? `Rule: watch the minus sign.` : `Regel: let op het min‑teken.`
 }
 
+function unknownHint(lang: string, ageBand: AgeBand, op: '+' | '-', b: number): string {
+  // Keep it short; teen/student shouldn't feel patronized.
+  const isJunior = ageBand === 'junior'
+  if (op === '+') {
+    if (lang === 'en') return isJunior ? `Undo +${b} by subtracting ${b}.` : `Undo +${b} → subtract ${b}.`
+    return isJunior ? `Draai +${b} terug door ${b} eraf te halen.` : `Terugdraaien: +${b} → −${b}.`
+  }
+  // op === '-'
+  if (lang === 'en') return isJunior ? `Undo −${b} by adding ${b}.` : `Undo −${b} → add ${b}.`
+  return isJunior ? `Draai −${b} terug door ${b} erbij te tellen.` : `Terugdraaien: −${b} → +${b}.`
+}
+
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
@@ -453,6 +477,18 @@ function parseProblem(text: string): ParsedProblem | null {
     const p = parseNum(pct[1])
     const base = parseNum(pct[2])
     if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
+  }
+
+  // Unknown / mini-algebra: "__ + 8 = 23" or "x + 8 = 23"
+  {
+    const core = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+    const m = core.match(/(?:__|x)\s*([+\-])\s*(\d+(?:[.,]\d+)?)\s*=\s*(\d+(?:[.,]\d+)?)/i)
+    if (m) {
+      const op = m[1] as '+' | '-'
+      const b = parseNum(m[2])
+      const c = parseNum(m[3])
+      if (Number.isFinite(b) && Number.isFinite(c)) return { kind: 'unknown', op, b, c }
+    }
   }
 
   // Negatives: if the expression contains an actual negative number (unary minus),
@@ -503,9 +539,11 @@ function parseProblem(text: string): ParsedProblem | null {
 
 function isStandaloneProblemStatement(text: string): boolean {
   const t = normalizeMathText(text)
-  if (/[=]/.test(t)) return false
+  // Note: unknown/mini-algebra intentionally includes '='; it has its own matching below.
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/(?:__|x)\s*[+\-]\s*\d+(?:[.,]\d+)?\s*=\s*\d+(?:[.,]\d+)?/i.test(core)) return true
+  if (/[=]/.test(t)) return false
   // Negatives: contains a unary negative number token and an operator.
   {
     const toks = tokenizeExpr(core)
@@ -547,6 +585,20 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'unknown') {
+      const { op, b, c } = problem
+      const expected = op === '+' ? c - b : c + b
+      const invExpr = op === '+' ? `${c} − ${b}` : `${c} + ${b}`
+      const prompt = lang === 'en' ? `Fill in: ${invExpr} = __` : `Vul in: ${invExpr} = __`
+      const hint = unknownHint(lang, ageBand, op, b)
+      const msg = ageBand === 'student' ? prompt : [hint, prompt].filter(Boolean).join(' ')
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: { v: 1, kind: 'unknown', op, b, c, turn: 0, step: 'inverse', expected },
+      }
+    }
+
     if (problem.kind === 'negatives') {
       const expr = problem.expr
       const why = negativesWhy(lang, ageBand, expr)
@@ -1505,6 +1557,39 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
     }
     return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'unknown') {
+    const promptInverse = () => {
+      const invExpr = state.op === '+' ? `${state.c} − ${state.b}` : `${state.c} + ${state.b}`
+      return lang === 'en' ? `Fill in: ${invExpr} = __` : `Vul in: ${invExpr} = __`
+    }
+    const promptX = () => (lang === 'en' ? `Fill in: x = __` : `Vul in: x = __`)
+    const hint = ageBand === 'student' ? '' : unknownHint(lang, ageBand, state.op, state.b)
+
+    if (!canAnswer) {
+      const p = state.step === 'inverse' ? promptInverse() : promptX()
+      const msg = ageBand === 'student' ? p : [hint, p].filter(Boolean).join(' ')
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'inverse') {
+      if (Math.abs(userN - state.expected) < 1e-9) {
+        const p = promptX()
+        const msg = ageBand === 'student' ? p : [lang === 'en' ? `Good—now write x.` : `Goed—schrijf nu x op.`, p].join(' ')
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'x_value' },
+        }
+      }
+      return { handled: true, payload: { message: ageBand === 'student' ? promptInverse() : [hint, promptInverse()].join(' '), action: 'none' }, nextState: state }
+    }
+
+    // x_value
+    if (Math.abs(userN - state.expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptX(), action: 'none' }, nextState: state }
   }
 
   return { handled: false }
