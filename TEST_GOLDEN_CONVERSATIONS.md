@@ -257,7 +257,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 ---
 
 ## 5h) Delen (geen herhaling na reststap) (NL)
-**Setup**: Start met `wat is 184/16` en ga door tot Anima vraagt “Hoeveel blijft er over als je 160 van 184 aftrekt?”
+**Setup**: Start met `wat is 184/16` en ga door tot Anima de reststap vraagt (bv. `Vul in: 184 − 160 = __`).
 
 **User**
 1. `24`

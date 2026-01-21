@@ -427,20 +427,8 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     const finishWithQuotientStep = (q: number, rest: number) =>
       ask(`Vul in: ${startChunk} + ${q - startChunk} = __ (quotiënt)`, `Fill in: ${startChunk} + ${q - startChunk} = __ (quotient)`)
 
-    // Step 1: b×startChunk
-    if (!/\b×\s*(10|1)\b/.test(prevAssistant) && !new RegExp(`\\b${b}\\s*[×x*]\\s*(10|1)\\b`).test(prevAssistant)) {
-      return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
-    }
-
-    // If we asked b×startChunk and user answered, ask first remainder.
-    if (new RegExp(`\\b${b}\\s*[×x*]\\s*${startChunk}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
-      const userN = parseNum(lastUser)
-      const expected = b * startChunk
-      if (Math.abs(userN - expected) < 1e-9) return ask(`Vul in: ${a} − ${expected} = __`, `Fill in: ${a} − ${expected} = __`)
-      return ask(`Bijna. Vul in: ${b}×${startChunk} = __`, `Almost. Fill in: ${b}×${startChunk} = __`)
-    }
-
-    // If we asked a - used, and user answered remainder, decide next.
+    // IMPORTANT: handle "remainder / continuation" steps BEFORE falling back to the initial b×startChunk prompt.
+    // Otherwise after "a − used = __" the prevAssistant no longer contains ×10/×1 and we'd reset incorrectly.
     const remMatch = prevAssistant.match(/(\d+)\s*[−-]\s*(\d+)\s*=\s*__/)
     if (remMatch && userIsNumberLike(lastUserText)) {
       const total = Number(remMatch[1])
@@ -506,6 +494,19 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
         }
         return ask(`Juist.`, `Correct.`)
       }
+    }
+
+    // Step 1: b×startChunk (only if we're not already mid-flow)
+    if (!/\b×\s*(10|1)\b/.test(prevAssistant) && !new RegExp(`\\b${b}\\s*[×x*]\\s*(10|1)\\b`).test(prevAssistant)) {
+      return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
+    }
+
+    // If we asked b×startChunk and user answered, ask first remainder.
+    if (new RegExp(`\\b${b}\\s*[×x*]\\s*${startChunk}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
+      const userN = parseNum(lastUser)
+      const expected = b * startChunk
+      if (Math.abs(userN - expected) < 1e-9) return ask(`Vul in: ${a} − ${expected} = __`, `Fill in: ${a} − ${expected} = __`)
+      return ask(`Bijna. Vul in: ${b}×${startChunk} = __`, `Almost. Fill in: ${b}×${startChunk} = __`)
     }
 
     return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
