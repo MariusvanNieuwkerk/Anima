@@ -248,7 +248,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `wat is 184/16`
 
 **Must**
-- Anima start met een concrete compute/fill‑blank stap (bv. `16×10 = __`).
+- Anima start met een concrete compute/fill‑blank stap (bv. `16×10 = __`). (Mag vooraf 1 korte “waarom”-zin hebben bij junior.)
 - Geen gokvragen (“denk je dat…”), geen meta‑vragen (“schrijf je berekening…”).
 
 **Must-not**

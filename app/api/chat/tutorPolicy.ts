@@ -460,6 +460,14 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
         `Fill in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`
       )
 
+    const divAsk = (nlWhy: string, nlPrompt: string, enWhy: string, enPrompt: string) => {
+      const base = ask(nlPrompt, enPrompt)
+      if (ageBand !== 'junior') return base
+      const why = ask(nlWhy, enWhy)
+      // Keep it one short sentence for juniors.
+      return `${why} ${base}`.trim()
+    }
+
     // IMPORTANT: handle "remainder / continuation" steps BEFORE falling back to the initial b×startChunk prompt.
     // Otherwise after "a − used = __" the prevAssistant no longer contains ×10/×1 and we'd reset incorrectly.
     const remMatch = prevAssistant.match(/(\d+)\s*[−-]\s*(\d+)\s*=\s*__/)
@@ -470,13 +478,28 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       const userN = parseNum(lastUser)
       if (Math.abs(userN - expectedRem) < 1e-9) {
         if (expectedRem >= b) {
-          return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+          return divAsk(
+            `We proberen nog 1 groepje van ${b}.`,
+            `Vul in: ${b}×1 = __`,
+            `We try one more group of ${b}.`,
+            `Fill in: ${b}×1 = __`
+          )
         }
         // Finish requires an explicit quotient compute step first.
         const q = Math.floor((a - expectedRem) / b)
-        return finishWithQuotientStep(q, expectedRem)
+        return divAsk(
+          `Hoeveel groepjes zijn het totaal?`,
+          `Vul in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`,
+          `How many groups in total?`,
+          `Fill in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`
+        )
       }
-      return ask(`Vul in: ${total} − ${used} = __`, `Fill in: ${total} − ${used} = __`)
+      return divAsk(
+        `Wat blijft er over?`,
+        `Vul in: ${total} − ${used} = __`,
+        `What is left over?`,
+        `Fill in: ${total} − ${used} = __`
+      )
     }
 
     // If we asked b×1 and user answered, ask subtract from last remainder if we can find it.
@@ -485,9 +508,20 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       if (Math.abs(prod - b) < 1e-9) {
         // Find the last remainder number in history (user's last remainder).
         const rem = findLastDivisionRemainder(messages)
-        if (Number.isFinite(rem) && rem >= b) return ask(`Vul in: ${rem} − ${b} = __`, `Fill in: ${rem} − ${b} = __`)
+        if (Number.isFinite(rem) && rem >= b)
+          return divAsk(
+            `Haal nog ${b} weg.`,
+            `Vul in: ${rem} − ${b} = __`,
+            `Subtract ${b} once more.`,
+            `Fill in: ${rem} − ${b} = __`
+          )
       }
-      return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+      return divAsk(
+        `We proberen 1 groepje van ${b}.`,
+        `Vul in: ${b}×1 = __`,
+        `We try 1 group of ${b}.`,
+        `Fill in: ${b}×1 = __`
+      )
     }
 
     // If we asked rem - b and user answered, either loop or finish with quotient.
@@ -500,12 +534,27 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       if (Math.abs(userN - expected) < 1e-9) {
         const rest = expected
         if (rest >= b) {
-          return ask(`Vul in: ${b}×1 = __`, `Fill in: ${b}×1 = __`)
+          return divAsk(
+            `Past er nog een groepje bij?`,
+            `Vul in: ${b}×1 = __`,
+            `Does one more group fit?`,
+            `Fill in: ${b}×1 = __`
+          )
         }
         const q = Math.floor((a - rest) / b)
-        return finishWithQuotientStep(q, rest)
+        return divAsk(
+          `Hoeveel groepjes zijn het totaal?`,
+          `Vul in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`,
+          `How many groups in total?`,
+          `Fill in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`
+        )
       }
-      return ask(`Vul in: ${r0} − ${sub} = __`, `Fill in: ${r0} − ${sub} = __`)
+      return divAsk(
+        `Haal ${sub} eraf.`,
+        `Vul in: ${r0} − ${sub} = __`,
+        `Subtract ${sub}.`,
+        `Fill in: ${r0} − ${sub} = __`
+      )
     }
 
     // If we asked the quotient-sum and the user answered, finalize with remainder + check (no new question).
@@ -523,8 +572,10 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
         if (Number.isFinite(rest)) {
           // Junior: let the student write the final answer explicitly (one blank), then confirm.
           if (ageBand === 'junior') {
-            return ask(
+            return divAsk(
+              `Schrijf nu het antwoord op.`,
               `Vul in: ${a} ÷ ${b} = __ (rest ${rest})`,
+              `Now write the answer.`,
               `Fill in: ${a} ÷ ${b} = __ (remainder ${rest})`
             )
           }
@@ -552,18 +603,39 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
 
     // Step 1: b×startChunk (only if we're not already mid-flow)
     if (!/\b×\s*(10|1)\b/.test(prevAssistant) && !new RegExp(`\\b${b}\\s*[×x*]\\s*(10|1)\\b`).test(prevAssistant)) {
-      return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
+      return divAsk(
+        `We maken groepjes van ${b}.`,
+        `Vul in: ${b}×${startChunk} = __`,
+        `We make groups of ${b}.`,
+        `Fill in: ${b}×${startChunk} = __`
+      )
     }
 
     // If we asked b×startChunk and user answered, ask first remainder.
     if (new RegExp(`\\b${b}\\s*[×x*]\\s*${startChunk}\\b`).test(prevAssistant) && userIsNumberLike(lastUserText)) {
       const userN = parseNum(lastUser)
       const expected = b * startChunk
-      if (Math.abs(userN - expected) < 1e-9) return ask(`Vul in: ${a} − ${expected} = __`, `Fill in: ${a} − ${expected} = __`)
-      return ask(`Bijna. Vul in: ${b}×${startChunk} = __`, `Almost. Fill in: ${b}×${startChunk} = __`)
+      if (Math.abs(userN - expected) < 1e-9)
+        return divAsk(
+          `Dan haal je dat van ${a} af.`,
+          `Vul in: ${a} − ${expected} = __`,
+          `Then subtract it from ${a}.`,
+          `Fill in: ${a} − ${expected} = __`
+        )
+      return divAsk(
+        `Bijna—reken dat nog eens.`,
+        `Vul in: ${b}×${startChunk} = __`,
+        `Almost—try that again.`,
+        `Fill in: ${b}×${startChunk} = __`
+      )
     }
 
-    return ask(`Vul in: ${b}×${startChunk} = __`, `Fill in: ${b}×${startChunk} = __`)
+    return divAsk(
+      `We maken groepjes van ${b}.`,
+      `Vul in: ${b}×${startChunk} = __`,
+      `We make groups of ${b}.`,
+      `Fill in: ${b}×${startChunk} = __`
+    )
   }
 
   if (state.kind === 'frac_simplify' && Number.isFinite(state.a) && Number.isFinite(state.b)) {
