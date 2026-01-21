@@ -450,8 +450,15 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
     // Canon chunking: start with ×10 if possible, else ×1. Then remainder, then keep adding ×1 until remainder < b.
     const k0 = Math.floor(a / b)
     const startChunk = k0 >= 10 ? 10 : 1
+    const quotientLabel = (() => {
+      if (ageBand === 'junior') return lang === 'en' ? ' (how many?)' : ' (hoe vaak?)'
+      return lang === 'en' ? ' (quotient)' : ' (quotiënt)'
+    })()
     const finishWithQuotientStep = (q: number, rest: number) =>
-      ask(`Vul in: ${startChunk} + ${q - startChunk} = __ (quotiënt)`, `Fill in: ${startChunk} + ${q - startChunk} = __ (quotient)`)
+      ask(
+        `Vul in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`,
+        `Fill in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`
+      )
 
     // IMPORTANT: handle "remainder / continuation" steps BEFORE falling back to the initial b×startChunk prompt.
     // Otherwise after "a − used = __" the prevAssistant no longer contains ×10/×1 and we'd reset incorrectly.
@@ -512,12 +519,32 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
         // Determine current rest from the last user remainder number in the thread.
         const rest = findLastDivisionRemainder(messages)
         if (Number.isFinite(rest)) {
+          // Junior: let the student write the final answer explicitly (one blank), then confirm.
+          if (ageBand === 'junior') {
+            return ask(
+              `Vul in: ${a} ÷ ${b} = __ (rest ${rest})`,
+              `Fill in: ${a} ÷ ${b} = __ (remainder ${rest})`
+            )
+          }
           return ask(
             `Juist. Quotiënt: **${expQ}**, rest: **${rest}**. Check: ${b}×${expQ}+${rest}=${a}.`,
             `Correct. Quotient: **${expQ}**, remainder: **${rest}**. Check: ${b}×${expQ}+${rest}=${a}.`
           )
         }
         return ask(`Juist.`, `Correct.`)
+      }
+    }
+
+    // Junior final confirmation: after "a ÷ b = __ (rest r)" accept the quotient and stop.
+    const finalDiv = prevAssistant.match(/(\d+)\s*[÷/]\s*(\d+)\s*=\s*__\s*\(.*rest\s+(\d+)\)/i)
+    if (finalDiv && userIsNumberLike(lastUserText)) {
+      const aa = Number(finalDiv[1])
+      const bb = Number(finalDiv[2])
+      const rr = Number(finalDiv[3])
+      const q = Math.floor((aa - rr) / bb)
+      const userN = parseNum(lastUser)
+      if (Number.isFinite(q) && Math.abs(userN - q) < 1e-9) {
+        return ask(`Juist: **${q}** rest **${rr}**.`, `Correct: **${q}** remainder **${rr}**.`)
       }
     }
 
