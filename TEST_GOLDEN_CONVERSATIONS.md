@@ -156,25 +156,28 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 ---
 
 ## 5a-3) Optellen (ACK op “Schrijf …” → ga door, niet stoppen) (NL)
-**Setup**: Start met `Los op: 47 + 28` zodat Anima begint met `Schrijf: 47=40+7 en 28=20+8.`
+**Setup**: Start met `Los op: 47 + 28` zodat Anima begint met een **invulvraag** (bv. `Vul in: 40 + 20 = __` — eventueel met een korte splits-regel ervoor).
 
 **User**
 1. `ok`
 
 **Must**
 - Anima **stopt niet**.
-- Anima gaat door met de volgende canon-stap, bijv. `Vul in: 40 + 20 = __`.
+- Anima herhaalt de **huidige invulvraag** (bv. `Vul in: 40 + 20 = __`) en vraagt niet om meta-stappen.
 
 ---
 
-## 5a-4) Optellen (ACK op invulvraag → herhaal invulvraag, geen rewind) (NL)
-**Setup**: Start met `Los op: 47 + 28` en ga door tot Anima vraagt: `Vul in: 40 + 20 = __`.
+## 5a-4) Optellen (ACK op latere invulvraag → herhaal invulvraag, geen doorspringen) (NL)
+**Setup**: Start met `Los op: 47 + 28` en ga door tot Anima vraagt: `Vul in: 7 + 8 = __` (of equivalent voor de eenheden).
 
 **User**
 1. `ok`
 
 **Must**
 - Anima herhaalt de **zelfde invulvraag** (of vraagt ultrakort om het getal), maar gaat **niet terug** naar `Schrijf: 47 = ...`.
+
+**Must-not**
+- Niet doorspringen naar de volgende stap (bv. meteen `Vul in: 60 + 15 = __`) zonder dat de leerling eerst `7 + 8` invult.
 
 ---
 
