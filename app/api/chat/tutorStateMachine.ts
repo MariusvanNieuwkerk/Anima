@@ -1379,13 +1379,15 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   // Start or restart when user provides a fresh problem statement.
   // IMPORTANT: if we are already in a canon flow and the student is giving an "answer-like" turn
   // (number/fraction or ACK/stuck), do NOT treat it as a new problem statement.
+  const looksLikeStandaloneProblem = isStandaloneProblemStatement(lastUser)
   const answerLikeTurn =
     !!state &&
+    !looksLikeStandaloneProblem &&
     (isNumberLike(lastUser) ||
       isFractionLike(lastUser) ||
       isRationalSlashLike(lastUser) ||
       isPercentLike(lastUser) ||
-      hasNumberInText(lastUser) ||
+      ((state.kind === 'arith_unit' || state.kind === 'order_ops' || state.kind === 'dec_muldiv') && hasNumberInText(lastUser)) ||
       isAckOnly(lastUser) ||
       isStuck(lastUser))
 
@@ -1926,8 +1928,9 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // In an active canon flow: if the user sends ACK-only or "I'm stuck",
   // we repeat the current blank (no rewind).
+  const canAnswerBase = isNumberLike(lastUser) || isFractionLike(lastUser) || isRationalSlashLike(lastUser) || isPercentLike(lastUser)
   const canAnswer =
-    isNumberLike(lastUser) || isFractionLike(lastUser) || isRationalSlashLike(lastUser) || isPercentLike(lastUser) || hasNumberInText(lastUser)
+    canAnswerBase || ((state.kind === 'arith_unit' || state.kind === 'order_ops' || state.kind === 'dec_muldiv') && hasNumberInText(lastUser))
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
 
