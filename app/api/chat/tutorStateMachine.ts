@@ -1204,7 +1204,8 @@ function parseProblem(text: string): ParsedProblem | null {
     }
 
     // Parts ratio: "verhouding 2:3, als 2 delen = 8, hoeveel is 3 delen?"
-    const ratioM = low.match(/\b(\d+)\s*:\s*(\d+)\b/)
+    // NOTE: normalizeMathText replaces ":" with "/", so accept both ":" and "/" ONLY when "verhouding" is present.
+    const ratioM = low.match(/\bverhouding\b.*?\b(\d+)\s*(?:[:/])\s*(\d+)\b/)
     if (ratioM) {
       const a = Number(ratioM[1])
       const b = Number(ratioM[2])
@@ -1433,7 +1434,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
   if (/\b(afronden|rond)\b/i.test(core) && /\d/.test(core)) return true
   if (/\bschaal\b/i.test(core) && /\b1\s*[:/]\s*\d+\b/.test(core)) return true
-  if (/\bverhouding\b/i.test(core) && /\b\d+\s*:\s*\d+\b/.test(core)) return true
+  if (/\bverhouding\b/i.test(core) && /\b\d+\s*(?:[:/])\s*\d+\b/.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
   if (/\b(zet|maak|schrijf)\b/i.test(core) && /\b(om|naar|in|als)\b/i.test(core) && (/%|procent|percent|kommagetal|decimaal|breuk/i.test(core))) return true
