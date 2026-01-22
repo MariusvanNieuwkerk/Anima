@@ -2443,7 +2443,18 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         }
         return { handled: true, payload: { message: pmt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expUnit } }
       }
-      return { handled: true, payload: { message: promptUnit(), action: 'none' }, nextState: state }
+      {
+        const pmt = promptUnit()
+        if (ageBand === 'junior') {
+          const w = juniorWhy('percent_word', 'unit', state.turn, { mode })
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, pmt, { forceTone: 'mid' }), action: 'none' },
+            nextState: state,
+          }
+        }
+        return { handled: true, payload: { message: pmt, action: 'none' }, nextState: state }
+      }
     }
 
     if (state.step === 'scale') {
@@ -2461,14 +2472,32 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         }
         return { handled: true, payload: { message: pmt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'apply', pctValue: expPct } }
       }
-      return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }
+      {
+        const pmt = promptScale(unitValue)
+        if (ageBand === 'junior') {
+          const w = juniorWhy('percent_word', 'scale', state.turn, { mode })
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, pmt, { forceTone: 'mid' }), action: 'none' },
+            nextState: state,
+          }
+        }
+        return { handled: true, payload: { message: pmt, action: 'none' }, nextState: state }
+      }
     }
 
     // apply
     const pctValue = Number(state.pctValue)
     const expFinal = mode === 'discount' ? price - pctValue : price + pctValue
     if (Math.abs(userN - expFinal) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
-    return { handled: true, payload: { message: promptApply(pctValue), action: 'none' }, nextState: state }
+    {
+      const pmt = promptApply(pctValue)
+      if (ageBand === 'junior') {
+        const w = juniorWhy('percent_word', 'apply', state.turn, { mode })
+        return { handled: true, payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, pmt, { forceTone: 'mid' }), action: 'none' }, nextState: state }
+      }
+      return { handled: true, payload: { message: pmt, action: 'none' }, nextState: state }
+    }
   }
 
   if (state.kind === 'unknown') {
