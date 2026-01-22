@@ -886,7 +886,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   const state = input.state
 
   // Start or restart when user provides a fresh problem statement.
-  if (problem && isStandaloneProblemStatement(lastUser)) {
+  // IMPORTANT: if we are already in a canon flow and the student is giving an "answer-like" turn
+  // (number/fraction or ACK/stuck), do NOT treat it as a new problem statement.
+  const answerLikeTurn =
+    !!state && (isNumberLike(lastUser) || isFractionLike(lastUser) || isAckOnly(lastUser) || isStuck(lastUser))
+
+  if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
     if (problem.kind === 'frac_addsub') {
       const { op, a, b, c, d } = problem
       const lcm = lcmInt(b, d)
@@ -1117,7 +1122,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const a = problem.a
       const b = problem.b
       const k0 = Math.floor(a / b)
-      const startChunk = k0 >= 10 ? 10 : 1
+      const startChunk = k0 >= 10 ? 10 : k0 >= 1 ? 1 : 0
       const prompt = lang === 'en' ? `Fill in: ${b}×${startChunk} = __` : `Vul in: ${b}×${startChunk} = __`
       return {
         handled: true,
@@ -2034,7 +2039,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         return lang === 'en' ? `Fill in: gcd(${num},${lcm}) = __` : `Vul in: ggd(${num},${lcm}) = __`
       }
       // final: enter simplified fraction
-      return lang === 'en' ? `Fill in: answer = __` : `Vul in: antwoord = __`
+      return lang === 'en' ? `Fill in: answer = __ (e.g. 3/8)` : `Vul in: antwoord = __ (bijv. 3/8)`
     }
 
     if (!canAnswer) {
