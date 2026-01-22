@@ -10,6 +10,7 @@ export type TutorSMKind =
   | 'dec_muldiv'
   | 'round'
   | 'ratio'
+  | 'money_change'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -164,6 +165,17 @@ export type TutorSMState =
       turn: number
       step: 'per_part' | 'ask_value' | 'mul' | 'convert'
       expected: number
+    }
+  | {
+      v: 1
+      kind: 'money_change'
+      // total = qty * price (or direct cost if qty=1)
+      qty: number
+      price: number
+      paid: number
+      turn: number
+      step: 'total' | 'change'
+      total?: number
     }
   | {
       v: 1
@@ -629,6 +641,7 @@ type ParsedProblem =
   | { kind: 'round'; mode: 'int' | 'decimal'; valueText: string; place?: 10 | 100 | 1000; decimals?: 0 | 1 | 2; valueNum: number }
   | { kind: 'ratio'; mode: 'parts'; a: number; b: number; givenParts: number; givenValue: number; askParts: number }
   | { kind: 'ratio'; mode: 'scale'; scaleDen: number; dist: number; unit: 'cm' | 'm' | 'km'; wantUnit?: 'cm' | 'm' | 'km' }
+  | { kind: 'money_change'; qty: number; price: number; paid: number }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1158,6 +1171,45 @@ function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
 
+  // Money change word problem (NL): "2 ijsjes van €1,20, je betaalt met €5, hoeveel wisselgeld?"
+  {
+    const low = core0.toLowerCase()
+    const hasChange = /\b(wisselgeld|terug|terugkrijg|terugkrijgen|change)\b/.test(low)
+    if (hasChange) {
+      // paid amount
+      const paidM = low.match(/\b(?:betaal(?:t)?\s*(?:met)?|geef(?:t)?|paid\s*with)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      // cost forms:
+      // - "2 ... van 1,20"  (qty + unit price)
+      // - "kost 3,50" (direct total cost)
+      const qtyM = low.match(/\b(\d+)\s*(?:x|keer)\b|\b(\d+)\s+(?:stuks?|stukken|ijsjes|appels?|boeken?|broden?|repen?)\b/)
+      const priceEachM = low.match(/\b(?:van|voor)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const costM = low.match(/\b(?:kost|kosten|totaal)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+
+      const paid = paidM ? parseNum(paidM[1]) : NaN
+      if (!Number.isFinite(paid)) {
+        // fallback: take last €number as paid if phrasing didn't match
+        const all = Array.from(low.matchAll(/€\s*(\d+(?:[.,]\d+)?)/g)).map((m) => m[1])
+        const last = all.length ? parseNum(all[all.length - 1]) : NaN
+        if (Number.isFinite(last)) {
+          // continue with last as paid
+          // eslint-disable-next-line no-inner-declarations
+          const paid2 = last
+          const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+          const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+          const cost = costM ? parseNum(costM[1]) : NaN
+          if (Number.isFinite(cost)) return { kind: 'money_change', qty: 1, price: cost, paid: paid2 }
+          if (Number.isFinite(qty) && Number.isFinite(price)) return { kind: 'money_change', qty, price, paid: paid2 }
+        }
+      } else {
+        const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+        const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+        const cost = costM ? parseNum(costM[1]) : NaN
+        if (Number.isFinite(cost)) return { kind: 'money_change', qty: 1, price: cost, paid }
+        if (Number.isFinite(qty) && Number.isFinite(price)) return { kind: 'money_change', qty, price, paid }
+      }
+    }
+  }
+
   // Rounding / estimation (NL): "Rond 347 af op tientallen", "Rond 3,1415 af op 2 decimalen"
   {
     const low = core0.toLowerCase()
@@ -1433,6 +1485,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
   if (/\b(afronden|rond)\b/i.test(core) && /\d/.test(core)) return true
+  if (/\b(wisselgeld|terug|terugkrijg|terugkrijgen)\b/i.test(core) && /€|\beuro\b|\d/.test(core)) return true
   if (/\bschaal\b/i.test(core) && /\b1\s*[:/]\s*\d+\b/.test(core)) return true
   if (/\bverhouding\b/i.test(core) && /\b\d+\s*(?:[:/])\s*\d+\b/.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
@@ -1667,6 +1720,23 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           step: 'mul',
           expected: dist * scaleDen,
         },
+      }
+    }
+    if (problem.kind === 'money_change') {
+      const qty = Math.max(1, Math.trunc(problem.qty))
+      const price = Number(problem.price)
+      const paid = Number(problem.paid)
+      const total = qty * price
+      const why = ageBand === 'junior' ? 'Eerst reken je uit wat het samen kost.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${qty} × ${price} = __ (euro)`
+          : `Vul in: ${qty} × ${fmtNL(price)} = __ (euro)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: { v: 1, kind: 'money_change', qty, price, paid, turn: 0, step: 'total', total },
       }
     }
     if (problem.kind === 'convert') {
@@ -3102,6 +3172,48 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const exp = Number(state.expected)
     if (Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     return { handled: true, payload: { message: promptMul(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_change') {
+    const total = Number(state.total ?? state.qty * state.price)
+    const promptTotal = () =>
+      lang === 'en'
+        ? `Fill in: ${state.qty} × ${state.price} = __ (euro)`
+        : `Vul in: ${state.qty} × ${fmtNL(state.price)} = __ (euro)`
+    const promptChange = (t: number) =>
+      lang === 'en'
+        ? `Fill in: ${state.paid} − ${t} = __ (euro)`
+        : `Vul in: ${fmtNL(state.paid)} − ${fmtNL(t)} = __ (euro)`
+
+    if (!canAnswer) {
+      const p = state.step === 'total' ? promptTotal() : promptChange(total)
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'total'
+            ? 'Eerst samen kost uitrekenen.'
+            : 'Wisselgeld = betaald − wat het kost.'
+          : ''
+      return { handled: true, payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'total') {
+      if (Math.abs(userN - total) < 1e-9) {
+        const nextPrompt = promptChange(total)
+        const why = ageBand === 'junior' ? 'Nu het wisselgeld.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'change', total },
+        }
+      }
+      return { handled: true, payload: { message: promptTotal(), action: 'none' }, nextState: state }
+    }
+
+    // change
+    const expected = state.paid - total
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptChange(total), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {

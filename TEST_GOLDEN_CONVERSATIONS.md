@@ -647,6 +647,28 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima geeft 1 korte hint (bv. “1 deel = totaal ÷ aantal delen”) en herhaalt dezelfde invulvraag.
 
+---
+
+## 5s) Verhaalsom: wisselgeld (Extended) (NL)
+**User**
+1. `Je koopt 2 ijsjes van €1,20. Je betaalt met €5. Hoeveel wisselgeld krijg je terug?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de totaalprijs: `Vul in: 2 × 1,2 = __ (euro)` (of equivalent).
+- Stap 2: Daarna wisselgeld: `Vul in: 5 − __ = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5s-2) Verhaalsom wisselgeld (ACK/stuck → herhaal stap) (NL)
+**Setup**: Start met test 5s en ga door tot Anima de totaalprijs vraagt.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint (“eerst samen kost”) en herhaalt dezelfde invulvraag.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
