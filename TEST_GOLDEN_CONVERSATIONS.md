@@ -517,7 +517,8 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `1,2 × 0,5`
 
 **Must**
-- (Junior) Anima geeft 1 korte regelzin (bv. “reken even zonder komma en zet de komma terug”) en vraagt 1 invulstap: `Vul in: 1,2 × 0,5 = __`.
+- (Junior) Stap 1: Anima zegt kort “reken zonder komma” en vraagt: `Vul in: 12 × 5 = __`.
+- (Junior) Stap 2: Anima vraagt “zet de komma terug”, bv. `Vul in: 60 ÷ 100 = __` (of equivalent).
 - Na correct antwoord: korte bevestiging en **stop**.
 
 ---
@@ -527,7 +528,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `0,75 ÷ 0,25`
 
 **Must**
-- (Junior) Anima geeft 1 korte regelzin (bv. “reken even zonder komma en zet de komma terug”) en vraagt 1 invulstap: `Vul in: 0,75 ÷ 0,25 = __`.
+- (Junior) Anima maakt de komma weg en vraagt één invulstap met hele getallen, bv. `Vul in: 75 ÷ 25 = __` (of equivalent).
 - Na correct antwoord: korte bevestiging en **stop**.
 
 ---

@@ -7,6 +7,7 @@ export type TutorSMKind =
   | 'percent'
   | 'order_ops'
   | 'arith_unit'
+  | 'dec_muldiv'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -111,6 +112,21 @@ export type TutorSMState =
       prompt: string // pretty subexpression currently asked
       expected: number
       nextExpr: string
+    }
+  | {
+      v: 1
+      kind: 'dec_muldiv'
+      op: '*' | '/'
+      aText: string
+      bText: string
+      aInt: number
+      bInt: number
+      scale: number
+      unit?: string
+      turn: number
+      step: 'int_op' | 'place'
+      intResult?: number
+      expected?: number
     }
   | {
       v: 1
@@ -572,6 +588,7 @@ type ParsedProblem =
   | { kind: 'frac' | 'div' | 'mul' | 'add' | 'sub' | 'percent'; a: number; b: number }
   | { kind: 'order_ops'; expr: string }
   | { kind: 'arith_unit'; expr: string; unit: string }
+  | { kind: 'dec_muldiv'; op: '*' | '/'; aText: string; bText: string; unit?: string }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1130,6 +1147,19 @@ function parseProblem(text: string): ParsedProblem | null {
     }
   }
 
+  // Decimal multiply/divide (junior micro-step): "1,2 * 0,5", "0,75 / 0,25"
+  {
+    const m = core0.match(/(-?\d+(?:[.,]\d+)?)\s*([*/])\s*(-?\d+(?:[.,]\d+)?)/)
+    if (m) {
+      const aText = m[1]
+      const op = m[2] as '*' | '/'
+      const bText = m[3]
+      const a = parseNum(aText)
+      const b = parseNum(bText)
+      if (Number.isFinite(a) && Number.isFinite(b)) return { kind: 'dec_muldiv', op, aText, bText }
+    }
+  }
+
   // Fraction multiply/divide: "1/4 * 3/5", "1/4 × 3/5", "1/4 : 3/5", "1/4 ÷ 3/5"
   // Note: normalizeMathText turns ":" into "/", so also accept "1/4 / 3/5" (with spaces) as division.
   {
@@ -1360,6 +1390,40 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       isStuck(lastUser))
 
   if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'dec_muldiv' && ageBand === 'junior') {
+      const aText = String(problem.aText)
+      const bText = String(problem.bText)
+      const op = problem.op
+      const aS = decimalToIntScale(aText)
+      const bS = decimalToIntScale(bText)
+      if (aS && bS) {
+        if (op === '*') {
+          const aInt = aS.int
+          const bInt = bS.int
+          const scale = aS.scale * bS.scale
+          const why = `Reken eerst even zonder komma.`
+          const prompt = lang === 'en' ? `Fill in: ${aInt} × ${bInt} = __` : `Vul in: ${aInt} × ${bInt} = __`
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }), action: 'none' },
+            nextState: { v: 1, kind: 'dec_muldiv', op, aText, bText, aInt, bInt, scale, turn: 0, step: 'int_op' },
+          }
+        }
+
+        // division: scale both so we can compute with integers cleanly
+        const common = lcmInt(aS.scale, bS.scale)
+        const aInt = aS.int * (common / aS.scale)
+        const bInt = bS.int * (common / bS.scale)
+        const why = `Maak de komma weg: doe allebei ×${common}.`
+        const prompt = lang === 'en' ? `Fill in: ${aInt} ÷ ${bInt} = __` : `Vul in: ${aInt} ÷ ${bInt} = __`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }), action: 'none' },
+          nextState: { v: 1, kind: 'dec_muldiv', op, aText, bText, aInt, bInt, scale: 1, turn: 0, step: 'int_op', expected: aInt / bInt },
+        }
+      }
+    }
+
     if (problem.kind === 'arith_unit') {
       const step = nextOrderOpsStep(problem.expr)
       if (!step) return { handled: false }
@@ -2659,6 +2723,60 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const p = prompt()
     const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, `We rekenen stap voor stap.`, `We go step by step.`, p, { forceTone: 'mid' }) : p
     return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'dec_muldiv') {
+    const sym = state.op === '/' ? '÷' : '×'
+    const unitSuffix = state.unit ? ` (${state.unit})` : ''
+    const promptInt = () =>
+      lang === 'en'
+        ? `Fill in: ${state.aInt} ${sym} ${state.bInt} = __`
+        : `Vul in: ${state.aInt} ${sym} ${state.bInt} = __`
+
+    if (!canAnswer) {
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, `Pak deze stap.`, `Do this step.`, promptInt(), { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    const userN = isNumberLike(lastUser) ? parseNum(lastUser) : parseFirstNumber(lastUser)
+
+    // For division, we already made integers and can stop after int_op.
+    if (state.op === '/') {
+      const expected = Number(state.expected)
+      if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: promptInt(), action: 'none' }, nextState: state }
+    }
+
+    // multiplication
+    if (state.step === 'int_op') {
+      const expInt = state.aInt * state.bInt
+      if (Math.abs(userN - expInt) < 1e-9) {
+        const prompt =
+          lang === 'en'
+            ? `Place the decimal. Fill in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
+            : `Zet de komma terug. Vul in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
+        const why = `We delen door ${state.scale} om de komma terug te zetten.`
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, why, why, prompt, { forceTone: 'mid' }), action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'place', intResult: expInt, expected: expInt / state.scale },
+        }
+      }
+      return { handled: true, payload: { message: promptInt(), action: 'none' }, nextState: state }
+    }
+
+    // place step
+    const expected = Number(state.expected)
+    if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    const expInt = Number(state.intResult)
+    const retry =
+      lang === 'en'
+        ? `Place the decimal. Fill in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
+        : `Zet de komma terug. Vul in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
+    return { handled: true, payload: { message: retry, action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {
