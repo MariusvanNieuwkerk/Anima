@@ -11,6 +11,7 @@ export type TutorSMKind =
   | 'units'
   | 'frac_addsub'
   | 'frac_muldiv'
+  | 'convert'
   | 'percent_word'
 
 export type TutorSMState =
@@ -196,6 +197,30 @@ export type TutorSMState =
       unitValue?: number
       pctValue?: number
     }
+  | {
+      v: 1
+      kind: 'convert'
+      mode:
+        | 'frac_to_percent'
+        | 'frac_to_decimal'
+        | 'percent_to_decimal'
+        | 'decimal_to_percent'
+        | 'percent_to_frac'
+        | 'decimal_to_frac'
+      turn: number
+      step: 'step1' | 'step2' | 'gcd' | 'num_s' | 'den_s' | 'final'
+      n?: number
+      d?: number
+      p?: number
+      decText?: string
+      k?: number
+      denP?: number
+      numP?: number
+      gcd?: number
+      numS?: number
+      denS?: number
+      decValue?: number
+    }
 
 export type TutorSMInput = {
   state: TutorSMState | null
@@ -235,6 +260,8 @@ const isNumberLike = (t: string) => /^\s*-?\d+([.,]\d+)?\s*$/.test(strip(t))
 
 const isFractionLike = (t: string) => /^\s*-?\d+\s*\/\s*-?\d+\s*$/.test(strip(t))
 
+const isPercentLike = (t: string) => /^\s*-?\d+([.,]\d+)?\s*%\s*$/.test(strip(t))
+
 const parseFraction = (t: string): { n: number; d: number } | null => {
   const m = strip(t).match(/^\s*(-?\d+)\s*\/\s*(-?\d+)\s*$/)
   if (!m) return null
@@ -242,6 +269,21 @@ const parseFraction = (t: string): { n: number; d: number } | null => {
   const d = Number(m[2])
   if (!Number.isFinite(n) || !Number.isFinite(d) || d === 0) return null
   return { n, d }
+}
+
+const parsePercent = (t: string): number | null => {
+  const m = strip(t).match(/^\s*(-?\d+(?:[.,]\d+)?)\s*%\s*$/)
+  if (!m) return null
+  const p = parseNum(m[1])
+  return Number.isFinite(p) ? p : null
+}
+
+function decimalPlacesFromText(t: string): number {
+  const s = strip(t).replace('%', '').trim()
+  const m = s.match(/^-?\d+(?:[.,](\d+))?$/)
+  if (!m) return 0
+  const frac = m[1] || ''
+  return frac.length
 }
 
 const isAckOnly = (t: string) =>
@@ -501,6 +543,20 @@ type ParsedProblem =
   | { kind: 'frac_addsub'; op: '+' | '-'; a: number; b: number; c: number; d: number }
   | { kind: 'frac_muldiv'; mode: 'mul' | 'div'; a: number; b: number; c: number; d: number }
   | { kind: 'percent_word'; mode: 'discount' | 'vat'; p: number; price: number }
+  | {
+      kind: 'convert'
+      mode:
+        | 'frac_to_percent'
+        | 'frac_to_decimal'
+        | 'percent_to_decimal'
+        | 'decimal_to_percent'
+        | 'percent_to_frac'
+        | 'decimal_to_frac'
+      n?: number
+      d?: number
+      p?: number
+      decText?: string
+    }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
 
@@ -674,9 +730,12 @@ function nextOrderOpsStep(expr: string): { promptPretty: string; expected: numbe
 }
 
 function orderOpsWhy(lang: string, ageBand: AgeBand, expr: string): { nl: string; en: string } {
+  const isDecimalExpr = /[0-9][.,][0-9]/.test(String(expr || ''))
+  if (ageBand === 'teen' && isDecimalExpr) return { nl: 'Komma onder komma.', en: '' }
   if (ageBand !== 'junior') return { nl: '', en: '' }
   const hasParens = /[()]/.test(expr)
   if (hasParens) return { nl: `Eerst rekenen we binnen de haakjes.`, en: `First we do what’s inside the parentheses.` }
+  if (isDecimalExpr) return { nl: `Zet de komma’s onder elkaar (komma onder komma).`, en: `Line up the decimals.` }
   return { nl: `Eerst keer/delen, daarna plus/min.`, en: `First multiply/divide, then add/subtract.` }
 }
 
@@ -909,6 +968,35 @@ function gcdPromptNL(ageBand: AgeBand, a: number, b: number): string {
   return `Vul in: grootste gemene deler van ${a} en ${b} = __`
 }
 
+function convertWhy(ageBand: AgeBand, mode: string, step: string, seed: number): { nl: string; en: string } {
+  if (ageBand === 'student') return { nl: '', en: '' }
+  if (ageBand === 'teen') {
+    if (mode === 'decimal_to_percent') return { nl: '×100 → procent.', en: '' }
+    if (mode === 'percent_to_decimal') return { nl: '÷100 → decimaal.', en: '' }
+    if (mode === 'frac_to_decimal') return { nl: 'Deel boven door onder.', en: '' }
+    if (mode === 'frac_to_percent') return { nl: step === 'step2' ? 'Decimaal ×100.' : 'Eerst naar decimaal (÷).', en: '' }
+    if (mode === 'percent_to_frac') return { nl: 'Procent = per 100 → …/100.', en: '' }
+    if (mode === 'decimal_to_frac') return { nl: 'Zet zonder komma op 10/100/1000.', en: '' }
+    return { nl: '', en: '' }
+  }
+  // junior
+  if (mode === 'decimal_to_percent') return { nl: pickVariant(['Procent is “van de 100”, dus ×100.', 'Om naar % te gaan, doe je ×100.'], seed), en: '' }
+  if (mode === 'percent_to_decimal') return { nl: pickVariant(['Procent is “van de 100”, dus ÷100.', 'Om % naar een getal te maken, deel je door 100.'], seed), en: '' }
+  if (mode === 'frac_to_decimal') return { nl: pickVariant(['Een breuk als kommagetal: deel boven door onder.', 'Kommagetal maken: boven ÷ onder.'], seed), en: '' }
+  if (mode === 'frac_to_percent') {
+    return {
+      nl:
+        step === 'step2'
+          ? pickVariant(['Nu ×100 om er procent van te maken.', 'Procent = kommagetal ×100.'], seed)
+          : pickVariant(['Eerst als kommagetal: boven ÷ onder.', 'Maak eerst het kommagetal.'], seed),
+      en: '',
+    }
+  }
+  if (mode === 'percent_to_frac') return { nl: pickVariant(['% betekent per 100: dus …/100.', 'Procent = op 100, dus maak een breuk met 100 onder.'], seed), en: '' }
+  if (mode === 'decimal_to_frac') return { nl: pickVariant(['Zet de komma weg door 10/100/1000 onder te zetten.', 'Kommagetal → breuk: maak er …/10 of …/100 van.'], seed), en: '' }
+  return { nl: '', en: '' }
+}
+
 function fracMulDivWhy(
   ageBand: AgeBand,
   step: 'recip' | 'num_mul' | 'den_mul' | 'gcd' | 'num_s' | 'den_s' | 'final',
@@ -968,6 +1056,42 @@ function parseProblem(text: string): ParsedProblem | null {
       if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && b !== 0 && d !== 0) {
         const mode: 'mul' | 'div' = op === ':' || op === '÷' || op === '/' ? 'div' : 'mul'
         return { kind: 'frac_muldiv', mode, a, b, c, d }
+      }
+    }
+  }
+
+  // Conversions: breuk/kommagetal/procent omzetten (NL)
+  {
+    const low = core0.toLowerCase()
+    const wantsPercent = /(naar|in|als)\s*(procent|percent)\b/.test(low)
+    const wantsDecimal = /(naar|in|als)\s*(kommagetal|decimaal|getal)\b/.test(low)
+    const wantsFrac = /(naar|in|als)\s*breuk\b/.test(low)
+
+    const fm = low.match(/(-?\d+)\s*\/\s*(-?\d+)/)
+    const pm = low.match(/(-?\d+(?:[.,]\d+)?)\s*%/)
+    const dm = low.match(/(-?\d+[.,]\d+)/)
+
+    if (fm) {
+      const n = Number(fm[1])
+      const d = Number(fm[2])
+      if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) {
+        if (wantsPercent) return { kind: 'convert', mode: 'frac_to_percent', n, d }
+        if (wantsDecimal) return { kind: 'convert', mode: 'frac_to_decimal', n, d }
+      }
+    }
+    if (pm) {
+      const p = parseNum(pm[1])
+      if (Number.isFinite(p)) {
+        if (wantsDecimal) return { kind: 'convert', mode: 'percent_to_decimal', p }
+        if (wantsFrac) return { kind: 'convert', mode: 'percent_to_frac', p, decText: pm[1] }
+      }
+    }
+    if (dm) {
+      const decText = dm[1]
+      const decValue = parseNum(decText)
+      if (Number.isFinite(decValue)) {
+        if (wantsPercent) return { kind: 'convert', mode: 'decimal_to_percent', decText }
+        if (wantsFrac) return { kind: 'convert', mode: 'decimal_to_frac', decText }
       }
     }
   }
@@ -1056,7 +1180,8 @@ function parseProblem(text: string): ParsedProblem | null {
     if (toks) {
       const opCount = toks.filter((x) => x.t === 'op').length
       const hasParens = toks.some((x) => x.t === 'lp' || x.t === 'rp')
-      if (hasParens || opCount >= 2) return { kind: 'order_ops', expr: stringifyTokens(toks) }
+      const hasDecimal = /[0-9][.,][0-9]/.test(core)
+      if (hasParens || opCount >= 2 || (opCount === 1 && hasDecimal)) return { kind: 'order_ops', expr: stringifyTokens(toks) }
     }
   }
   // Fraction simplify: "vereenvoudig 12/18" or "breuk 12/18 vereenvoudigen"
@@ -1089,6 +1214,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
+  if (/\b(zet|maak|schrijf)\b/i.test(core) && /\b(om|naar|in|als)\b/i.test(core) && (/%|procent|percent|kommagetal|decimaal|breuk/i.test(core))) return true
   if (/\b(korting|btw|vat)\b/i.test(core) && /\d+(?:[.,]\d+)?\s*%/.test(core)) return true
   if (parseUnitsProblem(core)) return true
   if (/(?:__|x)\s*[+\-]\s*\d+(?:[.,]\d+)?\s*=\s*\d+(?:[.,]\d+)?/i.test(core)) return true
@@ -1109,7 +1235,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   }
   if (/(?:\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(?:\d+(?:[.,]\d+)?)/i.test(core)) return true
   if (/(?:vereenvoudig|vereenvoudigen|breuk|simplify|reduce)\b/i.test(core) && /(\d+)\s*\/\s*(\d+)/.test(core)) return true
-  return /^\d+\s*(?:[+\-]|\*|\/)\s*\d+$/.test(core)
+  return /^-?\d+(?:[.,]\d+)?\s*(?:[+\-]|\*|\/)\s*-?\d+(?:[.,]\d+)?$/.test(core)
 }
 
 function smallestCommonDivisor(n: number, d: number): number | null {
@@ -1136,9 +1262,86 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   // IMPORTANT: if we are already in a canon flow and the student is giving an "answer-like" turn
   // (number/fraction or ACK/stuck), do NOT treat it as a new problem statement.
   const answerLikeTurn =
-    !!state && (isNumberLike(lastUser) || isFractionLike(lastUser) || isAckOnly(lastUser) || isStuck(lastUser))
+    !!state && (isNumberLike(lastUser) || isFractionLike(lastUser) || isPercentLike(lastUser) || isAckOnly(lastUser) || isStuck(lastUser))
 
   if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'convert') {
+      const mode = problem.mode
+      const turn = 0
+      const seed = 0
+
+      const makeMsg = (whyNL: string, prompt: string) => {
+        if (ageBand === 'junior') return coachJunior(lang, ageBand, turn, whyNL, '', prompt, { forceTone: 'mid' })
+        if (ageBand === 'teen') return coachTeen(lang, ageBand, whyNL, '', prompt)
+        return prompt
+      }
+
+      if (mode === 'frac_to_decimal' || mode === 'frac_to_percent') {
+        const n = Number(problem.n)
+        const d = Number(problem.d)
+        const prompt = lang === 'en' ? `Fill in: ${n} ÷ ${d} = __` : `Vul in: ${n} ÷ ${d} = __`
+        const w = convertWhy(ageBand, mode, 'step1', seed).nl
+        return {
+          handled: true,
+          payload: { message: makeMsg(w, prompt), action: 'none' },
+          nextState: { v: 1, kind: 'convert', mode, turn, step: 'step1', n, d },
+        }
+      }
+
+      if (mode === 'percent_to_decimal') {
+        const p = Number(problem.p)
+        const prompt = lang === 'en' ? `Fill in: ${p} ÷ 100 = __` : `Vul in: ${fmtNL(p)} ÷ 100 = __`
+        const w = convertWhy(ageBand, mode, 'step1', seed).nl
+        return {
+          handled: true,
+          payload: { message: makeMsg(w, prompt), action: 'none' },
+          nextState: { v: 1, kind: 'convert', mode, turn, step: 'step1', p },
+        }
+      }
+
+      if (mode === 'decimal_to_percent') {
+        const decText = String(problem.decText || '').trim()
+        const decValue = parseNum(decText)
+        const prompt = lang === 'en' ? `Fill in: ${decText} × 100 = __ %` : `Vul in: ${decText} × 100 = __ %`
+        const w = convertWhy(ageBand, mode, 'step1', seed).nl
+        return {
+          handled: true,
+          payload: { message: makeMsg(w, prompt), action: 'none' },
+          nextState: { v: 1, kind: 'convert', mode, turn, step: 'step1', decText, decValue },
+        }
+      }
+
+      if (mode === 'percent_to_frac') {
+        const p = Number(problem.p)
+        const pText = String(problem.decText || fmtNL(p))
+        const k = decimalPlacesFromText(pText)
+        const denP = 100 * Math.pow(10, k)
+        const numP = Math.round(p * Math.pow(10, k))
+        const prompt = lang === 'en' ? `Fill in: ${pText}% = __/${denP}` : `Vul in: ${pText}% = __/${denP}`
+        const w = convertWhy(ageBand, mode, 'step1', seed).nl
+        return {
+          handled: true,
+          payload: { message: makeMsg(w, prompt), action: 'none' },
+          nextState: { v: 1, kind: 'convert', mode, turn, step: 'step1', p, denP, numP, k, decText: pText },
+        }
+      }
+
+      if (mode === 'decimal_to_frac') {
+        const decText = String(problem.decText || '').trim()
+        const decValue = parseNum(decText)
+        const k = decimalPlacesFromText(decText)
+        const denP = Math.pow(10, k)
+        const numP = Math.round(decValue * denP)
+        const prompt = lang === 'en' ? `Fill in: ${decText} = __/${denP}` : `Vul in: ${decText} = __/${denP}`
+        const w = convertWhy(ageBand, mode, 'step1', seed).nl
+        return {
+          handled: true,
+          payload: { message: makeMsg(w, prompt), action: 'none' },
+          nextState: { v: 1, kind: 'convert', mode, turn, step: 'step1', decText, decValue, denP, numP, k },
+        }
+      }
+    }
+
     if (problem.kind === 'frac_muldiv') {
       const { mode, a, b, c, d } = problem
       const firstStep: 'recip' | 'num_mul' = mode === 'div' ? 'recip' : 'num_mul'
@@ -1540,7 +1743,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // In an active canon flow: if the user sends ACK-only or "I'm stuck",
   // we repeat the current blank (no rewind).
-  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser)
+  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser) || isPercentLike(lastUser)
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
 
@@ -2889,6 +3092,128 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (Number.isFinite(nn) && Number.isFinite(dd) && f.n * dd === nn * f.d) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     }
     return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'convert') {
+    const mode = state.mode
+    const seed = state.turn
+
+    const hintNL = (() => {
+      if (!isStuck(lastUser)) return ''
+      if (mode === 'decimal_to_percent') return 'Tip: ×100 schuift de komma 2 plekken.'
+      if (mode === 'percent_to_decimal') return 'Tip: ÷100 schuift de komma 2 plekken terug.'
+      if (mode === 'frac_to_decimal' || mode === 'frac_to_percent') return 'Tip: boven ÷ onder.'
+      if (mode === 'percent_to_frac') return 'Tip: % is per 100 (dus …/100).'
+      if (mode === 'decimal_to_frac') return 'Tip: schrijf het als …/10 of …/100.'
+      return ''
+    })()
+
+    const msgWrap = (whyNL: string, prompt: string) => {
+      const w = [whyNL, hintNL].filter(Boolean).join(' ')
+      if (ageBand === 'junior') return coachJunior(lang, ageBand, state.turn, w, '', prompt, { forceTone: 'mid' })
+      if (ageBand === 'teen') return coachTeen(lang, ageBand, w, '', prompt)
+      return prompt
+    }
+
+    const promptOf = () => {
+      if (mode === 'frac_to_decimal' || mode === 'frac_to_percent') {
+        const n = Number(state.n)
+        const d = Number(state.d)
+        if (state.step === 'step1') return lang === 'en' ? `Fill in: ${n} ÷ ${d} = __` : `Vul in: ${n} ÷ ${d} = __`
+        const dec = Number(state.decValue)
+        const decStr = lang === 'en' ? String(dec) : fmtNL(dec)
+        return lang === 'en' ? `Fill in: ${decStr} × 100 = __ %` : `Vul in: ${decStr} × 100 = __ %`
+      }
+      if (mode === 'percent_to_decimal') {
+        const p = Number(state.p)
+        return lang === 'en' ? `Fill in: ${p} ÷ 100 = __` : `Vul in: ${fmtNL(p)} ÷ 100 = __`
+      }
+      if (mode === 'decimal_to_percent') {
+        const decText = String(state.decText || '')
+        return lang === 'en' ? `Fill in: ${decText} × 100 = __ %` : `Vul in: ${decText} × 100 = __ %`
+      }
+      if (mode === 'percent_to_frac') {
+        const pText = String(state.decText || fmtNL(Number(state.p)))
+        const denP = Number(state.denP)
+        if (state.step === 'final') return lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
+        return lang === 'en' ? `Fill in: ${pText}% = __/${denP}` : `Vul in: ${pText}% = __/${denP}`
+      }
+      if (mode === 'decimal_to_frac') {
+        const decText = String(state.decText || '')
+        const denP = Number(state.denP)
+        if (state.step === 'final') return lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
+        return lang === 'en' ? `Fill in: ${decText} = __/${denP}` : `Vul in: ${decText} = __/${denP}`
+      }
+      return lang === 'en' ? `Fill in: __` : `Vul in: __`
+    }
+
+    if (!canAnswer) {
+      const p = promptOf()
+      const why = convertWhy(ageBand, mode, state.step, seed).nl
+      return { handled: true, payload: { message: msgWrap(why, p), action: 'none' }, nextState: state }
+    }
+
+    if (mode === 'frac_to_decimal' || mode === 'frac_to_percent') {
+      const n = Number(state.n)
+      const d = Number(state.d)
+      if (state.step === 'step1') {
+        const exp = n / d
+        const userN = parseNum(lastUser)
+        if (Math.abs(userN - exp) < 1e-9) {
+          if (mode === 'frac_to_decimal') return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+          const decStr = lang === 'en' ? String(exp) : fmtNL(exp)
+          const nextPrompt = lang === 'en' ? `Fill in: ${decStr} × 100 = __ %` : `Vul in: ${decStr} × 100 = __ %`
+          const why = convertWhy(ageBand, mode, 'step2', seed).nl
+          return {
+            handled: true,
+            payload: { message: msgWrap(why, nextPrompt), action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'step2', decValue: exp },
+          }
+        }
+        return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+      }
+      // step2
+      const expPct = Number(state.decValue) * 100
+      const pp = isPercentLike(lastUser) ? parsePercent(lastUser) : null
+      const userPct = pp != null ? pp : parseNum(lastUser)
+      if (Math.abs(userPct - expPct) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (mode === 'percent_to_decimal') {
+      const exp = Number(state.p) / 100
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (mode === 'decimal_to_percent') {
+      const decValue = Number(state.decValue ?? parseNum(String(state.decText || '')))
+      const exp = decValue * 100
+      const pp = isPercentLike(lastUser) ? parsePercent(lastUser) : null
+      const userPct = pp != null ? pp : parseNum(lastUser)
+      if (Math.abs(userPct - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (mode === 'percent_to_frac' || mode === 'decimal_to_frac') {
+      const denP = Number(state.denP)
+      const numP = Number(state.numP)
+      if (state.step === 'step1') {
+        const userN = parseNum(lastUser)
+        if (Math.abs(userN - numP) < 1e-9) {
+          const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
+          const why = convertWhy(ageBand, mode, 'final', seed).nl
+          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final' } }
+        }
+        return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+      }
+      const f = parseFraction(lastUser)
+      if (f && Number.isFinite(denP) && Number.isFinite(numP) && f.n * denP === numP * f.d) {
+        return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
   }
 
   if (state.kind === 'percent_word') {

@@ -486,6 +486,61 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima geeft 1 korte regel-hint en herhaalt **dezelfde invulvraag** (`23 − 8 = __`).
 
+---
+
+## 5o) Kommagetallen optellen (canon: komma onder komma → 1 invulstap → stop) (NL)
+**User**
+1. `2,5 + 1,2`
+
+**Must**
+- (Junior) Anima zegt kort dat je **komma onder komma** zet, en vraagt dan 1 invulstap: `Vul in: 2,5 + 1,2 = __`.
+- Na correct antwoord: korte bevestiging en **stop**.
+
+**Must-not**
+- Niet terugvallen naar de LLM met een lang verhaal.
+
+---
+
+## 5o-2) Kommagetallen (ACK/stuck → herhaal dezelfde stap) (NL)
+**Setup**: Start met test 5o en ga door tot Anima vraagt: `Vul in: 2,5 + 1,2 = __`.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte tip (bv. “komma onder komma”) en herhaalt **dezelfde invulvraag**.
+
+---
+
+## 5p) Omzetten: breuk → procent (canon: deel → ×100) (NL)
+**User**
+1. `Zet 3/4 om naar procent`
+
+**Must**
+- Stap 1: `Vul in: 3 ÷ 4 = __`
+- Stap 2: `Vul in: 0,75 × 100 = __ %` (of equivalente schrijfwijze)
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5p-2) Omzetten: procent → kommagetal (NL)
+**User**
+1. `Zet 25% om naar decimaal`
+
+**Must**
+- Anima vraagt 1 invulstap: `Vul in: 25 ÷ 100 = __`
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5p-3) Omzetten: kommagetal → breuk (NL)
+**User**
+1. `Zet 0,75 om naar breuk`
+
+**Must**
+- Stap 1: `Vul in: 0,75 = __/100`
+- Stap 2: `Vul in: antwoord = __` (bv. `3/4`) en stop bij correct (ook als leerling `75/100` invult mag dat als “zelfde waarde”).
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
