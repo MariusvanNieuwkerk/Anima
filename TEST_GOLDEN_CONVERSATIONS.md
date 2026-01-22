@@ -680,7 +680,7 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `1/4 + 1/8`
 
 **Must**
-- Stap 1: `kgv(4,8)=__`
+- Stap 1: `kleinste noemer die bij 4 en 8 past = __` *(junior)* of `kleinste gemene veelvoud van 4 en 8 = __` *(teen)*
 - Stap 2: `1×2=__` (naar noemer 8)
 - Stap 3: `1×1=__` (blijft 8)
 - Stap 4: `__ + __ = __` (teller optellen)
@@ -693,16 +693,16 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 1. `3/6 - 1/6`
 
 **Must**
-- `kgv(6,6)=__` (mag ook direct door naar tellerstap)
+- Stap 1: `kleinste noemer die bij 6 en 6 past = __` *(junior)* of `kleinste gemene veelvoud van 6 en 6 = __` *(teen)* (mag ook direct door naar tellerstap)
 - `3×1=__`
 - `1×1=__`
 - `__ - __ = __`
-- Vereenvoudigen via `ggd(__,6)=__` en daarna `antwoord = __` (bv. `1/3`) en stop.
+- Vereenvoudigen via `grootste gemene deler van __ en 6 = __` en daarna `antwoord = __` (bv. `1/3`) en stop.
 
 ---
 
 ## 20c) Breuken (ACK/stuck → herhaal stap) (NL)
-**Setup**: Start met test 20a en ga door tot Anima vraagt: `kgv(4,8)=__`.
+**Setup**: Start met test 20a en ga door tot Anima vraagt om de kleinste gezamenlijke noemer/LCM (de eerste stap).
 
 **User**
 1. `ik weet het niet`

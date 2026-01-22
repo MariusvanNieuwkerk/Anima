@@ -289,7 +289,11 @@ function juniorWhy(kind: string, step: string, seed: number, ctx?: Record<string
   if (k === 'frac_addsub:lcm') {
     return {
       nl: pickVariant(
-        ['We maken de noemers hetzelfde. Daarom zoeken we de kgv.', 'Eerst gelijke noemers—dus we zoeken de kgv.', 'We kiezen één noemer waar 4 én 8 in passen: de kgv.'],
+        [
+          'We maken de noemers hetzelfde. Daarom zoeken we één noemer die bij allebei past.',
+          'Eerst gelijke noemers—dus we zoeken een noemer die bij beide past.',
+          'We kiezen één noemer waar 4 én 8 in passen (de kleinste die kan).',
+        ],
         seed
       ),
       en: pickVariant(['We make the denominators the same. So we find the LCM.', 'Same denominator first—so we find the LCM.'], seed),
@@ -315,7 +319,7 @@ function juniorWhy(kind: string, step: string, seed: number, ctx?: Record<string
   }
   if (k === 'frac_addsub:gcd') {
     return {
-      nl: pickVariant(['Check: kun je nog vereenvoudigen? Dan zoeken we de ggd.', 'Laatste check: kunnen teller en noemer allebei nog delen?'], seed),
+      nl: pickVariant(['Check: kun je nog vereenvoudigen? Dan zoeken we de grootste deler die allebei delen.', 'Laatste check: kunnen teller en noemer allebei nog delen?'], seed),
       en: pickVariant(['Quick check: can we simplify? Find the GCD.', 'Last check: can we reduce it?'], seed),
     }
   }
@@ -801,8 +805,20 @@ function simplifyFrac(n: number, d: number): { n: number; d: number; g: number }
 
 function fracHintNL(ageBand: AgeBand): string {
   if (ageBand === 'student') return ''
-  if (ageBand === 'teen') return 'Regel: maak eerst gelijke noemers. (kgv = kleinste getal dat in beide noemers past.)'
-  return 'Regel: maak eerst de noemers hetzelfde. (kgv = kleinste getal dat in beide past.)'
+  if (ageBand === 'teen') return 'Regel: eerst noemers gelijk, dan tellers optellen/aftrekken.'
+  return 'Regel: maak eerst de noemers hetzelfde.'
+}
+
+function lcmPromptNL(ageBand: AgeBand, b: number, d: number): string {
+  if (ageBand === 'junior') return `Vul in: kleinste noemer die bij ${b} en ${d} past = __`
+  if (ageBand === 'teen') return `Vul in: kleinste gemene veelvoud van ${b} en ${d} = __`
+  return `Vul in: kleinste gemene veelvoud van ${b} en ${d} = __`
+}
+
+function gcdPromptNL(ageBand: AgeBand, a: number, b: number): string {
+  if (ageBand === 'junior') return `Vul in: grootste deler die in ${a} en ${b} past = __`
+  if (ageBand === 'teen') return `Vul in: grootste gemene deler van ${a} en ${b} = __`
+  return `Vul in: grootste gemene deler van ${a} en ${b} = __`
 }
 
 function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
@@ -984,7 +1000,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     if (problem.kind === 'frac_addsub') {
       const { op, a, b, c, d } = problem
       const lcm = lcmInt(b, d)
-      const prompt = lang === 'en' ? `Fill in: lcm(${b},${d}) = __` : `Vul in: kgv(${b},${d}) = __`
+      const prompt = lang === 'en' ? `Fill in: LCM(${b},${d}) = __` : lcmPromptNL(ageBand, b, d)
       const w = juniorWhy('frac_addsub', 'lcm', 0, { a, b, c, d })
       return {
         handled: true,
@@ -2153,7 +2169,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const lcm = state.lcm
 
     const promptOf = () => {
-      if (state.step === 'lcm') return lang === 'en' ? `Fill in: lcm(${b},${d}) = __` : `Vul in: kgv(${b},${d}) = __`
+      if (state.step === 'lcm') return lang === 'en' ? `Fill in: LCM(${b},${d}) = __` : lcmPromptNL(ageBand, b, d)
       if (state.step === 'n1') {
         const k1 = lcm / b
         return lang === 'en' ? `Fill in: ${a}×${k1} = __` : `Vul in: ${a}×${k1} = __`
@@ -2170,7 +2186,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
       if (state.step === 'gcd') {
         const num = Number(state.num)
-        return lang === 'en' ? `Fill in: gcd(${num},${lcm}) = __` : `Vul in: ggd(${num},${lcm}) = __`
+        return lang === 'en' ? `Fill in: GCD(${num},${lcm}) = __` : gcdPromptNL(ageBand, num, lcm)
       }
       // final: enter simplified fraction
       return lang === 'en' ? `Fill in: answer = __ (e.g. 3/8)` : `Vul in: antwoord = __ (bijv. 3/8)`
@@ -2276,7 +2292,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           const w = juniorWhy('frac_addsub', 'final', state.turn, { a, b, c, d })
           return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', num: exp, numS: simp.n, denS: simp.d, gcd: 1 } }
         }
-        const p = lang === 'en' ? `Fill in: gcd(${exp},${lcm}) = __` : `Vul in: ggd(${exp},${lcm}) = __`
+        const p = lang === 'en' ? `Fill in: GCD(${exp},${lcm}) = __` : gcdPromptNL(ageBand, exp, lcm)
         return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'gcd', num: exp } }
       }
       return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
