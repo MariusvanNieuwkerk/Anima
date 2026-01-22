@@ -1,4 +1,16 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives' | 'unknown' | 'units'
+export type TutorSMKind =
+  | 'div'
+  | 'mul'
+  | 'add'
+  | 'sub'
+  | 'frac'
+  | 'percent'
+  | 'order_ops'
+  | 'negatives'
+  | 'unknown'
+  | 'units'
+  | 'frac_addsub'
+  | 'percent_word'
 
 export type TutorSMState =
   | {
@@ -134,6 +146,39 @@ export type TutorSMState =
       m0?: number
       hMins?: number
     }
+  | {
+      v: 1
+      kind: 'frac_addsub'
+      op: '+' | '-'
+      a: number
+      b: number
+      c: number
+      d: number
+      turn: number
+      step: 'lcm' | 'n1' | 'n2' | 'num' | 'gcd' | 'final'
+      lcm: number
+      n1?: number
+      n2?: number
+      num?: number
+      gcd?: number
+      numS?: number
+      denS?: number
+    }
+  | {
+      v: 1
+      kind: 'percent_word'
+      mode: 'discount' | 'vat'
+      p: number
+      price: number
+      turn: number
+      // reuse percentPlan mechanics
+      step: 'unit' | 'scale' | 'apply'
+      unitPct: number
+      divisor: number
+      multiplier: number
+      unitValue?: number
+      pctValue?: number
+    }
 
 export type TutorSMInput = {
   state: TutorSMState | null
@@ -168,7 +213,18 @@ const fmtNL = (n: number) => {
   return s.replace('.', ',')
 }
 
-const isNumberLike = (t: string) => /^\s*\d+([.,]\d+)?\s*$/.test(strip(t))
+const isNumberLike = (t: string) => /^\s*-?\d+([.,]\d+)?\s*$/.test(strip(t))
+
+const isFractionLike = (t: string) => /^\s*-?\d+\s*\/\s*-?\d+\s*$/.test(strip(t))
+
+const parseFraction = (t: string): { n: number; d: number } | null => {
+  const m = strip(t).match(/^\s*(-?\d+)\s*\/\s*(-?\d+)\s*$/)
+  if (!m) return null
+  const n = Number(m[1])
+  const d = Number(m[2])
+  if (!Number.isFinite(n) || !Number.isFinite(d) || d === 0) return null
+  return { n, d }
+}
 
 const isAckOnly = (t: string) =>
   /^(ok(é|ay)?|ja|yes|yep|nee|no|nope|prima|top|klopt|thanks|thank\s+you|dankjewel|dank\s+je)\b[!.]*$/i.test(strip(t))
@@ -262,6 +318,8 @@ type ParsedProblem =
       h?: number
       m0?: number
     }
+  | { kind: 'frac_addsub'; op: '+' | '-'; a: number; b: number; c: number; d: number }
+  | { kind: 'percent_word'; mode: 'discount' | 'vat'; p: number; price: number }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
 
@@ -623,8 +681,87 @@ function parseUnitsProblem(textRaw: string): { mode: any; value?: number; h?: nu
   return null
 }
 
+function gcdInt(a: number, b: number): number {
+  let x = Math.abs(Math.trunc(a))
+  let y = Math.abs(Math.trunc(b))
+  while (y !== 0) {
+    const t = x % y
+    x = y
+    y = t
+  }
+  return x
+}
+
+function lcmInt(a: number, b: number): number {
+  const g = gcdInt(a, b)
+  if (g === 0) return 0
+  return Math.abs(Math.trunc((a / g) * b))
+}
+
+function simplifyFrac(n: number, d: number): { n: number; d: number; g: number } {
+  const g = gcdInt(n, d) || 1
+  let nn = n / g
+  let dd = d / g
+  // keep denominator positive
+  if (dd < 0) {
+    nn = -nn
+    dd = -dd
+  }
+  return { n: nn, d: dd, g }
+}
+
+function fracHintNL(ageBand: AgeBand): string {
+  if (ageBand === 'student') return ''
+  if (ageBand === 'teen') return 'Regel: eerst gelijke noemers, dan tel je de tellers op.'
+  return 'Regel: maak eerst de noemers hetzelfde.'
+}
+
+function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
+  if (ageBand === 'student') return ''
+  if (mode === 'discount') return 'Regel: korting = eraf.'
+  return 'Regel: btw = erbij.'
+}
+
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
+  const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+
+  // Fraction add/sub: "1/4 + 1/8" (treat as fractions, not decimal division).
+  {
+    const m = core0.match(/(-?\d+)\s*\/\s*(-?\d+)\s*([+\-])\s*(-?\d+)\s*\/\s*(-?\d+)/)
+    if (m) {
+      const a = Number(m[1])
+      const b = Number(m[2])
+      const op = m[3] as '+' | '-'
+      const c = Number(m[4])
+      const d = Number(m[5])
+      if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && b !== 0 && d !== 0) {
+        return { kind: 'frac_addsub', op, a, b, c, d }
+      }
+    }
+  }
+
+  // Percent word problems: "20% korting op €80", "21% btw op 100"
+  {
+    const low = core0.toLowerCase()
+    const pct = low.match(/(\d+(?:[.,]\d+)?)\s*%/)
+    const priceM = low.match(/€\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*euro\b|(\d+(?:[.,]\d+)?)/)
+    if (pct) {
+      const p = parseNum(pct[1])
+      // prefer €-prefixed or euro-labelled value; fallback to first number after %
+      const afterPct = low.split(pct[0])[1] || ''
+      const price1 =
+        (afterPct.match(/€\s*(\d+(?:[.,]\d+)?)/)?.[1] ??
+          afterPct.match(/(\d+(?:[.,]\d+)?)\s*euro\b/)?.[1] ??
+          afterPct.match(/(\d+(?:[.,]\d+)?)/)?.[1]) ||
+        ''
+      const price = price1 ? parseNum(price1) : NaN
+      if (Number.isFinite(p) && Number.isFinite(price)) {
+        if (/\bkorting\b/.test(low)) return { kind: 'percent_word', mode: 'discount', p, price }
+        if (/\b(btw|vat)\b/.test(low)) return { kind: 'percent_word', mode: 'vat', p, price }
+      }
+    }
+  }
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
   const pct = t.match(
     /(?:wat\s+is|what\s+is|los\s+op|bereken)?\s*[: ]*\s*(\d+(?:[.,]\d+)?)\s*(?:%|procent|percent)\s*(?:van|of)\s*(\d+(?:[.,]\d+)?)/i
@@ -704,6 +841,8 @@ function isStandaloneProblemStatement(text: string): boolean {
   // Note: unknown/mini-algebra intentionally includes '='; it has its own matching below.
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
+  if (/\b(korting|btw|vat)\b/i.test(core) && /\d+(?:[.,]\d+)?\s*%/.test(core)) return true
   if (parseUnitsProblem(core)) return true
   if (/(?:__|x)\s*[+\-]\s*\d+(?:[.,]\d+)?\s*=\s*\d+(?:[.,]\d+)?/i.test(core)) return true
   if (/[=]/.test(t)) return false
@@ -748,6 +887,34 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'frac_addsub') {
+      const { op, a, b, c, d } = problem
+      const lcm = lcmInt(b, d)
+      const hint = fracHintNL(ageBand)
+      const prompt = lang === 'en' ? `Fill in: lcm(${b},${d}) = __` : `Vul in: kgv(${b},${d}) = __`
+      return {
+        handled: true,
+        payload: { message: ageBand === 'student' ? prompt : [hint, prompt].filter(Boolean).join(' '), action: 'none' },
+        nextState: { v: 1, kind: 'frac_addsub', op, a, b, c, d, turn: 0, step: 'lcm', lcm },
+      }
+    }
+
+    if (problem.kind === 'percent_word') {
+      const { mode, p, price } = problem
+      const { unitPct, divisor, multiplier } = percentPlan(p)
+      const why = percentWordHintNL(mode, ageBand)
+      const unitLabel = lang === 'en' ? `(${unitPct}% step)` : `(dat is ${unitPct}%)`
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${price} ÷ ${divisor} = __ ${unitLabel}`
+          : `Vul in: ${fmtNL(price)} ÷ ${divisor} = __ ${unitLabel}`
+      return {
+        handled: true,
+        payload: { message: ageBand === 'student' ? prompt : [why, prompt].filter(Boolean).join(' '), action: 'none' },
+        nextState: { v: 1, kind: 'percent_word', mode, p, price, turn: 0, step: 'unit', unitPct, divisor, multiplier },
+      }
+    }
+
     if (problem.kind === 'units') {
       const mode = problem.mode
       if (mode === 'time_hm_to_min' && Number.isFinite(problem.h) && Number.isFinite(problem.m0)) {
@@ -1054,7 +1221,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // In an active canon flow: if the user sends ACK-only or "I'm stuck",
   // we repeat the current blank (no rewind).
-  const canAnswer = isNumberLike(lastUser)
+  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser)
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
 
@@ -1840,6 +2007,178 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     })()
     if (Number.isFinite(exp) && Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'frac_addsub') {
+    const { op, a, b, c, d } = state
+    const lcm = state.lcm
+
+    const promptOf = () => {
+      if (state.step === 'lcm') return lang === 'en' ? `Fill in: lcm(${b},${d}) = __` : `Vul in: kgv(${b},${d}) = __`
+      if (state.step === 'n1') {
+        const k1 = lcm / b
+        return lang === 'en' ? `Fill in: ${a}×${k1} = __` : `Vul in: ${a}×${k1} = __`
+      }
+      if (state.step === 'n2') {
+        const k2 = lcm / d
+        return lang === 'en' ? `Fill in: ${c}×${k2} = __` : `Vul in: ${c}×${k2} = __`
+      }
+      if (state.step === 'num') {
+        const n1 = Number(state.n1)
+        const n2 = Number(state.n2)
+        const sym = op
+        return lang === 'en' ? `Fill in: ${n1} ${sym} ${n2} = __` : `Vul in: ${n1} ${sym} ${n2} = __`
+      }
+      if (state.step === 'gcd') {
+        const num = Number(state.num)
+        return lang === 'en' ? `Fill in: gcd(${num},${lcm}) = __` : `Vul in: ggd(${num},${lcm}) = __`
+      }
+      // final: enter simplified fraction
+      return lang === 'en' ? `Fill in: answer = __` : `Vul in: antwoord = __`
+    }
+
+    if (!canAnswer) {
+      const p = promptOf()
+      const hint = fracHintNL(ageBand)
+      const msg = ageBand === 'student' ? p : [hint, p].filter(Boolean).join(' ')
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'lcm') {
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - lcm) < 1e-9) {
+        return { handled: true, payload: { message: promptOf().replace(/kgv\\([^)]*\\) = __/, lang === 'en' ? `Fill in: ${a}×${lcm / b} = __` : `Vul in: ${a}×${lcm / b} = __`), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'n1' } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'n1') {
+      const k1 = lcm / b
+      const exp = a * k1
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) {
+        return { handled: true, payload: { message: lang === 'en' ? `Fill in: ${c}×${lcm / d} = __` : `Vul in: ${c}×${lcm / d} = __`, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'n2', n1: exp } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'n2') {
+      const k2 = lcm / d
+      const exp = c * k2
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) {
+        const n1 = Number(state.n1)
+        const sym = op
+        return {
+          handled: true,
+          payload: { message: lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'num', n2: exp },
+        }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'num') {
+      const n1 = Number(state.n1)
+      const n2 = Number(state.n2)
+      const exp = op === '+' ? n1 + n2 : n1 - n2
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) {
+        // if already simplified, let them type final fraction directly
+        const simp = simplifyFrac(exp, lcm)
+        if (simp.g === 1) {
+          const p = lang === 'en' ? `Fill in: answer = __` : `Vul in: antwoord = __`
+          return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', num: exp, numS: simp.n, denS: simp.d, gcd: 1 } }
+        }
+        const p = lang === 'en' ? `Fill in: gcd(${exp},${lcm}) = __` : `Vul in: ggd(${exp},${lcm}) = __`
+        return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'gcd', num: exp } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'gcd') {
+      const num = Number(state.num)
+      const simp = simplifyFrac(num, lcm)
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - simp.g) < 1e-9) {
+        const p = lang === 'en' ? `Fill in: answer = __` : `Vul in: antwoord = __`
+        return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', gcd: simp.g, numS: simp.n, denS: simp.d } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    // final expects fraction like "5/8"
+    const f = parseFraction(lastUser)
+    if (f) {
+      const nn = Number(state.numS)
+      const dd = Number(state.denS)
+      if (Math.abs(f.n - nn) < 1e-9 && Math.abs(f.d - dd) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    }
+    return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'percent_word') {
+    const { mode, p, price, unitPct, divisor, multiplier } = state
+    const hint = ageBand === 'student' ? '' : percentWordHintNL(mode, ageBand)
+
+    const promptUnit = () => {
+      const unitLabel = lang === 'en' ? `(${unitPct}% step)` : `(dat is ${unitPct}%)`
+      const baseStr = lang === 'en' ? String(price) : fmtNL(price)
+      return lang === 'en' ? `Fill in: ${baseStr} ÷ ${divisor} = __ ${unitLabel}` : `Vul in: ${baseStr} ÷ ${divisor} = __ ${unitLabel}`
+    }
+    const promptScale = (unitValue: number) => {
+      const pLabel = lang === 'en' ? `(${p}% )` : `(dat is ${p}%)`
+      return lang === 'en'
+        ? `Fill in: ${unitValue} × ${multiplier} = __ ${pLabel}`
+        : `Vul in: ${fmtNL(unitValue)} × ${multiplier} = __ ${pLabel}`
+    }
+    const promptApply = (pctValue: number) => {
+      const baseStr = lang === 'en' ? String(price) : fmtNL(price)
+      const pctStr = lang === 'en' ? String(pctValue) : fmtNL(pctValue)
+      const sym = mode === 'discount' ? '−' : '+'
+      return lang === 'en' ? `Fill in: ${baseStr} ${sym} ${pctStr} = __` : `Vul in: ${baseStr} ${sym} ${pctStr} = __`
+    }
+
+    if (!canAnswer) {
+      const pmt =
+        state.step === 'unit'
+          ? promptUnit()
+          : state.step === 'scale'
+            ? promptScale(Number(state.unitValue))
+            : promptApply(Number(state.pctValue))
+      const msg = ageBand === 'student' ? pmt : [hint, pmt].filter(Boolean).join(' ')
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'unit') {
+      const expUnit = price / divisor
+      if (Math.abs(userN - expUnit) < 1e-9) {
+        if (Math.abs(multiplier - 1) < 1e-9) {
+          const pmt = promptApply(expUnit)
+          return { handled: true, payload: { message: pmt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'apply', pctValue: expUnit } }
+        }
+        const pmt = promptScale(expUnit)
+        return { handled: true, payload: { message: pmt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expUnit } }
+      }
+      return { handled: true, payload: { message: promptUnit(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'scale') {
+      const unitValue = Number(state.unitValue)
+      const expPct = unitValue * multiplier
+      if (Math.abs(userN - expPct) < 1e-9) {
+        const pmt = promptApply(expPct)
+        return { handled: true, payload: { message: pmt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'apply', pctValue: expPct } }
+      }
+      return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }
+    }
+
+    // apply
+    const pctValue = Number(state.pctValue)
+    const expFinal = mode === 'discount' ? price - pctValue : price + pctValue
+    if (Math.abs(userN - expFinal) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptApply(pctValue), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'unknown') {

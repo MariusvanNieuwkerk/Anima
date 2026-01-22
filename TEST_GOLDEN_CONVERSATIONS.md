@@ -675,6 +675,63 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 20a) Breuken optellen (canon: kgv → tellers → optellen → vereenvoudigen → eindbreuk) (NL)
+**User**
+1. `1/4 + 1/8`
+
+**Must**
+- Stap 1: `kgv(4,8)=__`
+- Stap 2: `1×2=__` (naar noemer 8)
+- Stap 3: `1×1=__` (blijft 8)
+- Stap 4: `__ + __ = __` (teller optellen)
+- Daarna vraagt Anima om het antwoord als breuk: `antwoord = __` (bv. `3/8`) en stopt bij correct.
+
+---
+
+## 20b) Breuken aftrekken + vereenvoudigen (NL)
+**User**
+1. `3/6 - 1/6`
+
+**Must**
+- `kgv(6,6)=__` (mag ook direct door naar tellerstap)
+- `3×1=__`
+- `1×1=__`
+- `__ - __ = __`
+- Vereenvoudigen via `ggd(__,6)=__` en daarna `antwoord = __` (bv. `1/3`) en stop.
+
+---
+
+## 20c) Breuken (ACK/stuck → herhaal stap) (NL)
+**Setup**: Start met test 20a en ga door tot Anima vraagt: `kgv(4,8)=__`.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte regel-hint en herhaalt **dezelfde** invulvraag.
+
+---
+
+## 20d) Korting (percent word problem) (NL)
+**User**
+1. `20% korting op €80`
+
+**Must**
+- Anima vraagt eerst een %‑stap (bv. `80 ÷ 10 = __ (dat is 10%)`, daarna eventueel `__ × 2 = __ (dat is 20%)`).
+- Daarna vraagt Anima: `80 − __ = __` en stopt bij correct.
+
+---
+
+## 20e) BTW (percent word problem) (NL)
+**User**
+1. `21% btw op 100`
+
+**Must**
+- Anima vraagt eerst een %‑stap (bv. `100 ÷ 100 = __ (dat is 1%)`, daarna `__ × 21 = __ (dat is 21%)`).
+- Daarna vraagt Anima: `100 + __ = __` en stopt bij correct.
+
+---
+
 ## 21) Grammatica (NL): persoonsvorm vinden (canon) (NL)
 **User**
 1. `Wat is de persoonsvorm in: "Morgen loopt Tim naar school."`
