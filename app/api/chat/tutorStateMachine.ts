@@ -2082,7 +2082,18 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           },
         }
       }
-      return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+      {
+        const p = prompt()
+        if (ageBand === 'junior') {
+          const hint = negativesStuckHint(lang, state.expr)
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, state.turn, hint, hint, p, { forceTone: 'mid' }), action: 'none' },
+            nextState: state,
+          }
+        }
+        return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
+      }
     }
 
     // compute
@@ -2124,7 +2135,18 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         },
       }
     }
-    return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+    {
+      const p = prompt()
+      if (ageBand === 'junior') {
+        const hint = negativesStuckHint(lang, state.expr)
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, hint, hint, p, { forceTone: 'mid' }), action: 'none' },
+          nextState: state,
+        }
+      }
+      return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
+    }
   }
 
   if (state.kind === 'units') {
@@ -2185,11 +2207,31 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
             nextState: { ...state, turn: state.turn + 1, step: 'step2', hMins: exp },
           }
         }
-        return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+        const p = makePrompt()
+        if (ageBand === 'junior') {
+          const w = juniorWhy('units', state.step, state.turn, { mode: state.mode })
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' }), action: 'none' },
+            nextState: state,
+          }
+        }
+        return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
       }
       const exp2 = Number(state.hMins) + m0
       if (Math.abs(userN - exp2) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
-      return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+      {
+        const p = makePrompt()
+        if (ageBand === 'junior') {
+          const w = juniorWhy('units', state.step, state.turn, { mode: state.mode })
+          return {
+            handled: true,
+            payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' }), action: 'none' },
+            nextState: state,
+          }
+        }
+        return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
+      }
     }
 
     const v = Number(state.value)
@@ -2220,7 +2262,18 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
     })()
     if (Number.isFinite(exp) && Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
-    return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+    {
+      const p = makePrompt()
+      if (ageBand === 'junior') {
+        const w = juniorWhy('units', state.step, state.turn, { mode: state.mode })
+        return {
+          handled: true,
+          payload: { message: coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' }), action: 'none' },
+          nextState: state,
+        }
+      }
+      return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
+    }
   }
 
   if (state.kind === 'frac_addsub') {
@@ -2539,12 +2592,28 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           nextState: { ...state, turn: state.turn + 1, step: 'x_value' },
         }
       }
-      return { handled: true, payload: { message: ageBand === 'student' ? promptInverse() : [hint, promptInverse()].join(' '), action: 'none' }, nextState: state }
+      {
+        const p = promptInverse()
+        if (ageBand === 'junior') {
+          const w = juniorWhy('unknown', 'inverse', state.turn, {})
+          const msg = coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' })
+          return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+        }
+        return { handled: true, payload: { message: ageBand === 'student' ? p : [hint, p].join(' '), action: 'none' }, nextState: state }
+      }
     }
 
     // x_value
     if (Math.abs(userN - state.expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
-    return { handled: true, payload: { message: promptX(), action: 'none' }, nextState: state }
+    {
+      const p = promptX()
+      if (ageBand === 'junior') {
+        const w = juniorWhy('unknown', 'x_value', state.turn, {})
+        const msg = coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' })
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+      }
+      return { handled: true, payload: { message: p, action: 'none' }, nextState: state }
+    }
   }
 
   return { handled: false }
