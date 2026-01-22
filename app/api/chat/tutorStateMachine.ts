@@ -712,8 +712,8 @@ function simplifyFrac(n: number, d: number): { n: number; d: number; g: number }
 
 function fracHintNL(ageBand: AgeBand): string {
   if (ageBand === 'student') return ''
-  if (ageBand === 'teen') return 'Regel: eerst gelijke noemers, dan tel je de tellers op.'
-  return 'Regel: maak eerst de noemers hetzelfde.'
+  if (ageBand === 'teen') return 'Regel: maak eerst gelijke noemers. (kgv = kleinste getal dat in beide noemers past.)'
+  return 'Regel: maak eerst de noemers hetzelfde. (kgv = kleinste getal dat in beide past.)'
 }
 
 function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
@@ -2047,7 +2047,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     if (state.step === 'lcm') {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - lcm) < 1e-9) {
-        return { handled: true, payload: { message: promptOf().replace(/kgv\\([^)]*\\) = __/, lang === 'en' ? `Fill in: ${a}×${lcm / b} = __` : `Vul in: ${a}×${lcm / b} = __`), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'n1' } }
+        const k1 = lcm / b
+        const nextPrompt = lang === 'en' ? `Fill in: ${a}×${k1} = __` : `Vul in: ${a}×${k1} = __`
+        return {
+          handled: true,
+          payload: { message: nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'n1' },
+        }
       }
       return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
     }
