@@ -3254,8 +3254,19 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const userN = parseNum(lastUser)
         if (Math.abs(userN - numP) < 1e-9) {
           if (simp.g > 1) {
+            // Junior: avoid technical "grootste (gemene) deler" — just use a helpful divisor directly.
+            if (ageBand === 'junior') {
+              const nextPrompt = lang === 'en' ? `Fill in: ${numP} ÷ ${simp.g} = __` : `Vul in: ${numP} ÷ ${simp.g} = __`
+              const why = `We kunnen beide delen door ${simp.g}.`
+              return {
+                handled: true,
+                payload: { message: msgWrap(why, nextPrompt), action: 'none' },
+                nextState: { ...state, turn: state.turn + 1, step: 'num_s', gcd: simp.g, numS: simp.n, denS: simp.d },
+              }
+            }
+
             const nextPrompt = lang === 'en' ? `Fill in: GCD(${numP},${denP}) = __` : gcdPromptNL(ageBand, numP, denP)
-            const why = ageBand === 'junior' ? 'Kun je nog simpeler? Dan zoeken we de grootste deler.' : 'Kun je nog simpeler?'
+            const why = 'Kun je nog simpeler?'
             return {
               handled: true,
               payload: { message: msgWrap(why, nextPrompt), action: 'none' },
