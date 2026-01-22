@@ -1493,7 +1493,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     }
     if (problem.kind === 'round') {
       const turn = 0
-      const why = ageBand === 'junior' ? 'Afronden: kijk naar het cijfer erachter.' : ''
+      const why =
+        ageBand === 'junior'
+          ? 'Afronden: kijk naar het cijfer erachter.'
+          : lang === 'en'
+            ? 'Rounding: the “look digit” is the next digit to the right.'
+            : 'Kijkcijfer = het cijfer direct erachter.'
       const lookDigit = (() => {
         if (problem.mode === 'int') {
           const place = problem.place as number
@@ -1512,7 +1517,10 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           : problem.mode === 'int'
             ? `Kijkcijfer bij afronden op ${problem.place}: __`
             : `Kijkcijfer bij afronden op ${problem.decimals} decimaal(en): __`
-      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, turn, why, why, prompt, { forceTone: 'mid' }) : prompt
+      const msg =
+        ageBand === 'junior'
+          ? coachJunior(lang, ageBand, turn, why, why, prompt, { forceTone: 'mid' })
+          : [why, prompt].filter(Boolean).join(' ')
       const expected = (() => {
         const sign = problem.valueNum < 0 ? -1 : 1
         const abs = Math.abs(problem.valueNum)
@@ -2899,7 +2907,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
     if (!canAnswer) {
       const p = state.step === 'look' ? promptLook() : promptResult()
-      const why = isJunior ? 'Kijk naar het cijfer erachter.' : ''
+      const why =
+        isJunior
+          ? 'Kijk naar het cijfer erachter.'
+          : lang === 'en'
+            ? 'Look digit = the next digit to the right.'
+            : 'Kijkcijfer = het cijfer direct erachter.'
       return { handled: true, payload: { message: isJunior ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' }, nextState: state }
     }
 
