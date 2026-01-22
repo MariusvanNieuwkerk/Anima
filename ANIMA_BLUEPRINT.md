@@ -177,6 +177,33 @@ Fase 2b: Rekenen (CORE → EXTENDED → INSIGHTS) (NU)
   * [ ] Multi-step word problems (meer context).
 * Daarna:
   * [ ] Leerprofiel + Insights (Supabase): per canon‑stap logging → sterke/zwakke punten voor kind/ouder/leraar.
+Fase 2c: Begrijpend Lezen (na rekenen) (PLAN)
+* [ ] Hoofdgedachte / kernzin per alinea (1-move prompts).
+* [ ] Signaalwoorden → relatie (oorzaak/gevolg, tegenstelling, opsomming).
+* [ ] Verwijswoorden (“dit/hij/daardoor”) → waar verwijst het naar?
+* [ ] Afleiden / conclusie uit tekst (1 concrete vraag per beurt).
+* [ ] Golden tests: start/ACK/stuck/restart/stop + junior/teen stijl.
+Fase 2d: Taal (werkwoordspelling + grammatica) (PLAN)
+* Werkwoordspelling:
+  * [ ] Persoonsvorm vinden.
+  * [ ] Tegenwoordige tijd d/t.
+  * [ ] Verleden tijd.
+  * [ ] Voltooid deelwoord.
+* Grammatica:
+  * [ ] Onderwerp / gezegde / lijdend voorwerp (vaste micro-checks).
+* [ ] Golden tests + leeftijdsstijl consistent.
+Fase 2e: Schrijven (PLAN)
+* [ ] Alinea bouwen: stelling → reden → voorbeeld → slot (1 move per beurt).
+* [ ] Zinnen verbeteren: 1 concrete verbeteractie per beurt (korter/duidelijker/woordkeuze).
+* [ ] Golden tests + leeftijdsstijl consistent.
+Fase 2f: Studievaardigheden (PLAN)
+* [ ] Samenvatten: kopjes → kernzinnen → 5 bullets (stap-voor-stap).
+* [ ] Plannen: taken opdelen + tijdschatting + prioriteit (micro-taken).
+* [ ] Golden tests + leeftijdsstijl consistent.
+Fase 2g: Product Polishing & Betrouwbaarheid (PLAN)
+* [ ] Tutor event logging + monitoring (canon fallbacks, stuck-loops).
+* [ ] Content consistency sweep (junior/teen, geen jargon).
+* [ ] Golden tests als regressiesuite (CI later).
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
 * [ ] Tech Debt Cleanup.
