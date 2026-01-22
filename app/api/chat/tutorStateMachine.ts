@@ -6,6 +6,7 @@ export type TutorSMKind =
   | 'frac'
   | 'percent'
   | 'order_ops'
+  | 'arith_unit'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -94,6 +95,17 @@ export type TutorSMState =
       v: 1
       kind: 'order_ops'
       expr: string // normalized internal expression
+      turn: number
+      step: 'compute'
+      prompt: string // pretty subexpression currently asked
+      expected: number
+      nextExpr: string
+    }
+  | {
+      v: 1
+      kind: 'arith_unit'
+      expr: string // normalized internal expression
+      unit: string
       turn: number
       step: 'compute'
       prompt: string // pretty subexpression currently asked
@@ -241,6 +253,7 @@ const normalizeMathText = (t: string) =>
     .replace(/\u00A0/g, ' ')
     .replace(/[⁄∕]/g, '/')
     .replace(/[×]/g, '*')
+    .replace(/[÷]/g, '/')
     .replace(/:/g, '/')
 
 const parseNum = (s: string) => {
@@ -263,6 +276,13 @@ const isFractionLike = (t: string) => /^\s*-?\d+\s*\/\s*-?\d+\s*$/.test(strip(t)
 const isPercentLike = (t: string) => /^\s*-?\d+([.,]\d+)?\s*%\s*$/.test(strip(t))
 
 const isRationalSlashLike = (t: string) => /^\s*-?\d+(?:[.,]\d+)?\s*\/\s*-?\d+(?:[.,]\d+)?\s*$/.test(strip(t))
+
+const hasNumberInText = (t: string) => /-?\d+(?:[.,]\d+)?/.test(strip(t))
+
+const parseFirstNumber = (t: string) => {
+  const m = strip(t).match(/-?\d+(?:[.,]\d+)?/)
+  return m ? parseNum(m[0]) : NaN
+}
 
 const parseFraction = (t: string): { n: number; d: number } | null => {
   const m = strip(t).match(/^\s*(-?\d+)\s*\/\s*(-?\d+)\s*$/)
@@ -551,6 +571,7 @@ function percentStepWhyNL(unitPct: number, divisor: number): string {
 type ParsedProblem =
   | { kind: 'frac' | 'div' | 'mul' | 'add' | 'sub' | 'percent'; a: number; b: number }
   | { kind: 'order_ops'; expr: string }
+  | { kind: 'arith_unit'; expr: string; unit: string }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -762,11 +783,17 @@ function nextOrderOpsStep(expr: string): { promptPretty: string; expected: numbe
 
 function orderOpsWhy(lang: string, ageBand: AgeBand, expr: string): { nl: string; en: string } {
   const isDecimalExpr = /[0-9][.,][0-9]/.test(String(expr || ''))
-  if (ageBand === 'teen' && isDecimalExpr) return { nl: 'Komma onder komma.', en: '' }
+  const hasMulDiv = /[*/]/.test(String(expr || ''))
+  if (ageBand === 'teen' && isDecimalExpr) return { nl: hasMulDiv ? 'Reken zonder komma en zet de komma terug.' : 'Komma onder komma.', en: '' }
   if (ageBand !== 'junior') return { nl: '', en: '' }
   const hasParens = /[()]/.test(expr)
   if (hasParens) return { nl: `Eerst rekenen we binnen de haakjes.`, en: `First we do what’s inside the parentheses.` }
-  if (isDecimalExpr) return { nl: `Zet de komma’s onder elkaar (komma onder komma).`, en: `Line up the decimals.` }
+  if (isDecimalExpr) {
+    return {
+      nl: hasMulDiv ? `Bij keer/delen met komma: reken even zonder komma en zet de komma terug.` : `Zet de komma’s onder elkaar (komma onder komma).`,
+      en: `Line up the decimals.`,
+    }
+  }
   return { nl: `Eerst keer/delen, daarna plus/min.`, en: `First multiply/divide, then add/subtract.` }
 }
 
@@ -1074,6 +1101,35 @@ function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
 
+  // Arithmetic with a unit/currency label (money/measure): keep deterministic order-ops but preserve a unit suffix for prompts.
+  {
+    const low = core0.toLowerCase()
+    const hasOp = /[+\-*/]/.test(low)
+    const unit =
+      /€/.test(core0) || /\beuro\b/.test(low)
+        ? 'euro'
+        : /\bcm\b/.test(low) || /\bcentimeter\b/.test(low)
+          ? 'cm'
+          : /\bkm\b/.test(low)
+            ? 'km'
+            : /\bml\b/.test(low)
+              ? 'ml'
+              : /\bliter\b|\bl\b/.test(low)
+                ? 'liter'
+                : /\bkg\b/.test(low)
+                  ? 'kg'
+                  : /\bgram\b|\bg\b/.test(low)
+                    ? 'gram'
+                    : /\bmeter\b|\bm\b/.test(low)
+                      ? 'meter'
+                      : ''
+    if (hasOp && unit) {
+      const cleaned = core0.replace(/[€]/g, '').replace(/[^\d+*/().,\-]/g, '')
+      const toks = tokenizeExpr(cleaned)
+      if (toks && toks.some((x) => x.t === 'op')) return { kind: 'arith_unit', expr: stringifyTokens(toks), unit }
+    }
+  }
+
   // Fraction multiply/divide: "1/4 * 3/5", "1/4 × 3/5", "1/4 : 3/5", "1/4 ÷ 3/5"
   // Note: normalizeMathText turns ":" into "/", so also accept "1/4 / 3/5" (with spaces) as division.
   {
@@ -1248,6 +1304,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   if (/\b(zet|maak|schrijf)\b/i.test(core) && /\b(om|naar|in|als)\b/i.test(core) && (/%|procent|percent|kommagetal|decimaal|breuk/i.test(core))) return true
   if (/\b(korting|btw|vat)\b/i.test(core) && /\d+(?:[.,]\d+)?\s*%/.test(core)) return true
   if (parseUnitsProblem(core)) return true
+  if ((/€|euro|cm\b|centimeter|km\b|ml\b|liter\b|\bl\b|kg\b|gram\b|meter\b|\bm\b/i.test(core)) && /[+\-*/]/.test(core) && /\d/.test(core)) return true
   if (/(?:__|x)\s*[+\-]\s*\d+(?:[.,]\d+)?\s*=\s*\d+(?:[.,]\d+)?/i.test(core)) return true
   if (/[=]/.test(t)) return false
   // Negatives: contains a unary negative number token and an operator.
@@ -1298,10 +1355,32 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       isFractionLike(lastUser) ||
       isRationalSlashLike(lastUser) ||
       isPercentLike(lastUser) ||
+      hasNumberInText(lastUser) ||
       isAckOnly(lastUser) ||
       isStuck(lastUser))
 
   if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'arith_unit') {
+      const step = nextOrderOpsStep(problem.expr)
+      if (!step) return { handled: false }
+      const why = orderOpsWhy(lang, ageBand, problem.expr)
+      const prompt = lang === 'en' ? `Fill in: ${step.promptPretty} = __ (${problem.unit})` : `Vul in: ${step.promptPretty} = __ (${problem.unit})`
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, 0, why.nl, why.en, prompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'arith_unit',
+          expr: problem.expr,
+          unit: problem.unit,
+          turn: 0,
+          step: 'compute',
+          prompt: step.promptPretty,
+          expected: step.expected,
+          nextExpr: step.nextExpr,
+        },
+      }
+    }
     if (problem.kind === 'convert') {
       const mode = problem.mode
       const turn = 0
@@ -1783,7 +1862,8 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // In an active canon flow: if the user sends ACK-only or "I'm stuck",
   // we repeat the current blank (no rewind).
-  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser) || isRationalSlashLike(lastUser) || isPercentLike(lastUser)
+  const canAnswer =
+    isNumberLike(lastUser) || isFractionLike(lastUser) || isRationalSlashLike(lastUser) || isPercentLike(lastUser) || hasNumberInText(lastUser)
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
 
@@ -2495,7 +2575,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
     }
 
-    const userN = parseNum(lastUser)
+    const userN = isNumberLike(lastUser) ? parseNum(lastUser) : parseFirstNumber(lastUser)
     if (Math.abs(userN - state.expected) < 1e-9) {
       const next = state.nextExpr
       const toks = tokenizeExpr(next)
@@ -2530,6 +2610,55 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           : p
       return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
     }
+  }
+
+  if (state.kind === 'arith_unit') {
+    const unit = String(state.unit || '')
+    const prompt = () =>
+      lang === 'en' ? `Fill in: ${state.prompt} = __ (${unit})` : `Vul in: ${state.prompt} = __ (${unit})`
+
+    if (!canAnswer) {
+      const why = orderOpsWhy(lang, ageBand, state.expr)
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, why.nl || `Pak deze stap.`, why.en || `Do this step.`, prompt(), { forceTone: 'mid' }), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    const userN = isNumberLike(lastUser) ? parseNum(lastUser) : parseFirstNumber(lastUser)
+    if (Math.abs(userN - state.expected) < 1e-9) {
+      const next = state.nextExpr
+      const toks = tokenizeExpr(next)
+      if (toks && toks.length === 1 && toks[0].t === 'num') {
+        const msg = lang === 'en' ? `Correct.` : `Juist.`
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: null }
+      }
+      const step2 = nextOrderOpsStep(next)
+      if (!step2) return { handled: false }
+      const nextPrompt =
+        lang === 'en' ? `Fill in: ${step2.promptPretty} = __ (${unit})` : `Vul in: ${step2.promptPretty} = __ (${unit})`
+      const why = orderOpsWhy(lang, ageBand, next)
+      return {
+        handled: true,
+        payload: { message: coachJunior(lang, ageBand, state.turn, why.nl || `Mooi—volgende stap.`, why.en || `Nice—next step.`, nextPrompt), action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'arith_unit',
+          expr: next,
+          unit,
+          turn: state.turn + 1,
+          step: 'compute',
+          prompt: step2.promptPretty,
+          expected: step2.expected,
+          nextExpr: step2.nextExpr,
+        },
+      }
+    }
+
+    const p = prompt()
+    const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, `We rekenen stap voor stap.`, `We go step by step.`, p, { forceTone: 'mid' }) : p
+    return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {

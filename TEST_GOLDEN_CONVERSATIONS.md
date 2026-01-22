@@ -512,6 +512,46 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5o-3) Kommagetallen vermenigvuldigen (NL)
+**User**
+1. `1,2 × 0,5`
+
+**Must**
+- (Junior) Anima geeft 1 korte regelzin (bv. “reken even zonder komma en zet de komma terug”) en vraagt 1 invulstap: `Vul in: 1,2 × 0,5 = __`.
+- Na correct antwoord: korte bevestiging en **stop**.
+
+---
+
+## 5o-4) Kommagetallen delen (NL)
+**User**
+1. `0,75 ÷ 0,25`
+
+**Must**
+- (Junior) Anima geeft 1 korte regelzin (bv. “reken even zonder komma en zet de komma terug”) en vraagt 1 invulstap: `Vul in: 0,75 ÷ 0,25 = __`.
+- Na correct antwoord: korte bevestiging en **stop**.
+
+---
+
+## 5o-5) Kommagetallen met geld (NL)
+**User**
+1. `€2,50 ÷ 4`
+
+**Must**
+- Anima vraagt 1 invulstap met unit-suffix, bv. `Vul in: 2,5 ÷ 4 = __ (euro)` (of equivalent).
+- Na correct antwoord: korte bevestiging en **stop**.
+
+---
+
+## 5o-6) Kommagetallen met metingen (NL)
+**User**
+1. `2,5 m + 1,2 m`
+
+**Must**
+- Anima vraagt 1 invulstap met unit-suffix, bv. `Vul in: 2,5 + 1,2 = __ (meter)` (of equivalent).
+- Na correct antwoord: korte bevestiging en **stop**.
+
+---
+
 ## 5p) Omzetten: breuk → procent (canon: deel → ×100) (NL)
 **User**
 1. `Zet 3/4 om naar procent`
