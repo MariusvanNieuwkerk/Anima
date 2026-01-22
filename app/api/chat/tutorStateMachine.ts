@@ -3187,13 +3187,27 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
     if (!canAnswer) {
       const p = state.step === 'total' ? promptTotal() : promptChange(total)
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'change') return 'Tip: wisselgeld = betaald − kosten.'
+        // total-step hint (especially for decimals)
+        const priceText = fmtNL(state.price)
+        const k = decimalPlacesFromText(priceText)
+        if (k <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        const scale = Math.pow(10, k)
+        const priceInt = Math.round(state.price * scale)
+        // Keep it short and concrete.
+        return `Tip: reken ${state.qty}×${priceInt} en deel door ${scale}.`
+      })()
       const why =
         ageBand === 'junior'
           ? state.step === 'total'
             ? 'Eerst samen kost uitrekenen.'
             : 'Wisselgeld = betaald − wat het kost.'
           : ''
-      return { handled: true, payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' }, nextState: state }
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
     }
 
     const userN = parseNum(lastUser)
