@@ -262,6 +262,8 @@ const isFractionLike = (t: string) => /^\s*-?\d+\s*\/\s*-?\d+\s*$/.test(strip(t)
 
 const isPercentLike = (t: string) => /^\s*-?\d+([.,]\d+)?\s*%\s*$/.test(strip(t))
 
+const isRationalSlashLike = (t: string) => /^\s*-?\d+(?:[.,]\d+)?\s*\/\s*-?\d+(?:[.,]\d+)?\s*$/.test(strip(t))
+
 const parseFraction = (t: string): { n: number; d: number } | null => {
   const m = strip(t).match(/^\s*(-?\d+)\s*\/\s*(-?\d+)\s*$/)
   if (!m) return null
@@ -284,6 +286,35 @@ function decimalPlacesFromText(t: string): number {
   if (!m) return 0
   const frac = m[1] || ''
   return frac.length
+}
+
+function decimalToIntScale(t: string): { int: number; scale: number } | null {
+  const k = decimalPlacesFromText(t)
+  const scale = Math.pow(10, k)
+  const v = parseNum(t)
+  if (!Number.isFinite(v)) return null
+  const int = Math.round(v * scale)
+  if (!Number.isFinite(int)) return null
+  return { int, scale }
+}
+
+function parseRationalFromSlash(t: string): { n: number; d: number } | null {
+  const m = strip(t).match(/^\s*(-?\d+(?:[.,]\d+)?)\s*\/\s*(-?\d+(?:[.,]\d+)?)\s*$/)
+  if (!m) return null
+  const a = decimalToIntScale(m[1])
+  const b = decimalToIntScale(m[2])
+  if (!a || !b) return null
+  if (b.int === 0) return null
+  // (a.int / a.scale) / (b.int / b.scale) = (a.int*b.scale) / (a.scale*b.int)
+  let nn = a.int * b.scale
+  let dd = a.scale * b.int
+  if (!Number.isFinite(nn) || !Number.isFinite(dd) || dd === 0) return null
+  if (dd < 0) {
+    nn = -nn
+    dd = -dd
+  }
+  const g = gcdInt(Math.abs(Math.trunc(nn)), Math.abs(Math.trunc(dd)))
+  return { n: nn / g, d: dd / g }
 }
 
 const isAckOnly = (t: string) =>
@@ -1262,7 +1293,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   // IMPORTANT: if we are already in a canon flow and the student is giving an "answer-like" turn
   // (number/fraction or ACK/stuck), do NOT treat it as a new problem statement.
   const answerLikeTurn =
-    !!state && (isNumberLike(lastUser) || isFractionLike(lastUser) || isPercentLike(lastUser) || isAckOnly(lastUser) || isStuck(lastUser))
+    !!state &&
+    (isNumberLike(lastUser) ||
+      isFractionLike(lastUser) ||
+      isRationalSlashLike(lastUser) ||
+      isPercentLike(lastUser) ||
+      isAckOnly(lastUser) ||
+      isStuck(lastUser))
 
   if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
     if (problem.kind === 'convert') {
@@ -1317,7 +1354,10 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const k = decimalPlacesFromText(pText)
         const denP = 100 * Math.pow(10, k)
         const numP = Math.round(p * Math.pow(10, k))
-        const prompt = lang === 'en' ? `Fill in: ${pText}% = __/${denP}` : `Vul in: ${pText}% = __/${denP}`
+        const prompt =
+          lang === 'en'
+            ? `Fill in: ${pText}/100 = __/${denP}`
+            : `Vul in: ${pText}/100 = __/${denP}`
         const w = convertWhy(ageBand, mode, 'step1', seed).nl
         return {
           handled: true,
@@ -1743,7 +1783,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // In an active canon flow: if the user sends ACK-only or "I'm stuck",
   // we repeat the current blank (no rewind).
-  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser) || isPercentLike(lastUser)
+  const canAnswer = isNumberLike(lastUser) || isFractionLike(lastUser) || isRationalSlashLike(lastUser) || isPercentLike(lastUser)
   const canHelp = isStuck(lastUser) || isAckOnly(lastUser)
   if (!canAnswer && !canHelp) return { handled: false }
 
@@ -3136,7 +3176,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const pText = String(state.decText || fmtNL(Number(state.p)))
         const denP = Number(state.denP)
         if (state.step === 'final') return lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
-        return lang === 'en' ? `Fill in: ${pText}% = __/${denP}` : `Vul in: ${pText}% = __/${denP}`
+      return lang === 'en' ? `Fill in: ${pText}/100 = __/${denP}` : `Vul in: ${pText}/100 = __/${denP}`
       }
       if (mode === 'decimal_to_frac') {
         const decText = String(state.decText || '')
@@ -3199,19 +3239,66 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     if (mode === 'percent_to_frac' || mode === 'decimal_to_frac') {
       const denP = Number(state.denP)
       const numP = Number(state.numP)
+      const simp = simplifyFrac(numP, denP)
+
       if (state.step === 'step1') {
         const userN = parseNum(lastUser)
         if (Math.abs(userN - numP) < 1e-9) {
+          if (simp.g > 1) {
+            const nextPrompt = lang === 'en' ? `Fill in: GCD(${numP},${denP}) = __` : gcdPromptNL(ageBand, numP, denP)
+            const why = 'Kun je nog simpeler?'
+            return {
+              handled: true,
+              payload: { message: msgWrap(why, nextPrompt), action: 'none' },
+              nextState: { ...state, turn: state.turn + 1, step: 'gcd', gcd: simp.g, numS: simp.n, denS: simp.d },
+            }
+          }
           const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
           const why = convertWhy(ageBand, mode, 'final', seed).nl
-          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final' } }
+          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', numS: simp.n, denS: simp.d } }
         }
         return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
       }
-      const f = parseFraction(lastUser)
-      if (f && Number.isFinite(denP) && Number.isFinite(numP) && f.n * denP === numP * f.d) {
-        return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+
+      if (state.step === 'gcd') {
+        const userN = parseNum(lastUser)
+        if (Math.abs(userN - simp.g) < 1e-9) {
+          const nextPrompt = lang === 'en' ? `Fill in: ${numP} ÷ ${simp.g} = __` : `Vul in: ${numP} ÷ ${simp.g} = __`
+          return { handled: true, payload: { message: nextPrompt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'num_s' } }
+        }
+        return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
       }
+
+      if (state.step === 'num_s') {
+        const userN = parseNum(lastUser)
+        if (Math.abs(userN - simp.n) < 1e-9) {
+          const nextPrompt = lang === 'en' ? `Fill in: ${denP} ÷ ${simp.g} = __` : `Vul in: ${denP} ÷ ${simp.g} = __`
+          return { handled: true, payload: { message: nextPrompt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'den_s' } }
+        }
+        return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+      }
+
+      if (state.step === 'den_s') {
+        const userN = parseNum(lastUser)
+        if (Math.abs(userN - simp.d) < 1e-9) {
+          const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
+          const why = convertWhy(ageBand, mode, 'final', seed).nl
+          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', numS: simp.n, denS: simp.d } }
+        }
+        return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+      }
+
+      // final: accept equivalent rational (including forms like "12,5/100")
+      const targetN = Number(state.numS ?? numP)
+      const targetD = Number(state.denS ?? denP)
+      const uInt = parseFraction(lastUser)
+      const uRat = parseRationalFromSlash(lastUser)
+      const u = uInt ? uInt : uRat
+      if (u && Number.isFinite(targetN) && Number.isFinite(targetD)) {
+        const ok = BigInt(u.n) * BigInt(targetD) === BigInt(targetN) * BigInt(u.d)
+        if (ok) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      }
+
       return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
     }
   }
