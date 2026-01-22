@@ -114,7 +114,7 @@ C. De Leraar ("De Regisseur")
     * Deterministische transitions: op basis van laatste user input (getal/ACK/stuck/stop) → volgende One‑Move stap.
     * LLM-bypass: als een canon herkend is, geeft de state machine de volgende stap terug **zonder** LLM-call (maximale stabiliteit).
     * Leeftijdsstijl: `ageBand` stuurt stapgrootte + korte “warm & speels” coach-zinnen (junior), compacter voor teen/student.
-    * Status (nu): state machine dekt **delen, vermenigvuldigen, optellen, aftrekken** (canons), incl. ACK/stuck/restart/stop gedrag.
+    * Status (nu): state machine dekt rekenen‑canons incl. **delen, vermenigvuldigen, optellen, aftrekken**, plus **breuken (vereenvoudigen/±/×/÷)**, **percentages (p% van…, korting/btw)**, **volgorde van bewerkingen**, **negatieve getallen**, **unknowns/mini‑algebra**, **eenheden** en **omrekenen (breuk↔decimaal↔procent)** — incl. ACK/stuck/restart/stop gedrag.
 * Visual Engine (The Hybrid Engine):
     * Math Text: remark-math & rehype-katex (LaTeX rendering).
     * Math Visuals: Maffs (Interactive Graphing via React components).
@@ -166,6 +166,17 @@ Fase 2: Authenticatie & Rollen (NU)
 * [x] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
 * [ ] Ouder Dashboard: Bouwen van de "Glow Feed" & Diep-Lees Modus toggle.
 * [x] Integratie Leaflet (Kaarten) in de Board Manager.
+Fase 2b: Rekenen (CORE → EXTENDED → INSIGHTS) (NU)
+* CORE (MVP, moet af):
+  * [ ] Kommagetallen basics: +/− en ×/÷ met geld/metingen (deterministisch + golden tests).
+  * [ ] Core‑stabiliteit sweep: per canon start/ACK/stuck/restart/stop + junior taal (geen jargon) consistent.
+* EXTENDED (pas na CORE):
+  * [ ] Verhoudingen / schaal (1:3, kaart‑schaal).
+  * [ ] Afronden / schatten.
+  * [ ] Oppervlakte / omtrek / inhoud (optioneel).
+  * [ ] Multi-step word problems (meer context).
+* Daarna:
+  * [ ] Leerprofiel + Insights (Supabase): per canon‑stap logging → sterke/zwakke punten voor kind/ouder/leraar.
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
 * [ ] Tech Debt Cleanup.
