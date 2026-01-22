@@ -282,6 +282,65 @@ function pickVariant(arr: string[], seed: number): string {
   return arr[i]
 }
 
+function fracStepWhy(ageBand: AgeBand, step: string, seed: number): { nl: string; en: string } {
+  // Teen can be concise; junior should be at least as explicit as teen.
+  if (ageBand === 'junior') {
+    if (step === 'lcm')
+      return {
+        nl: pickVariant(
+          [
+            'We willen dezelfde noemer, zodat we de tellers mogen optellen.',
+            'Eerst dezelfde noemer: dan kun je de tellers optellen.',
+            'Zelfde noemer → tellers optellen. Dus we kiezen één noemer die bij beide past.',
+          ],
+          seed
+        ),
+        en: pickVariant(['Same denominator first, so we can add numerators.', 'Make denominators the same so we can add numerators.'], seed),
+      }
+    if (step === 'n1')
+      return {
+        nl: pickVariant(
+          ['Van 1/4 maken we achtsten: boven én onder ×2.', 'Zet 1/4 om naar noemer 8: teller én noemer ×2.'],
+          seed
+        ),
+        en: pickVariant(['Turn 1/4 into eighths: multiply top and bottom by 2.'], seed),
+      }
+    if (step === 'n2')
+      return {
+        nl: pickVariant(['1/8 heeft al noemer 8, dus ×1 is genoeg.', 'Deze is al in achtsten: ×1.'], seed),
+        en: pickVariant(['1/8 already has denominator 8, so ×1.'], seed),
+      }
+    if (step === 'num')
+      return {
+        nl: pickVariant(['Noemer blijft 8. Nu tel je de tellers op.', 'Noemers gelijk? Dan tel je de tellers op (noemer blijft 8).'], seed),
+        en: pickVariant(['Denominator stays. Add the numerators.'], seed),
+      }
+    if (step === 'gcd')
+      return {
+        nl: pickVariant(['Kunnen we nog simpeler? Zoek de grootste deler die in allebei past.', 'Laatste check: kunnen teller en noemer allebei nog delen?'], seed),
+        en: pickVariant(['Can we simplify? Find the GCD.'], seed),
+      }
+    if (step === 'final')
+      return {
+        nl: pickVariant(['Schrijf het antwoord als één breuk.', 'Zet het netjes als één breuk neer.'], seed),
+        en: pickVariant(['Write the final answer as one fraction.'], seed),
+      }
+  }
+
+  // teen default (compact)
+  if (ageBand === 'teen') {
+    if (step === 'lcm')
+      return { nl: pickVariant(['Eerst noemers gelijk → kies een gezamenlijke noemer.', 'Noemers gelijk maken: pak een gezamenlijke noemer.'], seed), en: '' }
+    if (step === 'n1') return { nl: pickVariant(['Zet 1/4 om naar noemer 8 (×2).', 'Maak 1/4 naar achtsten (×2).'], seed), en: '' }
+    if (step === 'n2') return { nl: pickVariant(['1/8 is al noemer 8 (×1).', 'Deze blijft 1/8 (×1).'], seed), en: '' }
+    if (step === 'num') return { nl: pickVariant(['Noemer blijft 8. Tel de tellers op.', 'Noemers gelijk → tel tellers op.'], seed), en: '' }
+    if (step === 'gcd') return { nl: pickVariant(['Check: kun je nog vereenvoudigen?', 'Nog te vereenvoudigen?'], seed), en: '' }
+    if (step === 'final') return { nl: pickVariant(['Schrijf het als één breuk.', 'Eindantwoord als breuk.'], seed), en: '' }
+  }
+
+  return { nl: '', en: '' }
+}
+
 function juniorWhy(kind: string, step: string, seed: number, ctx?: Record<string, any>): { nl: string; en: string } {
   // Keep these short, non-patronizing, and "teacher-like". 0–1 sentence.
   const k = `${kind}:${step}`
@@ -1001,13 +1060,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const { op, a, b, c, d } = problem
       const lcm = lcmInt(b, d)
       const prompt = lang === 'en' ? `Fill in: LCM(${b},${d}) = __` : lcmPromptNL(ageBand, b, d)
-      const w = juniorWhy('frac_addsub', 'lcm', 0, { a, b, c, d })
+      const w = fracStepWhy(ageBand, 'lcm', 0)
       return {
         handled: true,
         payload: {
           message:
             ageBand === 'junior'
-              ? coachJunior(lang, ageBand, 0, w.nl, w.en, prompt)
+              ? coachJunior(lang, ageBand, 0, w.nl, w.en, prompt, { forceTone: 'mid' })
               : ageBand === 'teen'
                 ? coachTeen(lang, ageBand, w.nl, w.en, prompt)
                 : prompt,
@@ -2195,7 +2254,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     if (!canAnswer) {
       const p = promptOf()
       const hint = fracHintNL(ageBand)
-      const w = juniorWhy('frac_addsub', state.step, state.turn, { a, b, c, d })
+      const w = fracStepWhy(ageBand, state.step, state.turn)
       const msg =
         ageBand === 'junior'
           ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' })
@@ -2210,13 +2269,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (Math.abs(userN - lcm) < 1e-9) {
         const k1 = lcm / b
         const nextPrompt = lang === 'en' ? `Fill in: ${a}×${k1} = __` : `Vul in: ${a}×${k1} = __`
-        const w = juniorWhy('frac_addsub', 'n1', state.turn, { a, b, c, d })
+        const w = fracStepWhy(ageBand, 'n1', state.turn)
         return {
           handled: true,
           payload: {
             message:
               ageBand === 'junior'
-                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt)
+                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
                 : ageBand === 'teen'
                   ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
                   : nextPrompt,
@@ -2234,13 +2293,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const userN = parseNum(lastUser)
       if (Math.abs(userN - exp) < 1e-9) {
         const nextPrompt = lang === 'en' ? `Fill in: ${c}×${lcm / d} = __` : `Vul in: ${c}×${lcm / d} = __`
-        const w = juniorWhy('frac_addsub', 'n2', state.turn, { a, b, c, d })
+        const w = fracStepWhy(ageBand, 'n2', state.turn)
         return {
           handled: true,
           payload: {
             message:
               ageBand === 'junior'
-                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt)
+                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
                 : ageBand === 'teen'
                   ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
                   : nextPrompt,
@@ -2259,13 +2318,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (Math.abs(userN - exp) < 1e-9) {
         const n1 = Number(state.n1)
         const sym = op
-        const w = juniorWhy('frac_addsub', 'num', state.turn, { a, b, c, d })
+        const w = fracStepWhy(ageBand, 'num', state.turn)
         return {
           handled: true,
           payload: {
             message:
               ageBand === 'junior'
-                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`)
+                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`, { forceTone: 'mid' })
                 : ageBand === 'teen'
                   ? coachTeen(lang, ageBand, w.nl, w.en, lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`)
                   : lang === 'en'
