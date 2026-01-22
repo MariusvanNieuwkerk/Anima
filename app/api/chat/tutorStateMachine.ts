@@ -1,4 +1,4 @@
-export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives' | 'unknown'
+export type TutorSMKind = 'div' | 'mul' | 'add' | 'sub' | 'frac' | 'percent' | 'order_ops' | 'negatives' | 'unknown' | 'units'
 
 export type TutorSMState =
   | {
@@ -112,6 +112,28 @@ export type TutorSMState =
       step: 'inverse' | 'x_value'
       expected: number
     }
+  | {
+      v: 1
+      kind: 'units'
+      mode:
+        | 'cm_to_m'
+        | 'm_to_cm'
+        | 'euro_to_cent'
+        | 'cent_to_euro'
+        | 'kg_to_g'
+        | 'g_to_kg'
+        | 'l_to_ml'
+        | 'ml_to_l'
+        | 'km_to_m'
+        | 'm_to_km'
+        | 'time_hm_to_min'
+      turn: number
+      step: 'step1' | 'step2'
+      value?: number
+      h?: number
+      m0?: number
+      hMins?: number
+    }
 
 export type TutorSMInput = {
   state: TutorSMState | null
@@ -136,6 +158,14 @@ const normalizeMathText = (t: string) =>
 const parseNum = (s: string) => {
   const n = Number(String(s || '').trim().replace(',', '.'))
   return Number.isFinite(n) ? n : NaN
+}
+
+const fmtNL = (n: number) => {
+  if (!Number.isFinite(n)) return String(n)
+  const isInt = Math.abs(n % 1) < 1e-9
+  if (isInt) return String(Math.trunc(n))
+  const s = String(Number(n.toFixed(6))).replace(/\.?0+$/, '')
+  return s.replace('.', ',')
 }
 
 const isNumberLike = (t: string) => /^\s*\d+([.,]\d+)?\s*$/.test(strip(t))
@@ -214,6 +244,24 @@ type ParsedProblem =
   | { kind: 'order_ops'; expr: string }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
+  | {
+      kind: 'units'
+      mode:
+        | 'cm_to_m'
+        | 'm_to_cm'
+        | 'euro_to_cent'
+        | 'cent_to_euro'
+        | 'kg_to_g'
+        | 'g_to_kg'
+        | 'l_to_ml'
+        | 'ml_to_l'
+        | 'km_to_m'
+        | 'm_to_km'
+        | 'time_hm_to_min'
+      value?: number
+      h?: number
+      m0?: number
+    }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
 
@@ -467,6 +515,114 @@ function unknownHint(lang: string, ageBand: AgeBand, op: '+' | '-', b: number): 
   return isJunior ? `Keer om: −${b} → +${b}.` : `Keer om: −${b} → +${b}.`
 }
 
+function unitsHintNL(mode: string): string {
+  switch (mode) {
+    case 'cm_to_m':
+    case 'm_to_cm':
+      return 'Regel: 1 m = 100 cm.'
+    case 'euro_to_cent':
+      return 'Regel: € → cent = ×100.'
+    case 'cent_to_euro':
+      return 'Regel: cent → € = ÷100.'
+    case 'kg_to_g':
+    case 'g_to_kg':
+      return 'Regel: 1 kg = 1000 g.'
+    case 'l_to_ml':
+    case 'ml_to_l':
+      return 'Regel: 1 liter = 1000 ml.'
+    case 'km_to_m':
+    case 'm_to_km':
+      return 'Regel: 1 km = 1000 m.'
+    case 'time_hm_to_min':
+      return 'Regel: 1 uur = 60 minuten.'
+    default:
+      return 'Regel: gebruik de omrekenfactor.'
+  }
+}
+
+function parseUnitsProblem(textRaw: string): { mode: any; value?: number; h?: number; m0?: number } | null {
+  const t = normalizeMathText(textRaw).toLowerCase()
+  const core = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+
+  // Time: "2 uur 15 min naar minuten"
+  const hM = core.match(/(\d+)\s*(?:uur|uren|h|hours?)\b/)
+  const mM = core.match(/(\d+)\s*(?:minuut|minuten|min|minutes?)\b/)
+  if (hM && mM && /\bmin\b|\bminuut\b|\bminuten\b|\bminutes?\b/.test(core)) {
+    const h = Number(hM[1])
+    const m0 = Number(mM[1])
+    if (Number.isFinite(h) && Number.isFinite(m0)) return { mode: 'time_hm_to_min', h, m0 }
+  }
+
+  // cm -> m
+  const cmToM = core.match(/(\d+(?:[.,]\d+)?)\s*cm\b.*\b(?:naar|in)\b.*\b(?:m|meter)\b/)
+  if (cmToM) {
+    const v = parseNum(cmToM[1])
+    if (Number.isFinite(v)) return { mode: 'cm_to_m', value: v }
+  }
+  // m -> cm (avoid cm itself)
+  const mToCm = core.match(/(\d+(?:[.,]\d+)?)\s*(?:m|meter)\b.*\b(?:naar|in)\b.*\bcm\b/)
+  if (mToCm && !/\bcm\b/.test(core.split(String(mToCm[1]))[0] || '')) {
+    const v = parseNum(mToCm[1])
+    if (Number.isFinite(v)) return { mode: 'm_to_cm', value: v }
+  }
+
+  // € -> cent
+  const euroToCent =
+    core.match(/€\s*(\d+(?:[.,]\d+)?)[^\d]*.*\b(?:naar|in)\b.*\bcent\b/) ||
+    core.match(/(\d+(?:[.,]\d+)?)\s*euro\b.*\b(?:naar|in)\b.*\bcent\b/)
+  if (euroToCent) {
+    const v = parseNum(euroToCent[1])
+    if (Number.isFinite(v)) return { mode: 'euro_to_cent', value: v }
+  }
+  // cent -> €
+  const centToEuro = core.match(/(\d+(?:[.,]\d+)?)\s*cent\b.*\b(?:naar|in)\b.*(?:€|\beuro\b)/)
+  if (centToEuro) {
+    const v = parseNum(centToEuro[1])
+    if (Number.isFinite(v)) return { mode: 'cent_to_euro', value: v }
+  }
+
+  // kg -> g
+  const kgToG = core.match(/(\d+(?:[.,]\d+)?)\s*kg\b.*\b(?:naar|in)\b.*\b(?:gram|g)\b/)
+  if (kgToG) {
+    const v = parseNum(kgToG[1])
+    if (Number.isFinite(v)) return { mode: 'kg_to_g', value: v }
+  }
+  // g -> kg (avoid kg)
+  const gToKg = core.match(/(\d+(?:[.,]\d+)?)\s*(?:gram|g)\b.*\b(?:naar|in)\b.*\bkg\b/)
+  if (gToKg && !/\bkg\b/.test(core.split(String(gToKg[1]))[0] || '')) {
+    const v = parseNum(gToKg[1])
+    if (Number.isFinite(v)) return { mode: 'g_to_kg', value: v }
+  }
+
+  // L -> ml
+  const lToMl = core.match(/(\d+(?:[.,]\d+)?)\s*(?:liter|l)\b.*\b(?:naar|in)\b.*\bml\b/)
+  if (lToMl && !/\bml\b/.test(core.split(String(lToMl[1]))[0] || '')) {
+    const v = parseNum(lToMl[1])
+    if (Number.isFinite(v)) return { mode: 'l_to_ml', value: v }
+  }
+  // ml -> L
+  const mlToL = core.match(/(\d+(?:[.,]\d+)?)\s*ml\b.*\b(?:naar|in)\b.*\b(?:liter|l)\b/)
+  if (mlToL) {
+    const v = parseNum(mlToL[1])
+    if (Number.isFinite(v)) return { mode: 'ml_to_l', value: v }
+  }
+
+  // km -> m
+  const kmToM = core.match(/(\d+(?:[.,]\d+)?)\s*km\b.*\b(?:naar|in)\b.*\b(?:meter|m)\b/)
+  if (kmToM) {
+    const v = parseNum(kmToM[1])
+    if (Number.isFinite(v)) return { mode: 'km_to_m', value: v }
+  }
+  // m -> km (avoid cm/mm)
+  const mToKm = core.match(/(\d+(?:[.,]\d+)?)\s*(?:meter|m)\b.*\b(?:naar|in)\b.*\bkm\b/)
+  if (mToKm && !/\bcm\b/.test(core) && !/\bmm\b/.test(core)) {
+    const v = parseNum(mToKm[1])
+    if (Number.isFinite(v)) return { mode: 'm_to_km', value: v }
+  }
+
+  return null
+}
+
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   // Percent-of: "20% van 150" / "20 procent van 150" / "20% of 150"
@@ -477,6 +633,12 @@ function parseProblem(text: string): ParsedProblem | null {
     const p = parseNum(pct[1])
     const base = parseNum(pct[2])
     if (Number.isFinite(p) && Number.isFinite(base)) return { kind: 'percent', a: p, b: base }
+  }
+
+  // Units (conversions)
+  {
+    const u = parseUnitsProblem(text)
+    if (u) return { kind: 'units', ...u }
   }
 
   // Unknown / mini-algebra: "__ + 8 = 23" or "x + 8 = 23"
@@ -542,6 +704,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   // Note: unknown/mini-algebra intentionally includes '='; it has its own matching below.
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (parseUnitsProblem(core)) return true
   if (/(?:__|x)\s*[+\-]\s*\d+(?:[.,]\d+)?\s*=\s*\d+(?:[.,]\d+)?/i.test(core)) return true
   if (/[=]/.test(t)) return false
   // Negatives: contains a unary negative number token and an operator.
@@ -585,6 +748,43 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
   // Start or restart when user provides a fresh problem statement.
   if (problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'units') {
+      const mode = problem.mode
+      if (mode === 'time_hm_to_min' && Number.isFinite(problem.h) && Number.isFinite(problem.m0)) {
+        const h = Number(problem.h)
+        const m0 = Number(problem.m0)
+        const prompt = lang === 'en' ? `Fill in: ${h}×60 = __` : `Vul in: ${h}×60 = __`
+        return {
+          handled: true,
+          payload: { message: prompt, action: 'none' },
+          nextState: { v: 1, kind: 'units', mode, turn: 0, step: 'step1', h, m0 },
+        }
+      }
+
+      if (Number.isFinite(problem.value)) {
+        const v = Number(problem.value)
+        const vStr = lang === 'en' ? String(v) : fmtNL(v)
+        const prompt = (() => {
+          if (mode === 'cm_to_m') return lang === 'en' ? `Fill in: ${vStr} ÷ 100 = __ (meters)` : `Vul in: ${vStr} ÷ 100 = __ (meter)`
+          if (mode === 'm_to_cm') return lang === 'en' ? `Fill in: ${vStr} × 100 = __ (cm)` : `Vul in: ${vStr} × 100 = __ (cm)`
+          if (mode === 'euro_to_cent') return lang === 'en' ? `Fill in: ${vStr} × 100 = __ (cents)` : `Vul in: ${vStr} × 100 = __ (cent)`
+          if (mode === 'cent_to_euro') return lang === 'en' ? `Fill in: ${vStr} ÷ 100 = __ (euros)` : `Vul in: ${vStr} ÷ 100 = __ (euro)`
+          if (mode === 'kg_to_g') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (grams)` : `Vul in: ${vStr} × 1000 = __ (gram)`
+          if (mode === 'g_to_kg') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (kg)` : `Vul in: ${vStr} ÷ 1000 = __ (kg)`
+          if (mode === 'l_to_ml') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (ml)` : `Vul in: ${vStr} × 1000 = __ (ml)`
+          if (mode === 'ml_to_l') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (liters)` : `Vul in: ${vStr} ÷ 1000 = __ (liter)`
+          if (mode === 'km_to_m') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (meters)` : `Vul in: ${vStr} × 1000 = __ (meter)`
+          if (mode === 'm_to_km') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (km)` : `Vul in: ${vStr} ÷ 1000 = __ (km)`
+          return lang === 'en' ? `Fill in: __` : `Vul in: __`
+        })()
+        return {
+          handled: true,
+          payload: { message: prompt, action: 'none' },
+          nextState: { v: 1, kind: 'units', mode, turn: 0, step: 'step1', value: v },
+        }
+      }
+    }
+
     if (problem.kind === 'unknown') {
       const { op, b, c } = problem
       const expected = op === '+' ? c - b : c + b
@@ -1557,6 +1757,89 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       }
     }
     return { handled: true, payload: { message: prompt(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'units') {
+    const makePrompt = () => {
+      const mode = state.mode
+      if (mode === 'time_hm_to_min') {
+        if (state.step === 'step1') return lang === 'en' ? `Fill in: ${state.h}×60 = __` : `Vul in: ${state.h}×60 = __`
+        return lang === 'en'
+          ? `Fill in: ${state.hMins} + ${state.m0} = __`
+          : `Vul in: ${state.hMins} + ${state.m0} = __`
+      }
+      const v = Number(state.value)
+      const vStr = lang === 'en' ? String(v) : fmtNL(v)
+      if (mode === 'cm_to_m') return lang === 'en' ? `Fill in: ${vStr} ÷ 100 = __ (meters)` : `Vul in: ${vStr} ÷ 100 = __ (meter)`
+      if (mode === 'm_to_cm') return lang === 'en' ? `Fill in: ${vStr} × 100 = __ (cm)` : `Vul in: ${vStr} × 100 = __ (cm)`
+      if (mode === 'euro_to_cent') return lang === 'en' ? `Fill in: ${vStr} × 100 = __ (cents)` : `Vul in: ${vStr} × 100 = __ (cent)`
+      if (mode === 'cent_to_euro') return lang === 'en' ? `Fill in: ${vStr} ÷ 100 = __ (euros)` : `Vul in: ${vStr} ÷ 100 = __ (euro)`
+      if (mode === 'kg_to_g') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (grams)` : `Vul in: ${vStr} × 1000 = __ (gram)`
+      if (mode === 'g_to_kg') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (kg)` : `Vul in: ${vStr} ÷ 1000 = __ (kg)`
+      if (mode === 'l_to_ml') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (ml)` : `Vul in: ${vStr} × 1000 = __ (ml)`
+      if (mode === 'ml_to_l') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (liters)` : `Vul in: ${vStr} ÷ 1000 = __ (liter)`
+      if (mode === 'km_to_m') return lang === 'en' ? `Fill in: ${vStr} × 1000 = __ (meters)` : `Vul in: ${vStr} × 1000 = __ (meter)`
+      if (mode === 'm_to_km') return lang === 'en' ? `Fill in: ${vStr} ÷ 1000 = __ (km)` : `Vul in: ${vStr} ÷ 1000 = __ (km)`
+      return lang === 'en' ? `Fill in: __` : `Vul in: __`
+    }
+
+    if (!canAnswer) {
+      const p = makePrompt()
+      const msg = isStuck(lastUser) && ageBand !== 'student' && lang !== 'en' ? `${unitsHintNL(state.mode)} ${p}` : p
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+
+    if (state.mode === 'time_hm_to_min') {
+      const h = Number(state.h)
+      const m0 = Number(state.m0)
+      if (state.step === 'step1') {
+        const exp = h * 60
+        if (Math.abs(userN - exp) < 1e-9) {
+          const prompt = lang === 'en' ? `Fill in: ${exp} + ${m0} = __` : `Vul in: ${exp} + ${m0} = __`
+          return {
+            handled: true,
+            payload: { message: prompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'step2', hMins: exp },
+          }
+        }
+        return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+      }
+      const exp2 = Number(state.hMins) + m0
+      if (Math.abs(userN - exp2) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
+    }
+
+    const v = Number(state.value)
+    const exp = (() => {
+      switch (state.mode) {
+        case 'cm_to_m':
+          return v / 100
+        case 'm_to_cm':
+          return v * 100
+        case 'euro_to_cent':
+          return v * 100
+        case 'cent_to_euro':
+          return v / 100
+        case 'kg_to_g':
+          return v * 1000
+        case 'g_to_kg':
+          return v / 1000
+        case 'l_to_ml':
+          return v * 1000
+        case 'ml_to_l':
+          return v / 1000
+        case 'km_to_m':
+          return v * 1000
+        case 'm_to_km':
+          return v / 1000
+        default:
+          return NaN
+      }
+    })()
+    if (Number.isFinite(exp) && Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: makePrompt(), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'unknown') {
