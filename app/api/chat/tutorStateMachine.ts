@@ -3143,8 +3143,17 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       if (mode === 'decimal_to_percent') return 'Tip: ×100 schuift de komma 2 plekken.'
       if (mode === 'percent_to_decimal') return 'Tip: ÷100 schuift de komma 2 plekken terug.'
       if (mode === 'frac_to_decimal' || mode === 'frac_to_percent') return 'Tip: boven ÷ onder.'
-      if (mode === 'percent_to_frac') return 'Tip: % is per 100 (dus …/100).'
-      if (mode === 'decimal_to_frac') return 'Tip: schrijf het als …/10 of …/100.'
+      if (mode === 'percent_to_frac' || mode === 'decimal_to_frac') {
+        const numP = Number(state.numP)
+        const denP = Number(state.denP)
+        const simp = Number.isFinite(numP) && Number.isFinite(denP) ? simplifyFrac(numP, denP) : null
+        if (simp && simp.g > 1) {
+          if (state.step === 'gcd') return `Tip: probeer delers zoals 2, 5, 10, 25, 125.`
+          if (state.step === 'num_s') return `Tip: ${simp.g}×${simp.n} = ${numP}.`
+          if (state.step === 'den_s') return `Tip: ${simp.g}×${simp.d} = ${denP}.`
+        }
+        return mode === 'percent_to_frac' ? 'Tip: % is per 100 (dus …/100).' : 'Tip: schrijf het als …/10 of …/100.'
+      }
       return ''
     })()
 
@@ -3246,7 +3255,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         if (Math.abs(userN - numP) < 1e-9) {
           if (simp.g > 1) {
             const nextPrompt = lang === 'en' ? `Fill in: GCD(${numP},${denP}) = __` : gcdPromptNL(ageBand, numP, denP)
-            const why = 'Kun je nog simpeler?'
+            const why = ageBand === 'junior' ? 'Kun je nog simpeler? Dan zoeken we de grootste deler.' : 'Kun je nog simpeler?'
             return {
               handled: true,
               payload: { message: msgWrap(why, nextPrompt), action: 'none' },
@@ -3254,7 +3263,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
             }
           }
           const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
-          const why = convertWhy(ageBand, mode, 'final', seed).nl
+          const why = ageBand === 'junior' ? 'Schrijf het eindantwoord als breuk.' : convertWhy(ageBand, mode, 'final', seed).nl
           return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', numS: simp.n, denS: simp.d } }
         }
         return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
@@ -3264,7 +3273,8 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const userN = parseNum(lastUser)
         if (Math.abs(userN - simp.g) < 1e-9) {
           const nextPrompt = lang === 'en' ? `Fill in: ${numP} ÷ ${simp.g} = __` : `Vul in: ${numP} ÷ ${simp.g} = __`
-          return { handled: true, payload: { message: nextPrompt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'num_s' } }
+          const why = ageBand === 'junior' ? 'Deel teller en noemer door die grootste deler.' : ''
+          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'num_s' } }
         }
         return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
       }
@@ -3273,7 +3283,8 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const userN = parseNum(lastUser)
         if (Math.abs(userN - simp.n) < 1e-9) {
           const nextPrompt = lang === 'en' ? `Fill in: ${denP} ÷ ${simp.g} = __` : `Vul in: ${denP} ÷ ${simp.g} = __`
-          return { handled: true, payload: { message: nextPrompt, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'den_s' } }
+          const why = ageBand === 'junior' ? 'Nu hetzelfde bij de noemer.' : ''
+          return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'den_s' } }
         }
         return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
       }
@@ -3282,7 +3293,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const userN = parseNum(lastUser)
         if (Math.abs(userN - simp.d) < 1e-9) {
           const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/4)` : `Vul in: antwoord = __ (bijv. 3/4)`
-          const why = convertWhy(ageBand, mode, 'final', seed).nl
+          const why = ageBand === 'junior' ? 'Schrijf het eindantwoord als breuk.' : convertWhy(ageBand, mode, 'final', seed).nl
           return { handled: true, payload: { message: msgWrap(why, nextPrompt), action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', numS: simp.n, denS: simp.d } }
         }
         return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
