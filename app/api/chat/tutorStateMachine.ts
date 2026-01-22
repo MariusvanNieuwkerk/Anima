@@ -10,6 +10,7 @@ export type TutorSMKind =
   | 'unknown'
   | 'units'
   | 'frac_addsub'
+  | 'frac_muldiv'
   | 'percent_word'
 
 export type TutorSMState =
@@ -166,6 +167,22 @@ export type TutorSMState =
     }
   | {
       v: 1
+      kind: 'frac_muldiv'
+      mode: 'mul' | 'div'
+      a: number
+      b: number
+      c: number
+      d: number
+      turn: number
+      step: 'recip' | 'num_mul' | 'den_mul' | 'gcd' | 'num_s' | 'den_s' | 'final'
+      numP?: number
+      denP?: number
+      gcd?: number
+      numS?: number
+      denS?: number
+    }
+  | {
+      v: 1
       kind: 'percent_word'
       mode: 'discount' | 'vat'
       p: number
@@ -197,6 +214,7 @@ const normalizeMathText = (t: string) =>
   String(t || '')
     .replace(/[\u2212\u2010\u2011\u2012\u2013\u2014\u2015\u00AD\uFF0D−–—]/g, '-')
     .replace(/\u00A0/g, ' ')
+    .replace(/[⁄∕]/g, '/')
     .replace(/[×]/g, '*')
     .replace(/:/g, '/')
 
@@ -481,6 +499,7 @@ type ParsedProblem =
       m0?: number
     }
   | { kind: 'frac_addsub'; op: '+' | '-'; a: number; b: number; c: number; d: number }
+  | { kind: 'frac_muldiv'; mode: 'mul' | 'div'; a: number; b: number; c: number; d: number }
   | { kind: 'percent_word'; mode: 'discount' | 'vat'; p: number; price: number }
 
 type Tok = { t: 'num'; n: number } | { t: 'op'; op: '+' | '-' | '*' | '/' } | { t: 'lp' } | { t: 'rp' }
@@ -890,6 +909,42 @@ function gcdPromptNL(ageBand: AgeBand, a: number, b: number): string {
   return `Vul in: grootste gemene deler van ${a} en ${b} = __`
 }
 
+function fracMulDivWhy(
+  ageBand: AgeBand,
+  step: 'recip' | 'num_mul' | 'den_mul' | 'gcd' | 'num_s' | 'den_s' | 'final',
+  seed: number,
+  mode: 'mul' | 'div'
+): { nl: string; en: string } {
+  if (ageBand === 'student') return { nl: '', en: '' }
+  if (ageBand === 'teen') {
+    if (step === 'recip') return { nl: 'Delen door een breuk: keer de tweede breuk om.', en: '' }
+    if (step === 'num_mul') return { nl: 'Teller×teller.', en: '' }
+    if (step === 'den_mul') return { nl: 'Noemer×noemer.', en: '' }
+    if (step === 'gcd') return { nl: 'Check: nog te vereenvoudigen?', en: '' }
+    if (step === 'num_s' || step === 'den_s') return { nl: 'Deel door die grootste deler.', en: '' }
+    return { nl: 'Eindantwoord als breuk.', en: '' }
+  }
+  // junior
+  const m = mode === 'div' ? 'Delen door een breuk: eerst omkeren, dan ×.' : 'Breuken ×: boven×boven en onder×onder.'
+  if (step === 'recip') return { nl: pickVariant([m, 'Keer om = boven en onder wisselen.'], seed), en: 'Invert the second fraction.' }
+  if (step === 'num_mul') return { nl: pickVariant(['Eerst boven×boven.', 'Eerst de bovenste getallen keer elkaar.'], seed), en: 'Multiply the numerators.' }
+  if (step === 'den_mul') return { nl: pickVariant(['Dan onder×onder.', 'Dan de onderste getallen keer elkaar.'], seed), en: 'Multiply the denominators.' }
+  if (step === 'gcd') return { nl: pickVariant(['Kunnen we nog simpeler? Zoek de grootste deler.', 'Laatste check: kan dit nog kleiner?'], seed), en: 'Can we simplify?' }
+  if (step === 'num_s' || step === 'den_s')
+    return { nl: pickVariant(['Deel teller en noemer door die grootste deler.', 'Deel allebei door dezelfde grootste deler.'], seed), en: 'Divide top and bottom by the same number.' }
+  return { nl: pickVariant(['Schrijf het antwoord als één breuk.', 'Zet het antwoord netjes als breuk neer.'], seed), en: 'Write the final fraction.' }
+}
+
+function fracMulDivStuckHintNL(step: 'recip' | 'num_mul' | 'den_mul' | 'gcd' | 'num_s' | 'den_s' | 'final', mode: 'mul' | 'div'): string {
+  // keep this extremely short; only used when the student says "ik snap het niet / weet ik niet"
+  if (step === 'recip') return 'Tip: omkeren = teller en noemer wisselen.'
+  if (step === 'num_mul' || step === 'den_mul') return 'Tip: vermenigvuldigen = “keer”.'
+  if (step === 'gcd') return 'Tip: probeer 2, 3, 4, 5… en kijk of ze allebei delen.'
+  if (step === 'num_s' || step === 'den_s') return 'Tip: deel stap voor stap (bijv. eerst ÷2, dan ÷2).'
+  if (mode === 'div') return 'Tip: bij ÷ met breuken: eerst omkeren, dan ×.'
+  return 'Tip: schrijf het als één breuk.'
+}
+
 function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
   if (ageBand === 'student') return ''
   if (mode === 'discount') return 'Regel: korting = eraf.'
@@ -899,6 +954,23 @@ function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+
+  // Fraction multiply/divide: "1/4 * 3/5", "1/4 × 3/5", "1/4 : 3/5", "1/4 ÷ 3/5"
+  // Note: normalizeMathText turns ":" into "/", so also accept "1/4 / 3/5" (with spaces) as division.
+  {
+    const m = core0.match(/(-?\d+)\s*\/\s*(-?\d+)\s*(?:([*x×÷:])|\s+(\/)\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i)
+    if (m) {
+      const a = Number(m[1])
+      const b = Number(m[2])
+      const op = String(m[3] || m[4]).toLowerCase()
+      const c = Number(m[5])
+      const d = Number(m[6])
+      if (Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d) && b !== 0 && d !== 0) {
+        const mode: 'mul' | 'div' = op === ':' || op === '÷' || op === '/' ? 'div' : 'mul'
+        return { kind: 'frac_muldiv', mode, a, b, c, d }
+      }
+    }
+  }
 
   // Fraction add/sub: "1/4 + 1/8" (treat as fractions, not decimal division).
   {
@@ -1015,6 +1087,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   // Note: unknown/mini-algebra intentionally includes '='; it has its own matching below.
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
   if (/\b(korting|btw|vat)\b/i.test(core) && /\d+(?:[.,]\d+)?\s*%/.test(core)) return true
   if (parseUnitsProblem(core)) return true
@@ -1066,6 +1139,41 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     !!state && (isNumberLike(lastUser) || isFractionLike(lastUser) || isAckOnly(lastUser) || isStuck(lastUser))
 
   if (!answerLikeTurn && problem && isStandaloneProblemStatement(lastUser)) {
+    if (problem.kind === 'frac_muldiv') {
+      const { mode, a, b, c, d } = problem
+      const firstStep: 'recip' | 'num_mul' = mode === 'div' ? 'recip' : 'num_mul'
+      const topLabel =
+        ageBand === 'junior'
+          ? lang === 'en'
+            ? 'top'
+            : 'boven'
+          : lang === 'en'
+            ? 'numerator'
+            : 'teller'
+      const prompt =
+        firstStep === 'recip'
+          ? lang === 'en'
+            ? `Invert the second fraction: ${c}/${d} becomes __/__`
+            : `Keer om: ${c}/${d} wordt __/__`
+          : lang === 'en'
+            ? `Fill in: ${a}×${c} = __ (${topLabel})`
+            : `Vul in: ${a}×${c} = __ (${topLabel})`
+      const w = fracMulDivWhy(ageBand, firstStep, 0, mode)
+      return {
+        handled: true,
+        payload: {
+          message:
+            ageBand === 'junior'
+              ? coachJunior(lang, ageBand, 0, w.nl, w.en, prompt, { forceTone: 'mid' })
+              : ageBand === 'teen'
+                ? coachTeen(lang, ageBand, w.nl, w.en, prompt)
+                : prompt,
+          action: 'none',
+        },
+        nextState: { v: 1, kind: 'frac_muldiv', mode, a, b, c, d, turn: 0, step: firstStep },
+      }
+    }
+
     if (problem.kind === 'frac_addsub') {
       const { op, a, b, c, d } = problem
       const lcm = lcmInt(b, d)
@@ -2563,6 +2671,222 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const nn = Number(state.numS)
       const dd = Number(state.denS)
       if (Math.abs(f.n - nn) < 1e-9 && Math.abs(f.d - dd) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    }
+    return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'frac_muldiv') {
+    const mode = state.mode
+    const a = state.a
+    const b = state.b
+    const c = state.c
+    const d = state.d
+
+    const topLabel =
+      ageBand === 'junior'
+        ? lang === 'en'
+          ? 'top'
+          : 'boven'
+        : lang === 'en'
+          ? 'numerator'
+          : 'teller'
+    const bottomLabel =
+      ageBand === 'junior'
+        ? lang === 'en'
+          ? 'bottom'
+          : 'onder'
+        : lang === 'en'
+          ? 'denominator'
+          : 'noemer'
+
+    const promptOf = () => {
+      if (state.step === 'recip') return lang === 'en' ? `Invert ${c}/${d}: __/__` : `Keer om: ${c}/${d} wordt __/__`
+      if (state.step === 'num_mul') return lang === 'en' ? `Fill in: ${a}×${c} = __ (${topLabel})` : `Vul in: ${a}×${c} = __ (${topLabel})`
+      if (state.step === 'den_mul') return lang === 'en' ? `Fill in: ${b}×${d} = __ (${bottomLabel})` : `Vul in: ${b}×${d} = __ (${bottomLabel})`
+      if (state.step === 'gcd') {
+        const numP = Number(state.numP)
+        const denP = Number(state.denP)
+        return lang === 'en' ? `Fill in: GCD(${numP},${denP}) = __` : gcdPromptNL(ageBand, numP, denP)
+      }
+      if (state.step === 'num_s') {
+        const g = Number(state.gcd)
+        const numP = Number(state.numP)
+        return lang === 'en' ? `Fill in: ${numP} ÷ ${g} = __` : `Vul in: ${numP} ÷ ${g} = __`
+      }
+      if (state.step === 'den_s') {
+        const g = Number(state.gcd)
+        const denP = Number(state.denP)
+        return lang === 'en' ? `Fill in: ${denP} ÷ ${g} = __` : `Vul in: ${denP} ÷ ${g} = __`
+      }
+      return lang === 'en' ? `Fill in: answer = __ (e.g. 3/8)` : `Vul in: antwoord = __ (bijv. 3/8)`
+    }
+
+    if (!canAnswer) {
+      const p = promptOf()
+      const w = fracMulDivWhy(ageBand, state.step, state.turn, mode)
+      const hint = isStuck(lastUser) ? fracMulDivStuckHintNL(state.step, mode) : ''
+      const wNL = [w.nl, hint].filter(Boolean).join(' ')
+      const msg =
+        ageBand === 'junior'
+          ? coachJunior(lang, ageBand, state.turn, wNL, w.en, p, { forceTone: 'mid' })
+          : ageBand === 'teen'
+            ? coachTeen(lang, ageBand, wNL, w.en, p)
+            : p
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    // recip expects fraction d/c
+    if (state.step === 'recip') {
+      const f = parseFraction(lastUser)
+      const expN = d
+      const expD = c
+      if (f && f.n === expN && f.d === expD) {
+        const nextPrompt =
+          lang === 'en' ? `Fill in: ${a}×${d} = __ (${topLabel})` : `Vul in: ${a}×${d} = __ (${topLabel})`
+        const w = fracMulDivWhy(ageBand, 'num_mul', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'num_mul', c: d, d: c },
+        }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'num_mul') {
+      const userN = parseNum(lastUser)
+      const exp = a * c
+      if (Math.abs(userN - exp) < 1e-9) {
+        const nextPrompt =
+          lang === 'en' ? `Fill in: ${b}×${d} = __ (${bottomLabel})` : `Vul in: ${b}×${d} = __ (${bottomLabel})`
+        const w = fracMulDivWhy(ageBand, 'den_mul', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'den_mul', numP: exp },
+        }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'den_mul') {
+      const userN = parseNum(lastUser)
+      const exp = b * d
+      if (Math.abs(userN - exp) < 1e-9) {
+        const numP = Number(state.numP)
+        const simp = simplifyFrac(numP, exp)
+        if (simp.g === 1) {
+          const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/8)` : `Vul in: antwoord = __ (bijv. 3/8)`
+          const w = fracMulDivWhy(ageBand, 'final', state.turn, mode)
+          const msg =
+            ageBand === 'junior'
+              ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+              : ageBand === 'teen'
+                ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+                : nextPrompt
+          return {
+            handled: true,
+            payload: { message: msg, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', denP: exp, gcd: 1, numS: simp.n, denS: simp.d },
+          }
+        }
+        const nextPrompt = lang === 'en' ? `Fill in: GCD(${numP},${exp}) = __` : gcdPromptNL(ageBand, numP, exp)
+        const w = fracMulDivWhy(ageBand, 'gcd', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'gcd', denP: exp },
+        }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'gcd') {
+      const numP = Number(state.numP)
+      const denP = Number(state.denP)
+      const simp = simplifyFrac(numP, denP)
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - simp.g) < 1e-9) {
+        const nextPrompt = lang === 'en' ? `Fill in: ${numP} ÷ ${simp.g} = __` : `Vul in: ${numP} ÷ ${simp.g} = __`
+        const w = fracMulDivWhy(ageBand, 'num_s', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'num_s', gcd: simp.g, numS: simp.n, denS: simp.d },
+        }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'num_s') {
+      const numP = Number(state.numP)
+      const g = Number(state.gcd)
+      const exp = numP / g
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) {
+        const denP = Number(state.denP)
+        const nextPrompt = lang === 'en' ? `Fill in: ${denP} ÷ ${g} = __` : `Vul in: ${denP} ÷ ${g} = __`
+        const w = fracMulDivWhy(ageBand, 'den_s', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'den_s', numS: exp } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'den_s') {
+      const denP = Number(state.denP)
+      const g = Number(state.gcd)
+      const exp = denP / g
+      const userN = parseNum(lastUser)
+      if (Math.abs(userN - exp) < 1e-9) {
+        const nextPrompt = lang === 'en' ? `Fill in: answer = __ (e.g. 3/8)` : `Vul in: antwoord = __ (bijv. 3/8)`
+        const w = fracMulDivWhy(ageBand, 'final', state.turn, mode)
+        const msg =
+          ageBand === 'junior'
+            ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt, { forceTone: 'mid' })
+            : ageBand === 'teen'
+              ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+              : nextPrompt
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', denS: exp } }
+      }
+      return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
+    }
+
+    // final: accept any equivalent fraction to (numS/denS)
+    const f = parseFraction(lastUser)
+    if (f) {
+      const nn = Number(state.numS ?? state.numP)
+      const dd = Number(state.denS ?? state.denP)
+      if (Number.isFinite(nn) && Number.isFinite(dd) && f.n * dd === nn * f.d) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     }
     return { handled: true, payload: { message: promptOf(), action: 'none' }, nextState: state }
   }

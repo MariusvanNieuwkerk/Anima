@@ -6,7 +6,7 @@ import { deleteChildAccount } from '@/app/actions/parent-actions'
 
 type Child = { id: string; displayName: string; username?: string | null }
 
-export default function DeleteChildSection({ children }: { children: Child[] }) {
+export default function DeleteChildSection({ kids }: { kids: Child[] }) {
   const [open, setOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string>('')
   const [confirm, setConfirm] = useState('')
@@ -14,7 +14,7 @@ export default function DeleteChildSection({ children }: { children: Child[] }) 
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const selected = useMemo(() => children.find((c) => c.id === selectedId) || null, [children, selectedId])
+  const selected = useMemo(() => kids.find((c) => c.id === selectedId) || null, [kids, selectedId])
   const expected = useMemo(() => {
     const u = selected?.username ? String(selected.username) : ''
     if (u.trim()) return u.trim()
@@ -46,7 +46,7 @@ export default function DeleteChildSection({ children }: { children: Child[] }) 
     })
   }
 
-  if (!children.length) return null
+  if (!kids.length) return null
 
   return (
     <section className="mt-10 pt-8 border-t border-stone-200">
@@ -93,7 +93,7 @@ export default function DeleteChildSection({ children }: { children: Child[] }) 
                   className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-red-200"
                 >
                   <option value="">Selecteer…</option>
-                  {children.map((c) => (
+                  {kids.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.displayName}
                       {c.username ? ` (@${c.username})` : ''}

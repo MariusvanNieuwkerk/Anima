@@ -1218,7 +1218,7 @@ export default function Workspace() {
       {/* STICKY ZONES: Header - flex-none z-50 relative (mag niet krimpen) */}
       <div className="xl:hidden flex-none z-50 relative">
         <MobileHeader 
-          activeView={mobileView}
+          activeView={mobileView} 
           onViewChange={handleViewChange}
           animaName={animaName}
           onMenuClick={() => setIsMenuOpen(true)}

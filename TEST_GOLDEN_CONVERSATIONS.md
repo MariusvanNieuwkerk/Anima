@@ -712,6 +712,56 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 20c-2) Breuken vermenigvuldigen (canon: teller×teller → noemer×noemer → eindbreuk) (NL)
+**User**
+1. `1/4 × 3/5`
+
+**Must**
+- Anima vraagt eerst 1 teller‑stap, bv. `Vul in: 1×3 = __ (teller)` (junior/teen mag een korte “waarom” zin ervoor zetten).
+- Daarna vraagt Anima 1 noemer‑stap: `Vul in: 4×5 = __ (noemer)`.
+- Daarna vraagt Anima om het eindantwoord als breuk: `antwoord = __` (bv. `3/20`) en stopt bij correct.
+
+**Must-not**
+- Niet meteen het eindantwoord geven in beurt 1.
+- Geen decimalen als eindantwoord afdwingen (breuk is prima).
+
+---
+
+## 20c-3) Breuken delen (canon: keer om → teller×teller → noemer×noemer → vereenvoudigen → eindbreuk) (NL)
+**User**
+1. `1/2 ÷ 3/4`
+
+**Must**
+- Stap 1: Anima vraagt omkeren: `Keer om: 3/4 wordt __/__` (verwacht `4/3`).
+- Stap 2: `Vul in: 1×4 = __ (teller)`.
+- Stap 3: `Vul in: 2×3 = __ (noemer)`.
+- Stap 4: Vereenvoudigen via `grootste deler die in 4 en 6 past = __` en daarna `4 ÷ 2 = __` en `6 ÷ 2 = __`.
+- Daarna vraagt Anima: `antwoord = __` (bv. `2/3`) en stopt bij correct.
+
+---
+
+## 20c-4) Breuken delen (stuck/ACK → herhaal stap met korte hint) (NL)
+**Setup**: Start met test 20c-3 en ga door tot Anima vraagt: `Keer om: 3/4 wordt __/__`.
+
+**User**
+1. `weet ik niet`
+
+**Must**
+- Anima geeft 1 korte hint (bv. “Tip: omkeren = teller en noemer wisselen.”) en herhaalt **dezelfde** invulvraag.
+
+---
+
+## 20c-5) Breuken vermenigvuldigen (zelfde som opnieuw → restart canon) (NL)
+**Setup**: Maak test 20c-2 af tot Anima bevestigt met `Juist.`.
+
+**User**
+1. `1/4 × 3/5`
+
+**Must**
+- Anima start opnieuw met de eerste stap (teller‑stap), en springt niet naar het eindantwoord.
+
+---
+
 ## 20d) Korting (percent word problem) (NL)
 **User**
 1. `20% korting op €80`

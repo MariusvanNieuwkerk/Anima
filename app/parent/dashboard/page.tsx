@@ -465,7 +465,7 @@ export default function ParentDashboardPage() {
                 <AddChildForm />
 
                 {/* Danger zone (double confirmation) */}
-                <DeleteChildSection children={children} />
+                <DeleteChildSection kids={children} />
               </div>
             </details>
           </section>
