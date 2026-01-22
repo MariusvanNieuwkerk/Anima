@@ -307,7 +307,7 @@ function fracStepWhy(ageBand: AgeBand, step: string, seed: number): { nl: string
       }
     if (step === 'n2')
       return {
-        nl: pickVariant(['1/8 heeft al noemer 8, dus ×1 is genoeg.', 'Deze is al in achtsten: ×1.'], seed),
+        nl: pickVariant(['Deze breuk heeft al noemer 8, dus we hoeven niks om te rekenen.', 'De noemer is al 8, dus dit stukje blijft hetzelfde.'], seed),
         en: pickVariant(['1/8 already has denominator 8, so ×1.'], seed),
       }
     if (step === 'num')
