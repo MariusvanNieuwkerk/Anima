@@ -8,6 +8,7 @@ export type TutorSMKind =
   | 'order_ops'
   | 'arith_unit'
   | 'dec_muldiv'
+  | 'round'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -127,6 +128,21 @@ export type TutorSMState =
       step: 'int_op' | 'place'
       intResult?: number
       expected?: number
+    }
+  | {
+      v: 1
+      kind: 'round'
+      mode: 'int' | 'decimal'
+      valueText: string
+      valueNum: number
+      // for int mode: 10/100/1000
+      place?: 10 | 100 | 1000
+      // for decimal mode: number of decimals to keep (0..3)
+      decimals?: 0 | 1 | 2 | 3
+      turn: number
+      step: 'look' | 'result'
+      lookDigit: number
+      expected: number
     }
   | {
       v: 1
@@ -589,6 +605,7 @@ type ParsedProblem =
   | { kind: 'order_ops'; expr: string }
   | { kind: 'arith_unit'; expr: string; unit: string }
   | { kind: 'dec_muldiv'; op: '*' | '/'; aText: string; bText: string; unit?: string }
+  | { kind: 'round'; mode: 'int' | 'decimal'; valueText: string; place?: 10 | 100 | 1000; decimals?: 0 | 1 | 2; valueNum: number }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1118,6 +1135,32 @@ function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
 
+  // Rounding / estimation (NL): "Rond 347 af op tientallen", "Rond 3,1415 af op 2 decimalen"
+  {
+    const low = core0.toLowerCase()
+    if (/\b(afronden|rond)\b/.test(low)) {
+      const numTextM = core0.match(/-?\d+(?:[.,]\d+)?/)
+      const numText = numTextM ? numTextM[0] : ''
+      const valueNum = numText ? parseNum(numText) : NaN
+      if (Number.isFinite(valueNum)) {
+        const tens = /\b(tiental|tientallen)\b/.test(low) ? 10 : null
+        const hundreds = /\b(honderd(tal|tallen)?)\b/.test(low) ? 100 : null
+        const thousands = /\b(duizend(tal|tallen)?)\b/.test(low) ? 1000 : null
+        const decM = low.match(/\b(\d)\s*(?:decimaal|decimalen)\b/)
+        if (tens || hundreds || thousands) {
+          const place = (tens || hundreds || thousands) as 10 | 100 | 1000
+          return { kind: 'round', mode: 'int', valueText: numText, valueNum, place }
+        }
+        if (decM) {
+          const decimals = Math.max(0, Math.min(2, Number(decM[1] || 0))) as 0 | 1 | 2
+          return { kind: 'round', mode: 'decimal', valueText: numText, valueNum, decimals }
+        }
+        // default: round to nearest whole number
+        return { kind: 'round', mode: 'decimal', valueText: numText, valueNum, decimals: 0 }
+      }
+    }
+  }
+
   // Arithmetic with a unit/currency label (money/measure): keep deterministic order-ops but preserve a unit suffix for prompts.
   {
     const low = core0.toLowerCase()
@@ -1329,6 +1372,7 @@ function isStandaloneProblemStatement(text: string): boolean {
   // Note: unknown/mini-algebra intentionally includes '='; it has its own matching below.
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+  if (/\b(afronden|rond)\b/i.test(core) && /\d/.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
   if (/\b(zet|maak|schrijf)\b/i.test(core) && /\b(om|naar|in|als)\b/i.test(core) && (/%|procent|percent|kommagetal|decimaal|breuk/i.test(core))) return true
@@ -1444,6 +1488,63 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           prompt: step.promptPretty,
           expected: step.expected,
           nextExpr: step.nextExpr,
+        },
+      }
+    }
+    if (problem.kind === 'round') {
+      const turn = 0
+      const why = ageBand === 'junior' ? 'Afronden: kijk naar het cijfer erachter.' : ''
+      const lookDigit = (() => {
+        if (problem.mode === 'int') {
+          const place = problem.place as number
+          const rightPlace = place / 10
+          const scaled = Math.abs(problem.valueNum) / rightPlace
+          return Math.floor(scaled) % 10
+        }
+        const d = problem.decimals ?? 0
+        // digit right after the rounding position
+        const scaled = Math.abs(problem.valueNum) * Math.pow(10, d + 1)
+        return Math.floor(scaled) % 10
+      })()
+      const prompt =
+        lang === 'en'
+          ? `Fill in: look digit = __`
+          : problem.mode === 'int'
+            ? `Kijkcijfer bij afronden op ${problem.place}: __`
+            : `Kijkcijfer bij afronden op ${problem.decimals} decimaal(en): __`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, turn, why, why, prompt, { forceTone: 'mid' }) : prompt
+      const expected = (() => {
+        const sign = problem.valueNum < 0 ? -1 : 1
+        const abs = Math.abs(problem.valueNum)
+        if (problem.mode === 'int') {
+          const place = problem.place as number
+          const down = Math.floor(abs / place) * place
+          const up = down + place
+          const roundedAbs = lookDigit >= 5 ? up : down
+          return sign * roundedAbs
+        }
+        const d = problem.decimals ?? 0
+        const factor = Math.pow(10, d)
+        let trunc = Math.floor(abs * factor)
+        if (lookDigit >= 5) trunc += 1
+        const roundedAbs = trunc / factor
+        return sign * roundedAbs
+      })()
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'round',
+          mode: problem.mode,
+          valueText: problem.valueText,
+          valueNum: problem.valueNum,
+          place: problem.place as any,
+          decimals: problem.decimals as any,
+          turn,
+          step: 'look',
+          lookDigit,
+          expected,
         },
       }
     }
@@ -2780,6 +2881,52 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         ? `Place the decimal. Fill in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
         : `Zet de komma terug. Vul in: ${expInt} ÷ ${state.scale} = __${unitSuffix}`
     return { handled: true, payload: { message: retry, action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'round') {
+    const isJunior = ageBand === 'junior'
+    const promptLook = () => {
+      if (lang === 'en') return `Fill in: look digit = __`
+      if (state.mode === 'int') return `Kijkcijfer bij afronden op ${state.place}: __`
+      return `Kijkcijfer bij afronden op ${state.decimals} decimaal(en): __`
+    }
+    const promptResult = () => {
+      if (lang === 'en') return `Fill in: rounded answer = __`
+      if (state.mode === 'int') return `Vul in: ${fmtNL(state.valueNum)} afgerond op ${state.place} = __`
+      if ((state.decimals ?? 0) === 0) return `Vul in: ${fmtNL(state.valueNum)} afgerond = __`
+      return `Vul in: ${fmtNL(state.valueNum)} afgerond op ${state.decimals} decimaal(en) = __`
+    }
+
+    if (!canAnswer) {
+      const p = state.step === 'look' ? promptLook() : promptResult()
+      const why = isJunior ? 'Kijk naar het cijfer erachter.' : ''
+      return { handled: true, payload: { message: isJunior ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+
+    if (state.step === 'look') {
+      if (Math.abs(userN - state.lookDigit) < 1e-9) {
+        const p = promptResult()
+        const rule =
+          lang === 'en'
+            ? `Rule: 5 or more → round up.`
+            : state.lookDigit >= 5
+              ? `Omdat ${state.lookDigit} ≥ 5 is, ronden we omhoog.`
+              : `Omdat ${state.lookDigit} < 5 is, ronden we omlaag.`
+        const msg = isJunior ? coachJunior(lang, ageBand, state.turn, rule, rule, p, { forceTone: 'mid' }) : p
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'result' } }
+      }
+      return { handled: true, payload: { message: promptLook(), action: 'none' }, nextState: state }
+    }
+
+    // result
+    if (Math.abs(userN - state.expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    if (isStuck(lastUser)) {
+      const hint = state.lookDigit >= 5 ? 'Tip: kijkcijfer is 5 of meer → omhoog.' : 'Tip: kijkcijfer is minder dan 5 → omlaag.'
+      return { handled: true, payload: { message: `${hint} ${promptResult()}`.trim(), action: 'none' }, nextState: state }
+    }
+    return { handled: true, payload: { message: promptResult(), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {

@@ -582,6 +582,39 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 - Stap 1: `Vul in: 0,75 = __/100`
 - Stap 2: `Vul in: antwoord = __` (bv. `3/4`) en stop bij correct (ook als leerling `75/100` invult mag dat als “zelfde waarde”).
 
+---
+
+## 5q) Afronden op tientallen (Extended) (NL)
+**User**
+1. `Rond 347 af op tientallen`
+
+**Must**
+- Stap 1: Anima vraagt het **kijkcijfer** (bij afronden op tientallen is dat de eenheden): `Kijkcijfer bij afronden op 10: __`
+- Stap 2: Anima vraagt het **afgeronde antwoord**: `Vul in: 347 afgerond op 10 = __`
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5q-2) Afronden op 1 decimaal (Extended) (NL)
+**User**
+1. `Rond 3,141 af op 1 decimaal`
+
+**Must**
+- Stap 1: `Kijkcijfer bij afronden op 1 decimaal(en): __` (kijkcijfer is 4)
+- Stap 2: `Vul in: 3,141 afgerond op 1 decimaal(en) = __` (3,1)
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5q-3) Afronden (ACK/stuck → herhaal stap) (NL)
+**Setup**: Start met test 5q en ga door tot Anima vraagt om het kijkcijfer.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint (“kijkcijfer is het cijfer erachter”) en herhaalt dezelfde invulvraag.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
