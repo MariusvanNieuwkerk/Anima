@@ -9,6 +9,7 @@ export type TutorSMKind =
   | 'arith_unit'
   | 'dec_muldiv'
   | 'round'
+  | 'ratio'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -142,6 +143,26 @@ export type TutorSMState =
       turn: number
       step: 'look' | 'result'
       lookDigit: number
+      expected: number
+    }
+  | {
+      v: 1
+      kind: 'ratio'
+      mode: 'parts' | 'scale'
+      a: number
+      b: number
+      // parts-mode
+      givenParts?: number
+      givenValue?: number
+      perPart?: number
+      askParts?: number
+      // scale-mode
+      scaleDen?: number
+      dist?: number
+      unit?: 'cm' | 'm' | 'km'
+      wantUnit?: 'cm' | 'm' | 'km'
+      turn: number
+      step: 'per_part' | 'ask_value' | 'mul' | 'convert'
       expected: number
     }
   | {
@@ -606,6 +627,8 @@ type ParsedProblem =
   | { kind: 'arith_unit'; expr: string; unit: string }
   | { kind: 'dec_muldiv'; op: '*' | '/'; aText: string; bText: string; unit?: string }
   | { kind: 'round'; mode: 'int' | 'decimal'; valueText: string; place?: 10 | 100 | 1000; decimals?: 0 | 1 | 2; valueNum: number }
+  | { kind: 'ratio'; mode: 'parts'; a: number; b: number; givenParts: number; givenValue: number; askParts: number }
+  | { kind: 'ratio'; mode: 'scale'; scaleDen: number; dist: number; unit: 'cm' | 'm' | 'km'; wantUnit?: 'cm' | 'm' | 'km' }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1161,6 +1184,42 @@ function parseProblem(text: string): ParsedProblem | null {
     }
   }
 
+  // Ratios / scale (NL)
+  {
+    const low = core0.toLowerCase()
+    // Scale: "schaal 1:50, 3 cm is __ m"
+    if (/\bschaal\b/.test(low)) {
+      const denM = low.match(/\b1\s*[:/]\s*(\d+)\b/)
+      const distM = low.match(/(\d+(?:[.,]\d+)?)\s*(cm|m|km)\b/)
+      if (denM && distM) {
+        const scaleDen = Number(denM[1])
+        const dist = parseNum(distM[1])
+        const unit = distM[2] as 'cm' | 'm' | 'km'
+        const wantUnitM = low.match(/\bnaar\s*(cm|m|km)\b|\bin\s*(cm|m|km)\b/)
+        const wantUnit = (wantUnitM?.[1] || wantUnitM?.[2] || '') as any
+        if (Number.isFinite(scaleDen) && scaleDen > 0 && Number.isFinite(dist) && (unit === 'cm' || unit === 'm' || unit === 'km')) {
+          return { kind: 'ratio', mode: 'scale', scaleDen, dist, unit, wantUnit: wantUnit || undefined }
+        }
+      }
+    }
+
+    // Parts ratio: "verhouding 2:3, als 2 delen = 8, hoeveel is 3 delen?"
+    const ratioM = low.match(/\b(\d+)\s*:\s*(\d+)\b/)
+    if (ratioM) {
+      const a = Number(ratioM[1])
+      const b = Number(ratioM[2])
+      const givenM = low.match(/\b(?:als|waarbij)\s*(\d+)\s*(?:delen?|stuk(?:ken)?)\s*=\s*(\d+(?:[.,]\d+)?)\b/)
+      if (Number.isFinite(a) && Number.isFinite(b) && givenM) {
+        const givenParts = Number(givenM[1])
+        const givenValue = parseNum(givenM[2])
+        const askParts = givenParts === a ? b : givenParts === b ? a : NaN
+        if (Number.isFinite(givenParts) && Number.isFinite(givenValue) && Number.isFinite(askParts)) {
+          return { kind: 'ratio', mode: 'parts', a, b, givenParts, givenValue, askParts }
+        }
+      }
+    }
+  }
+
   // Arithmetic with a unit/currency label (money/measure): keep deterministic order-ops but preserve a unit suffix for prompts.
   {
     const low = core0.toLowerCase()
@@ -1373,6 +1432,8 @@ function isStandaloneProblemStatement(text: string): boolean {
   const s = strip(t)
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
   if (/\b(afronden|rond)\b/i.test(core) && /\d/.test(core)) return true
+  if (/\bschaal\b/i.test(core) && /\b1\s*[:/]\s*\d+\b/.test(core)) return true
+  if (/\bverhouding\b/i.test(core) && /\b\d+\s*:\s*\d+\b/.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*[+\-]\s*(-?\d+)\s*\/\s*(-?\d+)/.test(core)) return true
   if (/\b(zet|maak|schrijf)\b/i.test(core) && /\b(om|naar|in|als)\b/i.test(core) && (/%|procent|percent|kommagetal|decimaal|breuk/i.test(core))) return true
@@ -1551,6 +1612,59 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           step: 'look',
           lookDigit,
           expected,
+        },
+      }
+    }
+    if (problem.kind === 'ratio' && problem.mode === 'parts') {
+      const { a, b, givenParts, givenValue, askParts } = problem
+      const why = ageBand === 'junior' ? 'Verhouding: eerst uitrekenen hoeveel 1 deel is.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${givenValue} ÷ ${givenParts} = __ (value of 1 part)`
+          : `Vul in: ${fmtNL(givenValue)} ÷ ${givenParts} = __ (1 deel)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'ratio',
+          mode: 'parts',
+          a,
+          b,
+          givenParts,
+          givenValue,
+          askParts,
+          turn: 0,
+          step: 'per_part',
+          expected: givenValue / givenParts,
+        },
+      }
+    }
+    if (problem.kind === 'ratio' && problem.mode === 'scale') {
+      const { scaleDen, dist, unit, wantUnit } = problem
+      const why = ageBand === 'junior' ? `Schaal 1:${scaleDen} betekent ×${scaleDen}.` : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${dist} × ${scaleDen} = __ (${unit})`
+          : `Vul in: ${fmtNL(dist)} × ${scaleDen} = __ (${unit})`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : [why, prompt].filter(Boolean).join(' ')
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'ratio',
+          mode: 'scale',
+          a: 1,
+          b: scaleDen,
+          scaleDen,
+          dist,
+          unit,
+          wantUnit,
+          turn: 0,
+          step: 'mul',
+          expected: dist * scaleDen,
         },
       }
     }
@@ -2934,6 +3048,59 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       return { handled: true, payload: { message: `${hint} ${promptResult()}`.trim(), action: 'none' }, nextState: state }
     }
     return { handled: true, payload: { message: promptResult(), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'ratio') {
+    if (state.mode === 'parts') {
+      const promptPer = () =>
+        lang === 'en'
+          ? `Fill in: ${state.givenValue} ÷ ${state.givenParts} = __`
+          : `Vul in: ${fmtNL(Number(state.givenValue))} ÷ ${Number(state.givenParts)} = __ (1 deel)`
+      const promptAsk = (perPart: number) =>
+        lang === 'en'
+          ? `Fill in: ${Number(state.askParts)} × ${perPart} = __`
+          : `Vul in: ${Number(state.askParts)} × ${fmtNL(perPart)} = __`
+
+      if (!canAnswer) {
+        const p = state.step === 'per_part' ? promptPer() : promptAsk(Number(state.perPart))
+        const why = ageBand === 'junior' ? 'We werken met “delen” in de verhouding.' : ''
+        return { handled: true, payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' }, nextState: state }
+      }
+
+      const userN = parseNum(lastUser)
+      if (state.step === 'per_part') {
+        const exp = Number(state.expected)
+        if (Math.abs(userN - exp) < 1e-9) {
+          const p = promptAsk(exp)
+          const why = ageBand === 'junior' ? `Nu ${state.askParts} delen.` : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'ask_value', perPart: exp, expected: exp * Number(state.askParts) },
+          }
+        }
+        return { handled: true, payload: { message: promptPer(), action: 'none' }, nextState: state }
+      }
+
+      // ask_value
+      const exp = Number(state.expected)
+      if (Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+      return { handled: true, payload: { message: promptAsk(Number(state.perPart)), action: 'none' }, nextState: state }
+    }
+
+    // scale
+    const promptMul = () =>
+      lang === 'en'
+        ? `Fill in: ${state.dist} × ${state.scaleDen} = __ (${state.unit})`
+        : `Vul in: ${fmtNL(Number(state.dist))} × ${Number(state.scaleDen)} = __ (${String(state.unit)})`
+    if (!canAnswer) {
+      const why = ageBand === 'junior' ? `Schaal 1:${state.scaleDen} betekent ×${state.scaleDen}.` : ''
+      return { handled: true, payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, promptMul(), { forceTone: 'mid' }) : promptMul(), action: 'none' }, nextState: state }
+    }
+    const userN = parseNum(lastUser)
+    const exp = Number(state.expected)
+    if (Math.abs(userN - exp) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptMul(), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {

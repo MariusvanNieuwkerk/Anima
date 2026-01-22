@@ -615,6 +615,38 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima geeft 1 korte hint (“kijkcijfer is het cijfer erachter”) en herhaalt dezelfde invulvraag.
 
+---
+
+## 5r) Verhouding (Extended) (NL)
+**User**
+1. `Verhouding 2:3, als 2 delen = 8, hoeveel is 3 delen?`
+
+**Must**
+- Stap 1: `Vul in: 8 ÷ 2 = __ (1 deel)`
+- Stap 2: `Vul in: 3 × __ = __` (waarde van 3 delen)
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5r-2) Schaal (Extended) (NL)
+**User**
+1. `Schaal 1:50, 3 cm is hoeveel cm echt?`
+
+**Must**
+- Anima vraagt 1 invulstap: `Vul in: 3 × 50 = __ (cm)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5r-3) Verhouding (ACK/stuck → herhaal stap) (NL)
+**Setup**: Start met test 5r en ga door tot Anima vraagt: `Vul in: 8 ÷ 2 = __`.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint (bv. “1 deel = totaal ÷ aantal delen”) en herhaalt dezelfde invulvraag.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`
