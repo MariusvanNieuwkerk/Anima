@@ -270,6 +270,12 @@ function coachJunior(lang: string, ageBand: AgeBand, turn: number, nlMid: string
   return mid ? `${mid} ${prompt}`.trim() : prompt
 }
 
+function coachTeen(lang: string, ageBand: AgeBand, nl: string, en: string, prompt: string) {
+  if (ageBand !== 'teen') return prompt
+  const pre = (lang === 'en' ? en : nl).trim()
+  return pre ? `${pre} ${prompt}`.trim() : prompt
+}
+
 function pickVariant(arr: string[], seed: number): string {
   if (!arr.length) return ''
   const i = Math.abs(Math.trunc(seed)) % arr.length
@@ -983,7 +989,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       return {
         handled: true,
         payload: {
-          message: ageBand === 'junior' ? coachJunior(lang, ageBand, 0, w.nl, w.en, prompt) : ageBand === 'student' ? prompt : [fracHintNL(ageBand), prompt].filter(Boolean).join(' '),
+          message:
+            ageBand === 'junior'
+              ? coachJunior(lang, ageBand, 0, w.nl, w.en, prompt)
+              : ageBand === 'teen'
+                ? coachTeen(lang, ageBand, w.nl, w.en, prompt)
+                : prompt,
           action: 'none',
         },
         nextState: { v: 1, kind: 'frac_addsub', op, a, b, c, d, turn: 0, step: 'lcm', lcm },
@@ -2169,7 +2180,12 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const p = promptOf()
       const hint = fracHintNL(ageBand)
       const w = juniorWhy('frac_addsub', state.step, state.turn, { a, b, c, d })
-      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' }) : ageBand === 'student' ? p : [hint, p].filter(Boolean).join(' ')
+      const msg =
+        ageBand === 'junior'
+          ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, p, { forceTone: 'mid' })
+          : ageBand === 'teen'
+            ? coachTeen(lang, ageBand, w.nl, w.en, p)
+            : p
       return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
     }
 
@@ -2181,7 +2197,15 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const w = juniorWhy('frac_addsub', 'n1', state.turn, { a, b, c, d })
         return {
           handled: true,
-          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt) : nextPrompt, action: 'none' },
+          payload: {
+            message:
+              ageBand === 'junior'
+                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt)
+                : ageBand === 'teen'
+                  ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+                  : nextPrompt,
+            action: 'none',
+          },
           nextState: { ...state, turn: state.turn + 1, step: 'n1' },
         }
       }
@@ -2197,7 +2221,15 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const w = juniorWhy('frac_addsub', 'n2', state.turn, { a, b, c, d })
         return {
           handled: true,
-          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt) : nextPrompt, action: 'none' },
+          payload: {
+            message:
+              ageBand === 'junior'
+                ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, nextPrompt)
+                : ageBand === 'teen'
+                  ? coachTeen(lang, ageBand, w.nl, w.en, nextPrompt)
+                  : nextPrompt,
+            action: 'none',
+          },
           nextState: { ...state, turn: state.turn + 1, step: 'n2', n1: exp },
         }
       }
@@ -2218,9 +2250,11 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
             message:
               ageBand === 'junior'
                 ? coachJunior(lang, ageBand, state.turn, w.nl, w.en, lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`)
-                : lang === 'en'
-                  ? `Fill in: ${n1} ${sym} ${exp} = __`
-                  : `Vul in: ${n1} ${sym} ${exp} = __`,
+                : ageBand === 'teen'
+                  ? coachTeen(lang, ageBand, w.nl, w.en, lang === 'en' ? `Fill in: ${n1} ${sym} ${exp} = __` : `Vul in: ${n1} ${sym} ${exp} = __`)
+                  : lang === 'en'
+                    ? `Fill in: ${n1} ${sym} ${exp} = __`
+                    : `Vul in: ${n1} ${sym} ${exp} = __`,
             action: 'none',
           },
           nextState: { ...state, turn: state.turn + 1, step: 'num', n2: exp },
