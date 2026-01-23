@@ -1411,6 +1411,34 @@ export function applyTutorPolicyWithDebug(
     const userN = parseNum(lastUser)
     if (Number.isFinite(expected) && Number.isFinite(userN)) {
       if (Math.abs(userN - expected) < 1e-9) {
+        // Word-problem final-step guard:
+        // Sometimes the model replies with praise-only ("Juist.") after a final fill-blank like
+        // "Nu de toeslag erbij. Vul in: 13,5 + 2 = __ (euro)".
+        // In that case we should STOP (keep the praise-only) and NOT replace it with the generic
+        // "Vul in: __ (één volgend getal)."
+        const looksLikeWordProblemFinalFill = (() => {
+          const p = String(prevAssistant || '').toLowerCase()
+          if (!p) return false
+          if (!p.includes('__')) return false
+          // Must look like a compute/fill-blank line (operator + equals/blank).
+          if (!/[+\-*/:×x÷]/.test(p)) return false
+          // Typical word-problem/units cues.
+          if (!/(euro|cent|wisselgeld|toeslag|verzendkosten|administratiekosten|servicekosten|per\s+persoon|per\s+kind|per\s+mens)/.test(p))
+            return false
+          // Strong signals that it's the last step of a word problem.
+          if (/\bnu\s+(de|het)\s+(toeslag|wisselgeld)\b/.test(p)) return true
+          if (/\bper\s+persoon\b/.test(p)) return true
+          // If we explicitly asked for the end amount with a unit suffix, treat as final.
+          if (/\b\(euro\b/.test(p) || /\b\(euro\s+per\s+persoon\b/.test(p)) return true
+          return false
+        })()
+        if (looksLikeWordProblemFinalFill && isPraiseOnly(out.message)) {
+          mark('stop_after_word_problem_final_fill')
+          out.message = lang === 'en' ? 'Correct.' : 'Juist.'
+          out.action = out.action || 'none'
+          return { payload: out, debug }
+        }
+
         // If the assistant asked for the FULL original expression (e.g. "Vul in: 47 + 28 = __"),
         // we must confirm and stop (do not continue with extra micro-steps).
         const seedOp = extractSimpleOp(canonSeed || '')
