@@ -43,6 +43,8 @@ const keywordByTopic: Record<GrammarTopicId, RegExp> = {
 const looksLikeSentence = (t: string) => {
   const s = String(t || '').trim()
   if (s.length < 6) return false
+  // Guard: money/percent questions are often math word problems; don't treat as grammar "sentence check".
+  if (/[€$%]/.test(s) || /\b(euro|cent|procent|percent)\b/i.test(s)) return false
   // no digits-heavy / math
   if (/\d/.test(s) && /[+\-*/=]/.test(s)) return false
   // has letters and spaces, or punctuation typical of sentences
@@ -57,7 +59,8 @@ export function routeGrammarTopic(text: string, _lang: SupportedLang): GrammarRo
   }
 
   // Generic fallback: if user pasted a sentence and asks if it's correct → start with finite verb.
-  if (looksLikeSentence(t) && /[?¿]$/.test(t.trim())) {
+  // Important: do NOT trigger on sentences that include digits (prices/dates) — those are too ambiguous and often math.
+  if (!/\d/.test(t) && looksLikeSentence(t) && /[?¿]$/.test(t.trim())) {
     return { topic: 'find_finite_verb', confidence: 'medium' }
   }
 

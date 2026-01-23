@@ -669,6 +669,56 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima geeft 1 korte hint (“eerst samen kost”) en herhaalt dezelfde invulvraag.
 
+---
+
+## 5t) Verhaalsom: totaal + toeslag (Extended) (NL)
+**User**
+1. `Je koopt 3 kaartjes van €4,50 en €2 administratiekosten. Wat kost het totaal?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de samen-kost: `Vul in: 3 × 4,5 = __ (euro)` (of equivalent).
+- Stap 2: Daarna het totaal met toeslag: `Vul in: __ + 2 = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet starten met grammatica (bv. `Persoonsvorm = __`).
+
+---
+
+## 5t-2) Verhaalsom totaal + toeslag (ACK/stuck → hint + herhaal stap) (NL)
+**Setup**: Start met test 5t en ga door tot Anima de samen-kost vraagt.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint (bv. “eerst samen kost”) en herhaalt dezelfde invulvraag.
+
+---
+
+## 5u) Verhaalsom: per persoon (Extended) (NL)
+**User**
+1. `Je koopt 2 pizza's van €6,50. Met 4 personen. Hoeveel is dat per persoon?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de totaalprijs: `Vul in: 2 × 6,5 = __ (euro)` (of equivalent).
+- Stap 2: Daarna per persoon: `Vul in: __ ÷ 4 = __ (euro per persoon)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet starten met grammatica (bv. `Persoonsvorm = __`).
+
+---
+
+## 5u-2) Verhaalsom per persoon (ACK/stuck → hint + herhaal stap) (NL)
+**Setup**: Start met test 5u en ga door tot Anima de totaalprijs vraagt.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint (bv. “eerst samen kost”) en herhaalt dezelfde invulvraag.
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

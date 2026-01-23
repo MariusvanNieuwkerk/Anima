@@ -11,6 +11,8 @@ export type TutorSMKind =
   | 'round'
   | 'ratio'
   | 'money_change'
+  | 'money_fee'
+  | 'money_split'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -175,6 +177,28 @@ export type TutorSMState =
       paid: number
       turn: number
       step: 'total' | 'change'
+      total?: number
+    }
+  | {
+      v: 1
+      kind: 'money_fee'
+      // subtotal = qty * price; total = subtotal + fee
+      qty: number
+      price: number
+      fee: number
+      turn: number
+      step: 'subtotal' | 'total'
+      subtotal?: number
+    }
+  | {
+      v: 1
+      kind: 'money_split'
+      // total = qty * price; per = total / people
+      qty: number
+      price: number
+      people: number
+      turn: number
+      step: 'total' | 'per'
       total?: number
     }
   | {
@@ -642,6 +666,8 @@ type ParsedProblem =
   | { kind: 'ratio'; mode: 'parts'; a: number; b: number; givenParts: number; givenValue: number; askParts: number }
   | { kind: 'ratio'; mode: 'scale'; scaleDen: number; dist: number; unit: 'cm' | 'm' | 'km'; wantUnit?: 'cm' | 'm' | 'km' }
   | { kind: 'money_change'; qty: number; price: number; paid: number }
+  | { kind: 'money_fee'; qty: number; price: number; fee: number }
+  | { kind: 'money_split'; qty: number; price: number; people: number }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1210,6 +1236,45 @@ function parseProblem(text: string): ParsedProblem | null {
     }
   }
 
+  // Money total + fee word problem (NL): "3 kaartjes van €4,50 en €2 administratiekosten. Wat kost het totaal?"
+  {
+    const low = core0.toLowerCase()
+    const hasFee = /\b(verzendkosten|toeslag|administratiekosten|servicekosten|extra)\b/.test(low)
+    if (hasFee) {
+      const qtyM = low.match(/\b(\d+)\s*(?:x|keer)\b|\b(\d+)\s+(?:stuks?|stukken|kaartjes|tickets|boeken?|broden?|repen?|ijsjes|appels?)\b/)
+      const priceEachM = low.match(/\b(?:van|voor)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const feeM =
+        low.match(/\b(?:verzendkosten|toeslag|administratiekosten|servicekosten|extra)\s*(?:van)?\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/) ||
+        low.match(/€\s*(\d+(?:[.,]\d+)?)\s*(?:verzendkosten|toeslag|administratiekosten|servicekosten)\b/)
+      const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+      const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+      const fee = feeM ? parseNum(feeM[1]) : NaN
+      if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && Number.isFinite(fee)) return { kind: 'money_fee', qty, price, fee }
+    }
+  }
+
+  // Money split word problem (NL): "2 pizza's van €6,50. Met 4 personen. Hoeveel per persoon?"
+  {
+    const low = core0.toLowerCase()
+    const hasSplit = /\b(per\s+persoon|per\s+kind|per\s+mens|deel(?:t)?\s*(?:het)?\s*door|delen\s*(?:we)?\s*door|met\s+\d+\s+(?:personen|mensen|kinderen)|onder\s+\d+\s+(?:personen|mensen|kinderen))\b/.test(
+      low
+    )
+    if (hasSplit) {
+      const qtyM = low.match(/\b(\d+)\s*(?:x|keer)\b|\b(\d+)\s+(?:stuks?|stukken|pizza'?s|kaartjes|tickets|boeken?|broden?|repen?|ijsjes|appels?)\b/)
+      const priceEachM = low.match(/\b(?:van|voor)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const peopleM =
+        low.match(/\bdeel(?:t)?\s*(?:het)?\s*door\s*(\d+)\b/) ||
+        low.match(/\b(?:met|onder)\s*(\d+)\s*(?:personen|mensen|kinderen|vrienden)\b/) ||
+        low.match(/\b(\d+)\s*(?:personen|mensen|kinderen)\b/)
+      const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+      const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+      const people = peopleM ? Number(peopleM[1]) : NaN
+      if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && Number.isFinite(people) && people > 0) {
+        return { kind: 'money_split', qty, price, people }
+      }
+    }
+  }
+
   // Rounding / estimation (NL): "Rond 347 af op tientallen", "Rond 3,1415 af op 2 decimalen"
   {
     const low = core0.toLowerCase()
@@ -1486,6 +1551,9 @@ function isStandaloneProblemStatement(text: string): boolean {
   const core = s.replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
   if (/\b(afronden|rond)\b/i.test(core) && /\d/.test(core)) return true
   if (/\b(wisselgeld|terug|terugkrijg|terugkrijgen)\b/i.test(core) && /€|\beuro\b|\d/.test(core)) return true
+  if (/\b(verzendkosten|toeslag|administratiekosten|servicekosten|extra)\b/i.test(core) && /€|\beuro\b|\d/.test(core)) return true
+  if (/\b(per\s+persoon|deel(?:t)?\s*(?:het)?\s*door|met\s+\d+\s+(?:personen|mensen|kinderen)|onder\s+\d+\s+(?:personen|mensen|kinderen))\b/i.test(core) && /€|\beuro\b|\d/.test(core))
+    return true
   if (/\bschaal\b/i.test(core) && /\b1\s*[:/]\s*\d+\b/.test(core)) return true
   if (/\bverhouding\b/i.test(core) && /\b\d+\s*(?:[:/])\s*\d+\b/.test(core)) return true
   if (/(-?\d+)\s*\/\s*(-?\d+)\s*(?:(?:[*×x]|:|÷)|\s+\/\s+)\s*(-?\d+)\s*\/\s*(-?\d+)/i.test(core)) return true
@@ -1737,6 +1805,40 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         handled: true,
         payload: { message: msg, action: 'none' },
         nextState: { v: 1, kind: 'money_change', qty, price, paid, turn: 0, step: 'total', total },
+      }
+    }
+    if (problem.kind === 'money_fee') {
+      const qty = Math.max(1, Math.trunc(problem.qty))
+      const price = Number(problem.price)
+      const fee = Number(problem.fee)
+      const subtotal = qty * price
+      const why = ageBand === 'junior' ? 'Eerst reken je uit wat het samen kost.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${qty} × ${price} = __ (euro)`
+          : `Vul in: ${qty} × ${fmtNL(price)} = __ (euro)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: { v: 1, kind: 'money_fee', qty, price, fee, turn: 0, step: 'subtotal', subtotal },
+      }
+    }
+    if (problem.kind === 'money_split') {
+      const qty = Math.max(1, Math.trunc(problem.qty))
+      const price = Number(problem.price)
+      const people = Math.max(1, Math.trunc(problem.people))
+      const total = qty * price
+      const why = ageBand === 'junior' ? 'Eerst reken je uit wat het samen kost.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${qty} × ${price} = __ (euro)`
+          : `Vul in: ${qty} × ${fmtNL(price)} = __ (euro)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: { v: 1, kind: 'money_split', qty, price, people, turn: 0, step: 'total', total },
       }
     }
     if (problem.kind === 'convert') {
@@ -3228,6 +3330,114 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const expected = state.paid - total
     if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     return { handled: true, payload: { message: promptChange(total), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_fee') {
+    const subtotal = Number(state.subtotal ?? state.qty * state.price)
+    const promptSubtotal = () =>
+      lang === 'en'
+        ? `Fill in: ${state.qty} × ${state.price} = __ (euro)`
+        : `Vul in: ${state.qty} × ${fmtNL(state.price)} = __ (euro)`
+    const promptTotal = (sub: number) =>
+      lang === 'en'
+        ? `Fill in: ${sub} + ${state.fee} = __ (euro)`
+        : `Vul in: ${fmtNL(sub)} + ${fmtNL(state.fee)} = __ (euro)`
+
+    if (!canAnswer) {
+      const p = state.step === 'subtotal' ? promptSubtotal() : promptTotal(subtotal)
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'total') return 'Tip: totaal = samen + toeslag.'
+        const priceText = fmtNL(state.price)
+        const k = decimalPlacesFromText(priceText)
+        if (k <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        const scale = Math.pow(10, k)
+        const priceInt = Math.round(state.price * scale)
+        return `Tip: reken ${state.qty}×${priceInt} en deel door ${scale}.`
+      })()
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'subtotal'
+            ? 'Eerst samen kost uitrekenen.'
+            : 'Nu tel je de toeslag erbij.'
+          : ''
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'subtotal') {
+      if (Math.abs(userN - subtotal) < 1e-9) {
+        const nextPrompt = promptTotal(subtotal)
+        const why = ageBand === 'junior' ? 'Nu de toeslag erbij.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'total', subtotal },
+        }
+      }
+      return { handled: true, payload: { message: promptSubtotal(), action: 'none' }, nextState: state }
+    }
+
+    // total
+    const expected = subtotal + state.fee
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptTotal(subtotal), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_split') {
+    const total = Number(state.total ?? state.qty * state.price)
+    const promptTotal = () =>
+      lang === 'en'
+        ? `Fill in: ${state.qty} × ${state.price} = __ (euro)`
+        : `Vul in: ${state.qty} × ${fmtNL(state.price)} = __ (euro)`
+    const promptPer = (t: number) =>
+      lang === 'en'
+        ? `Fill in: ${t} ÷ ${state.people} = __ (euro per person)`
+        : `Vul in: ${fmtNL(t)} ÷ ${state.people} = __ (euro per persoon)`
+
+    if (!canAnswer) {
+      const p = state.step === 'total' ? promptTotal() : promptPer(total)
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'per') return 'Tip: per persoon = totaal ÷ aantal personen.'
+        const priceText = fmtNL(state.price)
+        const k = decimalPlacesFromText(priceText)
+        if (k <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        const scale = Math.pow(10, k)
+        const priceInt = Math.round(state.price * scale)
+        return `Tip: reken ${state.qty}×${priceInt} en deel door ${scale}.`
+      })()
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'total'
+            ? 'Eerst samen kost uitrekenen.'
+            : 'Per persoon = totaal delen door het aantal personen.'
+          : ''
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'total') {
+      if (Math.abs(userN - total) < 1e-9) {
+        const nextPrompt = promptPer(total)
+        const why = ageBand === 'junior' ? 'Nu delen per persoon.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'per', total },
+        }
+      }
+      return { handled: true, payload: { message: promptTotal(), action: 'none' }, nextState: state }
+    }
+
+    // per
+    const expected = total / state.people
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptPer(total), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {
