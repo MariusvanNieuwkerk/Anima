@@ -719,6 +719,59 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 **Must**
 - Anima geeft 1 korte hint (bv. “eerst samen kost”) en herhaalt dezelfde invulvraag.
 
+---
+
+## 5v) Verhaalsom: korting op totaal (Extended) (NL)
+**User**
+1. `Je koopt 3 kaartjes van €4,50 met 20% korting. Wat betaal je?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de samen-kost: `Vul in: 3 × 4,5 = __ (euro)` (of equivalent).
+- Stap 2: Anima vraagt de korting (20%): `Vul in: 13,5 ÷ 5 = __ (dat is 20%)` (of equivalent).
+- Stap 3: Anima vraagt eindprijs: `Vul in: 13,5 − 2,7 = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet starten met grammatica (bv. `Persoonsvorm = __`).
+
+---
+
+## 5v-2) Verhaalsom korting op totaal (ACK/stuck → hint + herhaal stap) (NL)
+**Setup**: Start met test 5v en ga door tot Anima de samen-kost vraagt.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint en herhaalt dezelfde invulvraag.
+
+---
+
+## 5w) Verhaalsom: prijs per kg + wisselgeld (Extended) (NL)
+**User**
+1. `Je koopt 1,5 kg snoep à €4 per kg. Je betaalt met €10. Hoeveel wisselgeld krijg je terug?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de kosten: `Vul in: 1,5 × 4 = __ (euro)` (of equivalent).
+- Stap 2: Daarna wisselgeld: `Vul in: 10 − 6 = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet starten met grammatica (bv. `Persoonsvorm = __`).
+
+---
+
+## 5w-2) Verhaalsom prijs per kg + wisselgeld (ACK/stuck → hint + herhaal stap) (NL)
+**Setup**: Start met test 5w en ga door tot Anima de kosten vraagt.
+
+**User**
+1. `ik weet het niet`
+
+**Must**
+- Anima geeft 1 korte hint en herhaalt dezelfde invulvraag.
+
+---
+
 ## 6) “Ik snap het niet” → Escape Hatch level 1 (NL)
 **User**
 1. `Los op: 17 + 28`

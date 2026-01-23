@@ -13,6 +13,8 @@ export type TutorSMKind =
   | 'money_change'
   | 'money_fee'
   | 'money_split'
+  | 'money_discount_total'
+  | 'money_change_rate'
   | 'negatives'
   | 'unknown'
   | 'units'
@@ -200,6 +202,34 @@ export type TutorSMState =
       turn: number
       step: 'total' | 'per'
       total?: number
+    }
+  | {
+      v: 1
+      kind: 'money_discount_total'
+      // subtotal = qty * price; discount = p% of subtotal; total = subtotal - discount
+      qty: number
+      price: number
+      p: number
+      turn: number
+      step: 'subtotal' | 'unit' | 'scale' | 'final'
+      subtotal?: number
+      unitPct: number
+      divisor: number
+      multiplier: number
+      unitValue?: number
+      discount?: number
+    }
+  | {
+      v: 1
+      kind: 'money_change_rate'
+      // cost = qty * rate (rate is €/unit); change = paid - cost
+      qty: number
+      rate: number
+      unit: 'kg' | 'g' | 'l' | 'ml'
+      paid: number
+      turn: number
+      step: 'cost' | 'change'
+      cost?: number
     }
   | {
       v: 1
@@ -668,6 +698,8 @@ type ParsedProblem =
   | { kind: 'money_change'; qty: number; price: number; paid: number }
   | { kind: 'money_fee'; qty: number; price: number; fee: number }
   | { kind: 'money_split'; qty: number; price: number; people: number }
+  | { kind: 'money_discount_total'; qty: number; price: number; p: number }
+  | { kind: 'money_change_rate'; qty: number; rate: number; unit: 'kg' | 'g' | 'l' | 'ml'; paid: number }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
   | {
@@ -1196,6 +1228,56 @@ function percentWordHintNL(mode: 'discount' | 'vat', ageBand: AgeBand): string {
 function parseProblem(text: string): ParsedProblem | null {
   const t = normalizeMathText(text)
   const core0 = strip(t).replace(/^(?:wat\s+is|what\s+is|los\s+op|bereken)\s*:?\s*/i, '').trim()
+
+  // Money change with a rate per unit (kg/L): "1,5 kg snoep à €4 per kg. Je betaalt met €10. Hoeveel wisselgeld?"
+  // Route this BEFORE the generic money_change, otherwise "2 kg ... €4 per kg" can be misread as 2 items of €4.
+  {
+    const low = core0.toLowerCase()
+    const hasChange = /\b(wisselgeld|terug|terugkrijg|terugkrijgen|change)\b/.test(low)
+    if (hasChange && /\bper\b/.test(low)) {
+      const paidM = low.match(/\b(?:betaal(?:t)?\s*(?:met)?|geef(?:t)?|paid\s*with)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const paid = paidM ? parseNum(paidM[1]) : NaN
+      const qtyUnitM = low.match(/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|liter)\b/)
+      const rateM =
+        low.match(/€\s*(\d+(?:[.,]\d+)?)\s*per\s*(kg|g|ml|l|liter)\b/) ||
+        low.match(/(\d+(?:[.,]\d+)?)\s*(?:euro)\s*per\s*(kg|g|ml|l|liter)\b/)
+      if (Number.isFinite(paid) && qtyUnitM && rateM) {
+        const qty = parseNum(qtyUnitM[1])
+        const unitRaw = String(qtyUnitM[2] || '').toLowerCase()
+        const unit = (unitRaw === 'liter' ? 'l' : unitRaw) as any
+        const rate = parseNum(rateM[1])
+        const rateUnitRaw = String(rateM[2] || '').toLowerCase()
+        const rateUnit = (rateUnitRaw === 'liter' ? 'l' : rateUnitRaw) as any
+        if (
+          Number.isFinite(qty) &&
+          qty > 0 &&
+          Number.isFinite(rate) &&
+          rate > 0 &&
+          (unit === 'kg' || unit === 'g' || unit === 'l' || unit === 'ml') &&
+          rateUnit === unit
+        ) {
+          return { kind: 'money_change_rate', qty, rate, unit, paid }
+        }
+      }
+    }
+  }
+
+  // Money discount on a subtotal (NL): "3 kaartjes van €4,50 met 20% korting. Wat betaal je?"
+  {
+    const low = core0.toLowerCase()
+    const hasDiscount = /\bkorting\b/.test(low)
+    const pct = low.match(/(\d+(?:[.,]\d+)?)\s*%/)
+    if (hasDiscount && pct) {
+      const p = parseNum(pct[1])
+      const qtyM = low.match(/\b(\d+)\s*(?:x|keer)\b|\b(\d+)\s+(?:stuks?|stukken|kaartjes|tickets|boeken?|broden?|repen?|ijsjes|pizza'?s)\b/)
+      const priceEachM = low.match(/\b(?:van|voor)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+      const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+      if (Number.isFinite(p) && p > 0 && p < 100 && Number.isFinite(qty) && qty > 0 && Number.isFinite(price)) {
+        return { kind: 'money_discount_total', qty, price, p }
+      }
+    }
+  }
 
   // Money change word problem (NL): "2 ijsjes van €1,20, je betaalt met €5, hoeveel wisselgeld?"
   {
@@ -1839,6 +1921,54 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         handled: true,
         payload: { message: msg, action: 'none' },
         nextState: { v: 1, kind: 'money_split', qty, price, people, turn: 0, step: 'total', total },
+      }
+    }
+    if (problem.kind === 'money_discount_total') {
+      const qty = Math.max(1, Math.trunc(problem.qty))
+      const price = Number(problem.price)
+      const p = Number(problem.p)
+      const subtotal = qty * price
+      const { unitPct, divisor, multiplier } = percentPlan(p)
+      const why = ageBand === 'junior' ? 'Eerst reken je uit wat het samen kost.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${qty} × ${price} = __ (euro)`
+          : `Vul in: ${qty} × ${fmtNL(price)} = __ (euro)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'money_discount_total',
+          qty,
+          price,
+          p,
+          turn: 0,
+          step: 'subtotal',
+          subtotal,
+          unitPct,
+          divisor,
+          multiplier,
+        },
+      }
+    }
+    if (problem.kind === 'money_change_rate') {
+      const qty = Number(problem.qty)
+      const rate = Number(problem.rate)
+      const unit = problem.unit
+      const paid = Number(problem.paid)
+      const cost = qty * rate
+      const why = ageBand === 'junior' ? 'Eerst reken je uit wat het kost.' : ''
+      const prompt =
+        lang === 'en'
+          ? `Fill in: ${qty} × ${rate} = __ (euro)`
+          : `Vul in: ${fmtNL(qty)} × ${fmtNL(rate)} = __ (euro)`
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: { v: 1, kind: 'money_change_rate', qty, rate, unit, paid, turn: 0, step: 'cost', cost },
       }
     }
     if (problem.kind === 'convert') {
@@ -3438,6 +3568,177 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const expected = total / state.people
     if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     return { handled: true, payload: { message: promptPer(total), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_discount_total') {
+    const subtotal = Number(state.subtotal ?? state.qty * state.price)
+    const { unitPct, divisor, multiplier } = state
+    const promptSubtotal = () =>
+      lang === 'en'
+        ? `Fill in: ${state.qty} × ${state.price} = __ (euro)`
+        : `Vul in: ${state.qty} × ${fmtNL(state.price)} = __ (euro)`
+    const unitLabel = lang === 'en' ? `(${unitPct}% step)` : `(dat is ${unitPct}%)`
+    const promptUnit = (sub: number) =>
+      lang === 'en'
+        ? `Fill in: ${sub} ÷ ${divisor} = __ ${unitLabel}`
+        : `Vul in: ${fmtNL(sub)} ÷ ${divisor} = __ ${unitLabel}`
+    const promptScale = (unitValue: number) =>
+      lang === 'en'
+        ? `Fill in: ${fmtNL(unitValue)} × ${multiplier} = __ (discount)`
+        : `Vul in: ${fmtNL(unitValue)} × ${multiplier} = __ (korting)`
+    const promptFinal = (sub: number, disc: number) =>
+      lang === 'en'
+        ? `Fill in: ${sub} − ${disc} = __ (euro)`
+        : `Vul in: ${fmtNL(sub)} − ${fmtNL(disc)} = __ (euro)`
+
+    if (!canAnswer) {
+      const p =
+        state.step === 'subtotal'
+          ? promptSubtotal()
+          : state.step === 'unit'
+            ? promptUnit(subtotal)
+            : state.step === 'scale'
+              ? promptScale(Number(state.unitValue))
+              : promptFinal(subtotal, Number(state.discount))
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'final') return 'Tip: eindprijs = samen − korting.'
+        if (state.step === 'unit' || state.step === 'scale') return 'Tip: korting = eraf.'
+        // subtotal
+        const priceText = fmtNL(state.price)
+        const k = decimalPlacesFromText(priceText)
+        if (k <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        const scale = Math.pow(10, k)
+        const priceInt = Math.round(state.price * scale)
+        return `Tip: reken ${state.qty}×${priceInt} en deel door ${scale}.`
+      })()
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'subtotal'
+            ? 'Eerst samen kost uitrekenen.'
+            : state.step === 'unit' || state.step === 'scale'
+              ? percentStepWhyNL(unitPct, divisor)
+              : 'Nu korting eraf.'
+          : ''
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'subtotal') {
+      if (Math.abs(userN - subtotal) < 1e-9) {
+        const nextPrompt = promptUnit(subtotal)
+        const why = ageBand === 'junior' ? 'Nu de korting uitrekenen.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'unit', subtotal },
+        }
+      }
+      return { handled: true, payload: { message: promptSubtotal(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'unit') {
+      const expected = subtotal / divisor
+      if (Math.abs(userN - expected) < 1e-9) {
+        // if multiplier is 1, discount is unitValue
+        if (Math.abs(multiplier - 1) < 1e-9) {
+          const disc = expected
+          const nextPrompt = promptFinal(subtotal, disc)
+          const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', unitValue: expected, discount: disc },
+          }
+        }
+        const nextPrompt = promptScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte korting.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expected },
+        }
+      }
+      return { handled: true, payload: { message: promptUnit(subtotal), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'scale') {
+      const unitValue = Number(state.unitValue)
+      const disc = unitValue * multiplier
+      if (Math.abs(userN - disc) < 1e-9) {
+        const nextPrompt = promptFinal(subtotal, disc)
+        const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'final', discount: disc },
+        }
+      }
+      return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }
+    }
+
+    // final
+    const disc = Number(state.discount)
+    const expected = subtotal - disc
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptFinal(subtotal, disc), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_change_rate') {
+    const cost = Number(state.cost ?? state.qty * state.rate)
+    const promptCost = () =>
+      lang === 'en'
+        ? `Fill in: ${state.qty} × ${state.rate} = __ (euro)`
+        : `Vul in: ${fmtNL(state.qty)} × ${fmtNL(state.rate)} = __ (euro)`
+    const promptChange = (c: number) =>
+      lang === 'en'
+        ? `Fill in: ${state.paid} − ${c} = __ (euro)`
+        : `Vul in: ${fmtNL(state.paid)} − ${fmtNL(c)} = __ (euro)`
+
+    if (!canAnswer) {
+      const p = state.step === 'cost' ? promptCost() : promptChange(cost)
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'change') return 'Tip: wisselgeld = betaald − kosten.'
+        const kq = decimalPlacesFromText(fmtNL(state.qty))
+        const kr = decimalPlacesFromText(fmtNL(state.rate))
+        const scale = Math.pow(10, kq + kr)
+        const qtyInt = Math.round(state.qty * Math.pow(10, kq))
+        const rateInt = Math.round(state.rate * Math.pow(10, kr))
+        if (kq + kr <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        return `Tip: reken ${qtyInt}×${rateInt} en deel door ${scale}.`
+      })()
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'cost'
+            ? `Prijs per ${state.unit} → keer met de hoeveelheid.`
+            : 'Wisselgeld = betaald − wat het kost.'
+          : ''
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+    }
+
+    const userN = parseNum(lastUser)
+    if (state.step === 'cost') {
+      if (Math.abs(userN - cost) < 1e-9) {
+        const nextPrompt = promptChange(cost)
+        const why = ageBand === 'junior' ? 'Nu het wisselgeld.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'change', cost },
+        }
+      }
+      return { handled: true, payload: { message: promptCost(), action: 'none' }, nextState: state }
+    }
+
+    // change
+    const expected = state.paid - cost
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptChange(cost), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'negatives') {
