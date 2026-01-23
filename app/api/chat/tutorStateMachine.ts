@@ -211,13 +211,17 @@ export type TutorSMState =
       price: number
       p: number
       turn: number
-      step: 'subtotal' | 'unit' | 'scale' | 'final'
+      step: 'subtotal' | 'unit' | 'unit_scaleup' | 'unit_scaledown' | 'scale' | 'final'
       subtotal?: number
       unitPct: number
       divisor: number
       multiplier: number
       unitValue?: number
       discount?: number
+      // help escalation for repeated "ik weet het niet"
+      help?: number
+      unitScale?: number
+      unitInt?: number
     }
   | {
       v: 1
@@ -3573,6 +3577,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   if (state.kind === 'money_discount_total') {
     const subtotal = Number(state.subtotal ?? state.qty * state.price)
     const { unitPct, divisor, multiplier } = state
+    const help = Number((state as any).help ?? 0)
     const promptSubtotal = () =>
       lang === 'en'
         ? `Fill in: ${state.qty} × ${state.price} = __ (euro)`
@@ -3582,6 +3587,18 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       lang === 'en'
         ? `Fill in: ${sub} ÷ ${divisor} = __ ${unitLabel}`
         : `Vul in: ${fmtNL(sub)} ÷ ${divisor} = __ ${unitLabel}`
+    const promptUnitScaleUp = (sub: number) => {
+      const k = decimalPlacesFromText(fmtNL(sub))
+      const scale = Math.pow(10, Math.max(0, k))
+      const subInt = Math.round(sub * scale)
+      return lang === 'en'
+        ? `Remove the decimal. Fill in: ${subInt} ÷ ${divisor} = __`
+        : `Maak de komma weg. Vul in: ${subInt} ÷ ${divisor} = __`
+    }
+    const promptUnitScaleDown = (unitInt: number, scale: number) =>
+      lang === 'en'
+        ? `Put the decimal back. Fill in: ${unitInt} ÷ ${scale} = __ ${unitLabel}`
+        : `Zet de komma terug. Vul in: ${fmtNL(unitInt)} ÷ ${scale} = __ ${unitLabel}`
     const promptScale = (unitValue: number) =>
       lang === 'en'
         ? `Fill in: ${fmtNL(unitValue)} × ${multiplier} = __ (discount)`
@@ -3592,18 +3609,42 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         : `Vul in: ${fmtNL(sub)} − ${fmtNL(disc)} = __ (euro)`
 
     if (!canAnswer) {
+      const isHelp = isStuck(lastUser)
+      const nextHelp = isHelp ? help + 1 : help
+
+      // Deterministic escalation: if the student says "ik weet het niet" repeatedly on the % unit step,
+      // make the step smaller by scaling to integers (e.g. 13,5 ÷ 5 → 135 ÷ 5, then ÷10).
+      const canScaleUpUnit =
+        state.step === 'unit' && divisor === 5 && decimalPlacesFromText(fmtNL(subtotal)) > 0 && nextHelp >= 2
+      if (canScaleUpUnit) {
+        const p = promptUnitScaleUp(subtotal)
+        const why = ageBand === 'junior' ? 'Maak de komma even weg, dan is het makkelijker.' : ''
+        const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+        const msg = isHelp ? `Tip: maak komma weg. ${msgBase}`.trim() : msgBase
+        return {
+          handled: true,
+          payload: { message: msg, action: 'none' },
+          nextState: { ...state, help: nextHelp, step: 'unit_scaleup' as any },
+        }
+      }
+
       const p =
         state.step === 'subtotal'
           ? promptSubtotal()
           : state.step === 'unit'
             ? promptUnit(subtotal)
+            : state.step === 'unit_scaleup'
+              ? promptUnitScaleUp(subtotal)
+              : state.step === 'unit_scaledown'
+                ? promptUnitScaleDown(Number((state as any).unitInt), Number((state as any).unitScale))
             : state.step === 'scale'
               ? promptScale(Number(state.unitValue))
               : promptFinal(subtotal, Number(state.discount))
       const hint = (() => {
         if (!isStuck(lastUser)) return ''
         if (state.step === 'final') return 'Tip: eindprijs = samen − korting.'
-        if (state.step === 'unit' || state.step === 'scale') return 'Tip: korting = eraf.'
+        if (state.step === 'unit' || state.step === 'unit_scaleup' || state.step === 'unit_scaledown' || state.step === 'scale')
+          return 'Tip: korting = eraf.'
         // subtotal
         const priceText = fmtNL(state.price)
         const k = decimalPlacesFromText(priceText)
@@ -3616,13 +3657,13 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         ageBand === 'junior'
           ? state.step === 'subtotal'
             ? 'Eerst samen kost uitrekenen.'
-            : state.step === 'unit' || state.step === 'scale'
+            : state.step === 'unit' || state.step === 'unit_scaleup' || state.step === 'unit_scaledown' || state.step === 'scale'
               ? percentStepWhyNL(unitPct, divisor)
               : 'Nu korting eraf.'
           : ''
       const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
       const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
-      return { handled: true, payload: { message: msg, action: 'none' }, nextState: state }
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState: isHelp ? { ...state, help: nextHelp } : state }
     }
 
     const userN = parseNum(lastUser)
@@ -3633,7 +3674,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         return {
           handled: true,
           payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
-          nextState: { ...state, turn: state.turn + 1, step: 'unit', subtotal },
+          nextState: { ...state, turn: state.turn + 1, step: 'unit', subtotal, help: 0, unitScale: undefined, unitInt: undefined },
         }
       }
       return { handled: true, payload: { message: promptSubtotal(), action: 'none' }, nextState: state }
@@ -3650,7 +3691,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           return {
             handled: true,
             payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
-            nextState: { ...state, turn: state.turn + 1, step: 'final', unitValue: expected, discount: disc },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', unitValue: expected, discount: disc, help: 0, unitScale: undefined, unitInt: undefined },
           }
         }
         const nextPrompt = promptScale(expected)
@@ -3658,10 +3699,57 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         return {
           handled: true,
           payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
-          nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expected },
+          nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expected, help: 0, unitScale: undefined, unitInt: undefined },
         }
       }
       return { handled: true, payload: { message: promptUnit(subtotal), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'unit_scaleup') {
+      const k = decimalPlacesFromText(fmtNL(subtotal))
+      const unitScale = Math.pow(10, Math.max(0, k))
+      const subInt = Math.round(subtotal * unitScale)
+      const expectedInt = subInt / divisor
+      if (Math.abs(userN - expectedInt) < 1e-9) {
+        const nextPrompt = promptUnitScaleDown(expectedInt, unitScale)
+        const why = ageBand === 'junior' ? 'Nu zet je de komma terug.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'unit_scaledown', unitScale, unitInt: expectedInt, help: 0 },
+        }
+      }
+      return { handled: true, payload: { message: promptUnitScaleUp(subtotal), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'unit_scaledown') {
+      const unitScale = Number((state as any).unitScale)
+      const unitInt = Number((state as any).unitInt)
+      const expected = unitInt / unitScale
+      if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) {
+        if (Math.abs(multiplier - 1) < 1e-9) {
+          const disc = expected
+          const nextPrompt = promptFinal(subtotal, disc)
+          const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', unitValue: expected, discount: disc, help: 0, unitScale: undefined, unitInt: undefined },
+          }
+        }
+        const nextPrompt = promptScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte korting.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'scale', unitValue: expected, help: 0, unitScale: undefined, unitInt: undefined },
+        }
+      }
+      return {
+        handled: true,
+        payload: { message: promptUnitScaleDown(unitInt, unitScale), action: 'none' },
+        nextState: state,
+      }
     }
 
     if (state.step === 'scale') {
@@ -3673,7 +3761,7 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         return {
           handled: true,
           payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
-          nextState: { ...state, turn: state.turn + 1, step: 'final', discount: disc },
+          nextState: { ...state, turn: state.turn + 1, step: 'final', discount: disc, help: 0, unitScale: undefined, unitInt: undefined },
         }
       }
       return { handled: true, payload: { message: promptScale(unitValue), action: 'none' }, nextState: state }

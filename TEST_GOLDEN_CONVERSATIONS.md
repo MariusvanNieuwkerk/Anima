@@ -747,6 +747,18 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5v-3) Verhaalsom korting op totaal (2× stuck → maak stap kleiner) (NL)
+**Setup**: Start met test 5v en ga door tot Anima vraagt: `Vul in: 13,5 ÷ 5 = __ (dat is 20%)`.
+
+**User**
+1. `ik weet het niet`
+2. `ik weet het niet`
+
+**Must**
+- Bij de **tweede** keer: Anima maakt de stap kleiner (bv. `Maak de komma weg. Vul in: 135 ÷ 5 = __`).
+
+---
+
 ## 5w) Verhaalsom: prijs per kg + wisselgeld (Extended) (NL)
 **User**
 1. `Je koopt 1,5 kg snoep à €4 per kg. Je betaalt met €10. Hoeveel wisselgeld krijg je terug?`
