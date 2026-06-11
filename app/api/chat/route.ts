@@ -9,6 +9,7 @@ import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { runTutorStateMachine, type TutorSMState } from './tutorStateMachine'
+import { logTutorEvent, looksStuck } from './tutorEvents'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -21,6 +22,10 @@ const languageMap: Record<string, string> = {
 };
 
 export async function POST(req: Request) {
+  // Context voor tutor_events, ook bereikbaar in de catch.
+  let evUserId: string | null = null
+  let evSessionId: string | null = null
+  let evUserText = ''
   try {
     // AUTHENTICATIE: alleen ingelogde studenten kunnen chatten.
     const supabaseAuth = createSupabaseServerClient();
@@ -62,6 +67,8 @@ export async function POST(req: Request) {
     const userLanguage = data?.userLanguage || 'nl'; 
     const images = data?.images || (data?.image ? [data.image] : []);
     const sessionId = typeof data?.sessionId === 'string' ? data.sessionId : null
+    evUserId = authUser.id
+    evSessionId = sessionId
     
     const targetLanguage = languageMap[userLanguage] || 'Nederlands';
 
@@ -237,6 +244,7 @@ OUTPUT-CONTRACT (CRITICAL)
 
     const lastMessage = messages[messages.length - 1]
     const lastMessageContent = lastMessage?.content || '';
+    evUserText = String(lastMessageContent || '')
     let userParts: any[] = [{ text: lastMessageContent }];
 
     // --- STATEFUL TUTOR (Option A): deterministic state machine per session_id ---
@@ -282,6 +290,24 @@ OUTPUT-CONTRACT (CRITICAL)
             action: 'none',
           }
 
+          const nextSm: any = sm.nextState
+          await logTutorEvent({
+            userId: authUser.id,
+            sessionId,
+            route: 'canon',
+            canonKind: nextSm?.kind || (state as any)?.kind || null,
+            step: nextSm?.step || null,
+            result: looksStuck(String(lastMessageContent || ''))
+              ? 'stuck'
+              : !state
+                ? 'start'
+                : nextSm && nextSm.kind
+                  ? 'continue'
+                  : 'done',
+            userText: String(lastMessageContent || ''),
+            assistantText: payload.message,
+          })
+
           return new Response(JSON.stringify(payload), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
@@ -320,6 +346,18 @@ OUTPUT-CONTRACT (CRITICAL)
       if (preDeterministic && preMsg && (preAction === 'none' || preAction === '')) {
         // Apply age-style trimming (does not affect one-move blanks).
         preflight.payload.message = applyAgeStyleText(String(preflight.payload.message || ''), { userAge, userLanguage })
+
+        const grammarHit = (preflight.debug || []).find((e: any) => String(e?.name) === 'grammar_route')
+        await logTutorEvent({
+          userId: authUser.id,
+          sessionId,
+          route: grammarHit ? 'grammar' : 'policy',
+          canonKind: grammarHit ? String((grammarHit as any)?.details?.topic || '') || null : null,
+          step: (preflight.debug || []).map((e: any) => String(e?.name)).join(',') || null,
+          result: looksStuck(String(lastMessageContent || '')) ? 'stuck' : null,
+          userText: String(lastMessageContent || ''),
+          assistantText: String(preflight.payload.message || ''),
+        })
         if (process.env.ANIMA_DEBUG_MATH === '1') {
           console.log('[ANIMA_DEBUG_MATH][preflight]', {
             git: process.env.VERCEL_GIT_COMMIT_SHA || null,
@@ -1282,6 +1320,15 @@ OUTPUT-CONTRACT (CRITICAL)
       }
     }
 
+    await logTutorEvent({
+      userId: authUser.id,
+      sessionId,
+      route: 'llm',
+      result: looksStuck(String(lastMessageContent || '')) ? 'stuck' : null,
+      userText: String(lastMessageContent || ''),
+      assistantText: String(payload?.message || ''),
+    })
+
     return new Response(JSON.stringify(payload), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -1303,6 +1350,17 @@ OUTPUT-CONTRACT (CRITICAL)
       }
       return 'Er ging iets mis. Probeer het zo nog eens.'
     })()
+
+    if (evUserId) {
+      await logTutorEvent({
+        userId: evUserId,
+        sessionId: evSessionId,
+        route: 'error',
+        result: null,
+        userText: evUserText,
+        assistantText: String(error?.message || 'unknown'),
+      })
+    }
 
     return new Response(
       JSON.stringify({
