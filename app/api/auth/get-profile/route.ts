@@ -1,157 +1,113 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/admin';
 
 /**
- * Server-side API route om profile op te halen
- * Gebruikt service role key om RLS te bypassen
+ * Haalt het profiel van de INGELOGDE gebruiker op (en maakt het aan als het
+ * nog niet bestaat, bv. direct na signup).
+ *
+ * Security:
+ * - Vereist een geldige sessie (cookies).
+ * - Geeft alleen het eigen profiel terug; een meegegeven userId moet
+ *   overeenkomen met de ingelogde gebruiker (anders 403).
  */
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const requestedUserId: string | undefined = body?.userId;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // Gebruik service role key voor RLS bypass (alleen server-side!)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('[GET-PROFILE] Service role key niet gevonden');
-      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
+    if (requestedUserId && requestedUserId !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Maak admin client (bypass RLS)
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
-
-    console.log(`[GET-PROFILE] Ophalen profile voor user: ${userId}`);
+    // Lezen kan via RLS (eigen profiel), maar aanmaken vereist admin
+    // omdat er geen INSERT policy op profiles staat.
+    const supabaseAdmin = createAdminClient();
 
     const { data: profile, error } = await supabaseAdmin
       .from('profiles')
       .select('*')
-      .eq('id', userId)
+      .eq('id', user.id)
       .single();
 
     if (error) {
-      console.error('[GET-PROFILE] Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
-      
-      // Als profile niet bestaat, maak automatisch een profile aan
+      // Profile bestaat nog niet → automatisch aanmaken voor de eigen user.
       if (error.code === 'PGRST116') {
-        console.log('[GET-PROFILE] Profile niet gevonden, maak automatisch aan...');
-        
-        // Haal email op van auth user
-        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
-        
-        if (authError || !authUser?.user) {
-          console.error('[GET-PROFILE] Kan auth user niet ophalen:', authError);
-          return NextResponse.json({ 
-            error: 'Profile not found',
-            details: 'Geen profile gevonden en kan auth user niet ophalen om profile aan te maken.'
-          }, { status: 404 });
-        }
-
-        const userEmail = authUser.user.email || 'unknown@example.com';
+        const userEmail = user.email || 'unknown@example.com';
         const baseName = userEmail.split('@')[0] || 'Student';
 
-        // Role selection:
-        // - Default to student
-        // - If auth user_metadata.role is set (via signup), honor it for first profile creation.
-        const metaRoleRaw = (authUser.user.user_metadata as any)?.role
-        const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw.toLowerCase() : null
+        const metaRoleRaw = (user.user_metadata as any)?.role;
+        const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw.toLowerCase() : null;
         const role: 'student' | 'parent' | 'teacher' =
-          metaRole === 'parent' || metaRole === 'teacher' || metaRole === 'student' ? (metaRole as any) : 'student'
-        
-        // Maak automatisch een profile aan
+          metaRole === 'parent' || metaRole === 'teacher' || metaRole === 'student' ? (metaRole as any) : 'student';
+
         const rowBase: any = {
-          id: userId,
+          id: user.id,
           role,
           display_name: baseName,
           student_name: role === 'student' ? baseName : null,
           parent_name: role === 'parent' ? baseName : null,
           teacher_name: role === 'teacher' ? baseName : null,
           deep_read_mode: false,
-          created_at: new Date().toISOString()
-        }
+          created_at: new Date().toISOString(),
+        };
 
-        const isMissingEmail = (msg: string) =>
-          /column\\s+profiles\\.email\\s+does\\s+not\\s+exist/i.test(msg) || /email\\s+does\\s+not\\s+exist/i.test(msg)
+        const isMissingEmail = (msg: string) => /profiles\.email|'email'/i.test(msg) && /does not exist|could not find/i.test(msg);
         const isMissingDisplayName = (msg: string) =>
-          /column\\s+profiles\\.display_name\\s+does\\s+not\\s+exist/i.test(msg) ||
-          /display_name\\s+does\\s+not\\s+exist/i.test(msg) ||
-          /could\\s+not\\s+find\\s+the\\s+'display_name'\\s+column\\s+of\\s+'profiles'\\s+in\\s+the\\s+schema\\s+cache/i.test(msg)
+          /profiles\.display_name|'display_name'/i.test(msg) && /does not exist|could not find/i.test(msg);
 
-        // Some deployments don't have profiles.email and/or profiles.display_name yet → try insert, then retry with fields removed.
-        const tryInsert = async (row: any) => supabaseAdmin.from('profiles').insert(row).select().single()
+        // Sommige deployments missen profiles.email en/of display_name → probeer insert, daarna zonder die velden.
+        const tryInsert = async (row: any) => supabaseAdmin.from('profiles').insert(row).select().single();
 
-        const attempt1 = await tryInsert({ ...rowBase, email: userEmail })
-        let newProfile = attempt1.data
-        let insertError = attempt1.error
+        const attempt1 = await tryInsert({ ...rowBase, email: userEmail });
+        let newProfile = attempt1.data;
+        let insertError = attempt1.error;
 
-        if (insertError) {
-          const msg1 = String(insertError.message || '')
-          if (isMissingEmail(msg1)) {
-            const attempt2 = await tryInsert(rowBase)
-            newProfile = attempt2.data
-            insertError = attempt2.error
+        if (insertError && isMissingEmail(String(insertError.message || ''))) {
+          const attempt2 = await tryInsert(rowBase);
+          newProfile = attempt2.data;
+          insertError = attempt2.error;
+        }
+
+        if (insertError && isMissingDisplayName(String(insertError.message || ''))) {
+          const rowNoDisplay: any = { ...rowBase };
+          delete rowNoDisplay.display_name;
+
+          const attempt3 = await tryInsert({ ...rowNoDisplay, email: userEmail });
+          newProfile = attempt3.data;
+          insertError = attempt3.error;
+
+          if (insertError && isMissingEmail(String(insertError.message || ''))) {
+            const attempt4 = await tryInsert(rowNoDisplay);
+            newProfile = attempt4.data;
+            insertError = attempt4.error;
           }
         }
 
         if (insertError) {
-          const msg2 = String(insertError.message || '')
-          if (isMissingDisplayName(msg2)) {
-            const rowNoDisplay: any = { ...rowBase }
-            delete rowNoDisplay.display_name
-
-            const attempt3 = await tryInsert({ ...rowNoDisplay, email: userEmail })
-            newProfile = attempt3.data
-            insertError = attempt3.error
-
-            if (insertError) {
-              const msg3 = String(insertError.message || '')
-              if (isMissingEmail(msg3)) {
-                const attempt4 = await tryInsert(rowNoDisplay)
-                newProfile = attempt4.data
-                insertError = attempt4.error
-              }
-            }
-          }
+          console.error('[GET-PROFILE] Fout bij aanmaken profile:', insertError.message);
+          return NextResponse.json({ error: 'Profile creation failed' }, { status: 500 });
         }
 
-        if (insertError) {
-          console.error('[GET-PROFILE] Fout bij aanmaken profile:', insertError);
-          return NextResponse.json({ 
-            error: 'Profile creation failed',
-            details: insertError.message
-          }, { status: 500 });
-        }
-
-        console.log(`[GET-PROFILE] ✅ Profile automatisch aangemaakt, role: ${newProfile.role}`);
         return NextResponse.json({ profile: newProfile });
       }
-      
-      return NextResponse.json({ 
-        error: 'Database error',
-        details: error.message 
-      }, { status: 500 });
+
+      console.error('[GET-PROFILE] Database error:', error.message);
+      return NextResponse.json({ error: 'Database error' }, { status: 500 });
     }
 
     if (!profile) {
-      console.log('[GET-PROFILE] Profile is null');
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
-
-    console.log(`[GET-PROFILE] Profile gevonden, role: ${profile.role}`);
 
     return NextResponse.json({ profile });
   } catch (error) {
@@ -159,4 +115,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

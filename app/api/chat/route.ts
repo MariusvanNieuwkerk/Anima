@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getUserProfile } from '@/utils/auth';
+import { createSupabaseServerClient } from '@/utils/supabase/server';
 import { extractMoneyLike } from './skills/ocrUtils'
 // NOTE: Time tutoring is handled by the main tutor policy + model.
 // Keep domain helpers out of the request flow to avoid brittle, "baked-in" responses.
@@ -22,22 +22,31 @@ const languageMap: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
-    // AUTHENTICATIE CHECK: Alleen studenten kunnen chatten
-    // TODO: Vervang met echte auth token check
-    const userProfile = await getUserProfile();
-    
-    // FALLBACK: Als er geen profile is, gebruik student fallback (voor development)
-    const effectiveProfile = userProfile || {
-      id: 'fallback',
-      email: 'guest@anima.local',
-      role: 'student' as const,
-      student_name: 'Rens',
-      parent_name: null,
-      teacher_name: null
+    // AUTHENTICATIE: alleen ingelogde studenten kunnen chatten.
+    const supabaseAuth = createSupabaseServerClient();
+    const {
+      data: { user: authUser },
+    } = await supabaseAuth.auth.getUser();
+
+    if (!authUser) {
+      return new Response(JSON.stringify({ error: 'Niet ingelogd.' }), { status: 401 });
+    }
+
+    // Profiel lezen via RLS (eigen rij). Geen rij → behandel als student (profiel
+    // wordt normaliter bij login aangemaakt via /api/auth/get-profile).
+    const { data: profileRow } = await supabaseAuth
+      .from('profiles')
+      .select('id, role, student_name')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    const effectiveProfile = {
+      id: authUser.id,
+      role: (profileRow?.role as 'student' | 'parent' | 'teacher') || 'student',
+      student_name: profileRow?.student_name ?? null,
     };
-    
+
     if (effectiveProfile.role !== 'student') {
-      console.log(`DEBUG: Chat API toegang geweigerd voor rol: ${effectiveProfile.role}`);
       return new Response(
         JSON.stringify({ error: "Toegang geweigerd. Alleen studenten kunnen chatten." }), 
         { status: 403 }
@@ -169,7 +178,7 @@ OUTPUT-CONTRACT (CRITICAL)
     const genAI = new GoogleGenerativeAI(apiKey);
     // Prefer JSON-only responses to reduce fragile formatting. If unsupported, Gemini will ignore it.
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash-exp",
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
       generationConfig: {
         responseMimeType: "application/json",
       },
@@ -234,10 +243,13 @@ OUTPUT-CONTRACT (CRITICAL)
     if (images.length === 0 && sessionId) {
       try {
         const admin = createAdminClient()
+        // Scope state to the logged-in user: a guessed sessionId can never
+        // read or overwrite someone else's tutor state.
+        const sessionKey = `${authUser.id}:${sessionId}`
         const load = await admin
           .from('tutor_sessions')
           .select('state')
-          .eq('session_id', sessionId)
+          .eq('session_id', sessionKey)
           .maybeSingle()
         const rawState = (load.data as any)?.state
         const state: TutorSMState | null = rawState && typeof rawState === 'object' ? (rawState as any) : null
@@ -255,8 +267,8 @@ OUTPUT-CONTRACT (CRITICAL)
             .from('tutor_sessions')
             .upsert(
               {
-                session_id: sessionId,
-                user_id: effectiveProfile?.id && effectiveProfile.id !== 'fallback' ? effectiveProfile.id : null,
+                session_id: sessionKey,
+                user_id: authUser.id,
                 state: sm.nextState || {},
                 updated_at: new Date().toISOString(),
               },

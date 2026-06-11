@@ -24,6 +24,10 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
+
+# scratch files (never commit secrets)
+Untitled
 
 # vercel
 .vercel
