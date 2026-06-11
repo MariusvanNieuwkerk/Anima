@@ -1,5 +1,5 @@
-📘 ANIMA BLUEPRINT V10.0 
-Datum: 17 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
+📘 ANIMA BLUEPRINT V11.0
+Datum: 11 juni 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid waar nodig, Sfeer waar kan"
 1. De Anima Filosofie (HARD RULES)
 * North Star: Anima is een “Low‑Friction Tutor”: ze maakt de volgende stap altijd concreet, rekenbaar en checkbaar — en elimineert gokken en meta‑vragen.
 * De 7 Principes (leidend, overal):
@@ -35,6 +35,7 @@ Datum: 17 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exacthe
   * Stopcriteria (CRITICAL):
     * Stop pas als de leerling een **concrete eindoutput** heeft gegeven, of als de leerling expliciet stopt (“stop/klaar/niets/laat maar”).
 * AI als Tutor (Scaffolded Guide): Anima leert de methode, niet alleen het eindantwoord. Ze geeft heldere structuur en zet de leerling aan het werk.
+* Routing-Contract (CRITICAL): **het gesprek wint bij twijfel.** Canons (rekenen/grammatica) grijpen alleen in bij expliciete, herkenbare intentie (een som, "wat is de persoonsvorm in deze zin: …"). Alles daaronder gaat naar de LLM. Routers herkennen intentie, geen vorm ("eindigt op een vraagteken" is geen intentie). Dit voorkomt structureel dat kennisvragen worden gekaapt door een oefen-canon.
 * Termination Protocol (CRITICAL): Bij een duidelijk correct antwoord:
   * Bevestig kort (bv. “Juist.” / “Exact.” / “Helemaal goed.”).
   * Stop daarna (geen “Snap je het?” / “Nog een som?”).
@@ -70,9 +71,12 @@ Datum: 17 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exacthe
   * LaTeX (De Pen): Formules, breuken, reactievergelijkingen — altijd netjes in de chat (en waar nodig ook op het bord).
   * Mafs (De Plotter): Interactieve grafieken en functies op het bord.
   * Leaflet (De Atlas): Kaarten/topografie op het bord (privacy‑vriendelijk, OpenStreetMap).
-  * Curator (De Archivaris): Feitelijke beelden via Wikimedia (geen hallucinaties).
-    * Scope: historische figuren, kunstwerken (masterpieces), Gray’s Anatomy platen, flora/fauna, beroemde landmarks.
-    * Filter: géén abstracte diagrammen, schema’s, iconen/clipart. Alleen foto of erkende illustratie/plaat. Anders: toon niets.
+  * Curator 2.0 (De Archivaris): feitelijke beelden, **concept-first** (geen hallucinaties).
+    * Keten: kindterm (elke taal, ook met typefouten) → Wikipedia-artikel (eigen taal, met taallink naar EN) → **hoofdafbeelding van het artikel** → Wikidata-afbeelding (P18) → pas als laatste vangnet een losse Commons-bestandszoektocht.
+    * Principe: we zoeken geen bestanden maar begrippen — het curatiewerk is al gedaan door Wikipedia/Wikidata.
+    * Scope: alles waar een kind "hoe ziet X eruit?" over vraagt: dieren, planten, landmarks, historische figuren, kunstwerken, anatomie.
+    * Filter: géén abstracte diagrammen, schema’s, iconen/clipart, svg/pdf. Alleen foto of erkende illustratie/plaat. Anders: toon niets (quality gate).
+    * Bewaakt door `npm run test:images` (typische kindvragen moeten een foto opleveren) en `image_miss`-telling in de anonieme stats.
 * Visuals (praktisch): Bij grafieken/functies/kaartvragen en wanneer het begrip versnelt: gebruik proactief de juiste visual (plot_graph / show_map / show_image / display_formula).
 * Prikkelarm & Warm Design: “Paper Feel”, stone‑tinten, rustig.
 * Fail‑Safe: Stil falen. Geen agressieve errors; liever een tekstuele fallback dan een kapotte visual.
@@ -93,13 +97,13 @@ B. De Ouder ("De Toeschouwer")
 * Interface: "De Nieuwsbrief" / "Glow Feed".
 * Data: Proces-data i.p.v. harde cijfers.
 * Visuals: Flow Meter (Worsteling vs. In de Zone) & Focus Cirkel.
-* Interactie: Gespreksstarters ("Vraag Rens hoe hij de breuk oploste").
+* Interactie: Gespreksstarters ("Vraag hoe hij de breuk oploste").
 * Rechten: Read-Only. Kan niet chatten (voorkomt data-vervuiling). Wel toegang tot instellingen (Diep-Lees Modus).
 * Eigendom: De ouder beheert de kind-accounts (aanmaken, koppelen, verwijderen) en kan alle gezinsdata exporteren of definitief wissen.
 3. Technische Architectuur & Data
 * State Management: SPA in app/page.tsx met strikte scheiding via centrale boardContent state (Manager Pattern) om conflicten tussen tools te voorkomen.
 * AI Core Strategy:
-    * Model: Google Gemini 2.0 Flash (Text & Vision).
+    * Model: Google Gemini 2.5 Flash (Text & Vision), instelbaar via env var `GEMINI_MODEL`.
     * System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd.
     * Tooling: Strict defined tools (plot_graph, display_formula, show_image, show_map).
 * Deterministische Tutor State Machine (Option A — server-side):
@@ -109,12 +113,25 @@ B. De Ouder ("De Toeschouwer")
     * Deterministische transitions: op basis van laatste user input (getal/ACK/stuck/stop) → volgende One‑Move stap.
     * LLM-bypass: als een canon herkend is, geeft de state machine de volgende stap terug **zonder** LLM-call (maximale stabiliteit).
     * Leeftijdsstijl: `ageBand` stuurt stapgrootte + korte “warm & speels” coach-zinnen (junior), compacter voor teen/student.
-    * Status (nu): state machine dekt rekenen‑canons incl. **delen, vermenigvuldigen, optellen, aftrekken**, plus **breuken (vereenvoudigen/±/×/÷)**, **percentages (p% van…, korting/btw)**, **volgorde van bewerkingen**, **negatieve getallen**, **unknowns/mini‑algebra**, **eenheden** en **omrekenen (breuk↔decimaal↔procent)** — incl. ACK/stuck/restart/stop gedrag.
+    * Status (nu): state machine dekt rekenen‑canons incl. **delen, vermenigvuldigen, optellen, aftrekken**, plus **breuken (vereenvoudigen/±/×/÷)**, **percentages (p% van…, korting/btw)**, **kommagetallen (×/÷)**, **geld (korting+btw samen, aantal × prijs)**, **volgorde van bewerkingen**, **negatieve getallen**, **unknowns/mini‑algebra**, **eenheden** en **omrekenen (breuk↔decimaal↔procent)** — incl. ACK/stuck/restart/stop gedrag.
+* Testsuites als poortwachter (niets gaat live zonder):
+    * `npm run test:canons`: anti-kaping (kennisvragen blijven bij de LLM), canon-routing en golden conversations als code (volledige meerstaps-flows, stuck-escalatie). Elke gefixte bug wordt een permanente test.
+    * `npm run test:images`: typische "hoe ziet X eruit?"-kindvragen moeten een echte foto-URL opleveren (netwerktest tegen Wikipedia/Wikidata).
+* Zelfverbeterloop (observability, met respect voor de data-eigendom-belofte):
+    * `tutor_events` (gezinsdata, RLS): per beurt welke laag antwoordde (canon/grammar/policy/llm/error), welke canon, stap en resultaat (start/continue/done/stuck/image_miss). Eigen events leesbaar; ouders lezen events van gekoppelde kinderen; alleen de server schrijft.
+    * `anon_tutor_stats` (anoniem, geen user_id, geen tekst): tellers per dag/route/canon/stap/resultaat over álle gebruikers. LLM-doorval krijgt een grove categorie (rekenen/taal/wereld/…) → dat is de roadmap voor de volgende canon, zonder ooit een gesprek te lezen.
+    * `feedback_reports` (duimpje-omlaag in de chat): de gebruiker schenkt bewust die ene beurt. Dit is de **enige** route waarlangs gespreksinhoud bij ons komt — expliciet, per geval, cascade delete bij accountverwijdering.
+    * De cirkel: tellers wijzen aan wáár het hapert → duimpjes tonen wát er misging → fix in canon-code (geen training op kinderdata) → fix wordt test → iedereen profiteert direct.
+* Security & Auth (gehard, juni 2026):
+    * Row Level Security op alle kerntabellen volgens het gezinsprincipe; `anon` heeft nergens toegang tot kerndata; tutor-state en events zijn service-role-only voor schrijven.
+    * Chat vereist een ingelogde sessie (cookie-based); tutor-state is per gebruiker geïsoleerd (`userId:sessionId`).
+    * Middleware fail-closed: ontbrekende env-config betekent redirect naar login, nooit stille toegang.
+    * Wachtwoord-reset via PKCE: `/auth/callback` (code exchange) → `/reset-password`.
 * Visual Engine (The Hybrid Engine):
     * Math Text: remark-math & rehype-katex (LaTeX rendering).
     * Math Visuals: Maffs (Interactive Graphing via React components).
     * Geography: React Leaflet integratie met custom styling.
-    * General: Wikimedia API fetch logic voor afbeeldingen.
+    * General: concept-first beeldketen (Wikipedia/Wikidata → Commons-vangnet) in `app/lib/wiki.ts`.
 * Output Handling: "Board Wiper Logic" in frontend: Nieuwe tool call wist automatisch de vorige view (voorkomt overlap).
 * Economy:
     * Rendering Cost: €0,00 (Client-side rendering & Open Source libraries).
@@ -147,12 +164,18 @@ C. Ouderlijke Controle: "Diep-Lees Modus"
 * Doel: Dwingt het kind tot vertragen en typen (begrijpend lezen) i.p.v. scannen en rennen.
 6. Gerealiseerde Milestones
 * [x] Vercel Deployment: Live & HTTPS.
-* [x] Brain Upgrade: Gemini 2.0 Flash integratie met Vision.
+* [x] Brain Upgrade: Gemini 2.5 Flash integratie met Vision (2.0 uitgefaseerd door Google).
 * [x] Camera Interface: Mobile Bridge (QR logic) volledig werkend via Supabase.
 * [x] Visual Engine: Maffs (Grafieken), LaTeX (Formules) & Wikimedia (Afbeeldingen) geïmplementeerd. Flux & Image Generation verwijderd.
 * [x] UI Warmth Upgrade: Stone-theme & Dot Grid.
 * [x] UX Upgrade: Master Menu & Smart Age Slider Design.
-* [x] Tutor State Machine (Option A): server-side, persistent, deterministisch voor kern reken-canons (delen/vermenigvuldigen/optellen/aftrekken).
+* [x] Tutor State Machine (Option A): server-side, persistent, deterministisch voor ~25 reken-canons incl. leeftijdsstijl en stuck-escalatie.
+* [x] Grote schoonmaak (gezinsproduct): leraar-spoor volledig verwijderd, dode code opgeruimd, typecheck strikt schoon.
+* [x] Security hardening: RLS op alle kerntabellen, anon-toegang ingetrokken, auth verplicht voor chat, fail-closed middleware, wachtwoord-reset flow.
+* [x] Routing-contract: "het gesprek wint bij twijfel" — grammatica-router vuurt alleen op expliciete intentie (paus-bug structureel opgelost).
+* [x] Testsuites als poortwachter: `test:canons` (anti-kaping + golden flows) en `test:images` (kindvragen → foto's).
+* [x] Zelfverbeterloop: `tutor_events` (gezinsdata), `anon_tutor_stats` (anonieme tellers) en duimpje-omlaag (`feedback_reports`).
+* [x] Curator 2.0: concept-first beeldketen via Wikipedia/Wikidata (koboldhaai-klasse bugs structureel opgelost).
 7. Roadmap naar V3
 Fase 1: UX & Core Experience (AFGEROND)
 * [x] Chat Logic, Vision, Board & Settings.
@@ -162,16 +185,17 @@ Fase 2: Authenticatie & Rollen (NU)
 * [ ] Ouder Dashboard: Bouwen van de "Glow Feed" & Diep-Lees Modus toggle.
 * [x] Integratie Leaflet (Kaarten) in de Board Manager.
 Fase 2b: Rekenen (CORE → EXTENDED → INSIGHTS) (NU)
-* CORE (MVP, moet af):
-  * [ ] Kommagetallen basics: +/− en ×/÷ met geld/metingen (deterministisch + golden tests).
-  * [ ] Core‑stabiliteit sweep: per canon start/ACK/stuck/restart/stop + junior taal (geen jargon) consistent.
+* CORE (MVP):
+  * [x] Kommagetallen ×/÷ (deterministisch, junior micro-stappen) + geld (korting/btw, aantal × prijs).
+  * [x] Core‑stabiliteit sweep: start/ACK/stuck/restart/stop + junior taal (geen jargon) — bewaakt door `test:canons`.
 * EXTENDED (pas na CORE):
+  * [ ] Kommagetallen +/− (canon).
   * [ ] Verhoudingen / schaal (1:3, kaart‑schaal).
   * [ ] Afronden / schatten.
   * [ ] Oppervlakte / omtrek / inhoud (optioneel).
   * [ ] Multi-step word problems (meer context).
 * Daarna:
-  * [ ] Leerprofiel + Insights (Supabase): per canon‑stap logging → sterke/zwakke punten voor kind en ouder.
+  * [~] Leerprofiel + Insights: per canon‑stap logging staat (`tutor_events`); ouderdashboard-weergave ("liep 2× vast op gelijke noemers") moet nog gebouwd.
 Fase 2c: Begrijpend Lezen (na rekenen) (PLAN)
 * [ ] Hoofdgedachte / kernzin per alinea (1-move prompts).
 * [ ] Signaalwoorden → relatie (oorzaak/gevolg, tegenstelling, opsomming).
@@ -195,15 +219,16 @@ Fase 2f: Studievaardigheden (PLAN)
 * [ ] Samenvatten: kopjes → kernzinnen → 5 bullets (stap-voor-stap).
 * [ ] Plannen: taken opdelen + tijdschatting + prioriteit (micro-taken).
 * [ ] Golden tests + leeftijdsstijl consistent.
-Fase 2g: Product Polishing & Betrouwbaarheid (PLAN)
-* [ ] Tutor event logging + monitoring (canon fallbacks, stuck-loops).
-* [ ] Content consistency sweep (junior/teen, geen jargon).
-* [ ] Golden tests als regressiesuite (CI later).
+Fase 2g: Product Polishing & Betrouwbaarheid (GROTENDEELS AF)
+* [x] Tutor event logging + monitoring (canon fallbacks, stuck-loops, image-misses, LLM-doorval).
+* [x] Content consistency sweep (junior/teen, geen jargon).
+* [x] Golden tests als regressiesuite (`test:canons`, `test:images`; CI-koppeling later).
+* [ ] Wekelijkse productloop: gezin gebruikt het, events uitlezen, top-ergernissen fixen, elke fix wordt een test.
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
-* [ ] Tech Debt Cleanup.
+* [x] Tech Debt Cleanup (juni 2026: dode code weg, strikte typecheck schoon).
 8. Groeistrategie
-* Fase 1 (Nu): Pilot (Rens).
+* Fase 1 (Nu): Pilot (eigen gezin).
 * Fase 2 (3 mnd): Kitchen Table Beta (5-10 vrienden).
 * Fase 3 (Launch): MVP met SaaS model.
 * Merkpositionering: Publiceer het "Why Anima doesn't give answers" manifesto.
@@ -219,5 +244,7 @@ Unit Economics:
 10. Ethics, Privacy & Compliance 🛡️
 * Privacy (AVG/GDPR): Data opslag in EU. Recht op vergetelheid.
 * Data-eigendom (MOAT): De leerdata is van het gezin. Ouders kunnen alles inzien (van eigen kinderen), exporteren en definitief wissen. Row Level Security dwingt dit af op databaseniveau.
+* Verbeteren zonder meekijken: productverbetering draait op anonieme tellers (geen user_id, geen tekst). Gespreksinhoud bereikt ons alleen via een bewuste schenking (duimpje-omlaag, per beurt) — en gaat mee in de cascade delete. De belofte is dus niet "wij gaan er netjes mee om" maar "wij kúnnen niet meekijken, tenzij jullie één beurt opsturen".
+* Canons leren in code, niet in een model: een fix voor één gezin helpt iedereen, zonder dat er ooit kinderdata in een model getraind hoeft te worden.
 * Data Hygiëne: Ouders kunnen niet chatten, zodat het profiel van het kind zuiver blijft.
 * Veiligheid: Strict Gemini Safety Filters & PII filtering.
