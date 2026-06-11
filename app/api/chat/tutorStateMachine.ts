@@ -1330,7 +1330,18 @@ function parseProblem(text: string): ParsedProblem | null {
       const price = priceEachM ? parseNum(priceEachM[1]) : NaN
 
       const euroM = low.match(/€\s*(\d+(?:[.,]\d+)?)/) || low.match(/\b(\d+(?:[.,]\d+)?)\s*euro\b/)
-      const subtotalDirect = euroM ? parseNum(euroM[1]) : NaN
+      let subtotalDirect = euroM ? parseNum(euroM[1]) : NaN
+
+      // Fallback zonder €/euro: pak het eerste getal dat GEEN percentage is.
+      // Voorkomt dat "80 met 20% korting en 21% btw" doorvalt naar percent_word
+      // en daar het verkeerde getal (21) als basis pakt.
+      if (!Number.isFinite(subtotalDirect)) {
+        for (const m of low.matchAll(/(\d+(?:[.,]\d+)?)\s*(%?)/g)) {
+          if (m[2] === '%') continue
+          subtotalDirect = parseNum(m[1])
+          break
+        }
+      }
 
       const hasQtyPrice = Number.isFinite(qty) && qty > 0 && Number.isFinite(price)
       const subtotal = hasQtyPrice ? qty * price : subtotalDirect
