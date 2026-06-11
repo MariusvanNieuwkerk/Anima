@@ -2934,6 +2934,19 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
       const rem = rem0 - b
       if (Math.abs(userN - rem) < 1e-9) {
         const onesAdded = (state.onesAdded || 0) + 1
+        // Past er nóg een groepje bij? Dan eerst opnieuw ×1, niet meteen
+        // optellen. Anders rondt de canon te vroeg af (bv. 84 ÷ 7 → 11 rest 7).
+        if (rem >= b) {
+          const prompt = lang === 'en' ? `Fill in: ${b}×1 = __` : `Vul in: ${b}×1 = __`
+          return {
+            handled: true,
+            payload: {
+              message: coachJunior(lang, ageBand, state.turn, `Past er nog 1 groepje bij?`, `Does 1 more group fit?`, prompt),
+              action: 'none',
+            },
+            nextState: { ...state, turn: state.turn + 1, step: 'bx1', rem, onesAdded },
+          }
+        }
         const q = startChunk + onesAdded
         const label =
           ageBand === 'junior' ? (lang === 'en' ? ' (how many?)' : ' (hoe vaak?)') : lang === 'en' ? ' (quotient)' : ' (quotiënt)'
@@ -5333,5 +5346,172 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
   }
 
   return { handled: false }
+}
+
+// ====================================================================
+// UITLEG-MODUS ("I Do"): leg een onderwerp volledig uit in ÉÉN bericht.
+// In plaats van stap-voor-stap te wachten op de leerling, draaien we de
+// bestaande canon zelf af op een voorbeeldsom (we vullen telkens het
+// juiste antwoord in) en plakken de uitgewerkte stappen aan elkaar.
+// Zo blijft de uitleg deterministisch en leeftijdsbewust, maar hoeft de
+// leerling niets te beantwoorden. Daarna 1 vrijblijvende uitnodiging.
+// ====================================================================
+
+// Veilige rekenmachine voor de "= __"-blanks (alleen + - × ÷ en haakjes).
+function evalArithExpr(expr: string): number | null {
+  const norm = String(expr || '')
+    .replace(/×/g, '*')
+    .replace(/÷/g, '/')
+    .replace(/[\u2212\u2013\u2014]/g, '-')
+  const toks = tokenizeExpr(norm)
+  if (!toks || !toks.length) return null
+  const prec = (op: string) => (op === '*' || op === '/' ? 2 : 1)
+  const output: Tok[] = []
+  const stackOps: Tok[] = []
+  for (const t of toks) {
+    if (t.t === 'num') output.push(t)
+    else if (t.t === 'op') {
+      while (stackOps.length) {
+        const top = stackOps[stackOps.length - 1]
+        if (top.t === 'op' && prec(top.op) >= prec(t.op)) output.push(stackOps.pop() as Tok)
+        else break
+      }
+      stackOps.push(t)
+    } else if (t.t === 'lp') stackOps.push(t)
+    else if (t.t === 'rp') {
+      while (stackOps.length && stackOps[stackOps.length - 1].t !== 'lp') output.push(stackOps.pop() as Tok)
+      if (stackOps.length) stackOps.pop()
+    }
+  }
+  while (stackOps.length) output.push(stackOps.pop() as Tok)
+
+  const valStack: number[] = []
+  for (const t of output) {
+    if (t.t === 'num') valStack.push(t.n)
+    else if (t.t === 'op') {
+      const b = valStack.pop()
+      const a = valStack.pop()
+      if (a === undefined || b === undefined) return null
+      valStack.push(applyOp(a, t.op, b))
+    }
+  }
+  return valStack.length === 1 && Number.isFinite(valStack[0]) ? valStack[0] : null
+}
+
+// Bepaal het juiste antwoord op de blank van één canon-bericht.
+function solveCanonBlank(message: string): number | null {
+  const m = String(message || '')
+  // Blank is een teller ("= __/8") → niet generiek oplosbaar: stop netjes.
+  if (/=\s*__\s*\//.test(m)) return null
+  const idx = m.search(/=\s*__/)
+  if (idx < 0) return null
+
+  let left = m.slice(0, idx)
+  const k = left.toLowerCase().lastIndexOf('in:')
+  if (k >= 0) left = left.slice(k + 3)
+
+  // Woord-prompts: kleinste gemene veelvoud / grootste gemene deler.
+  if (/kleinste gemene veelvoud|kleinste noemer|\blcm\b/i.test(left)) {
+    const nums = (left.match(/\d+/g) || []).map(Number)
+    if (nums.length >= 2) return lcmInt(nums[nums.length - 2], nums[nums.length - 1])
+  }
+  if (/grootste gemene deler|grootste deler|\bgcd\b|\bggd\b/i.test(left)) {
+    const nums = (left.match(/\d+/g) || []).map(Number)
+    if (nums.length >= 2) return gcdInt(nums[nums.length - 2], nums[nums.length - 1])
+  }
+
+  return evalArithExpr(left)
+}
+
+function fmtDemoNum(n: number): string {
+  if (Math.abs(n % 1) < 1e-9) return String(Math.trunc(n))
+  return String(Number(n.toFixed(4))).replace('.', ',')
+}
+
+// Maak van een canon-promptbericht een uitgewerkte stap (blank ingevuld).
+function renderDemoStep(message: string, answer: number, lang: string): string {
+  let s = String(message || '')
+  s = s.replace(/=\s*__/, `= ${fmtDemoNum(answer)}`)
+  s = s.replace(/\b(Vul in|Fill in)\s*:\s*/i, '')
+  // NL: laat kommagetallen netjes met een komma zien (canon gebruikt soms een punt).
+  if (lang === 'nl') s = s.replace(/(\d)\.(\d)/g, '$1,$2')
+  return s.trim()
+}
+
+type DemoTopic = { example: string; tryExample: string }
+
+// Herken uitleg-intentie + map naar een bekend onderwerp met voorbeeldsom.
+// Geeft null als er geen canon-onderwerp bij past (dan handelt de LLM het af,
+// bv. "leg uit waarom de lucht blauw is").
+function detectExplainTopic(text: string): DemoTopic | null {
+  const t = String(text || '').toLowerCase()
+
+  const wantsExplain =
+    /\bleg\b.*\buit\b|uitleggen|uitleg|hoe\s+(werkt|doe|moet|reken|deel|maak)|hoe\s+gaat|wat\s+(is|zijn)\b.*\?|laat\s+(een\s+)?voorbeeld|doe\s+(het\s+)?voor|explain|how\s+(do|does|to)\b|show\s+me\s+how/i.test(
+      t
+    )
+  if (!wantsExplain) return null
+
+  // Geen self-demo als er een concrete eigen som in staat (cijfers + operator):
+  // dan wil de leerling díe som doen, niet een uitleg-voorbeeld.
+  if (/\d\s*[+\-*/×÷]\s*\d/.test(t)) return null
+
+  if (/staartdel|staart\s*del|\bdelen\b|deelsom|gedeeld|hoe\s+deel/i.test(t)) return { example: '84 ÷ 7', tryExample: '96 ÷ 8' }
+  if (/vermenigvuldig|keersom|\btafels?\b|\bmaal\b|hoe\s+keer/i.test(t)) return { example: '12 × 8', tryExample: '14 × 6' }
+  if (/optellen|plussom|optelsom|hoe.*\bplus\b|erbij/i.test(t)) return { example: '47 + 38', tryExample: '56 + 27' }
+  if (/aftrekken|minsom|aftreksom|hoe.*\bmin\b|eraf/i.test(t)) return { example: '82 − 47', tryExample: '73 − 28' }
+  if (/\bkorting\b|\bbtw\b/i.test(t)) return { example: '20% korting op €80', tryExample: '25% korting op €60' }
+  if (/procent|percentage/i.test(t)) return { example: '15% van 80', tryExample: '35% van 60' }
+  if (/kommagetal|\bkomma\b/i.test(t)) return { example: '1,2 × 5', tryExample: '0,6 × 4' }
+  if (/volgorde\s+van\s+bewerking|voorrang|haakjes\s+eerst/i.test(t)) return { example: '2 + 3 × 4', tryExample: '5 + 2 × 3' }
+
+  return null
+}
+
+export function buildCanonExplanation(input: {
+  userText: string
+  userAge?: number
+  userLanguage?: string
+}): { message: string } | null {
+  const lang = String(input.userLanguage || 'nl')
+  // Uitleg-modus is nu NL-only; voor andere talen handelt de LLM het af.
+  if (lang !== 'nl') return null
+
+  const topic = detectExplainTopic(input.userText)
+  if (!topic) return null
+
+  let r = runTutorStateMachine({
+    state: null,
+    lastUserText: topic.example,
+    userAge: input.userAge,
+    userLanguage: lang,
+  })
+  if (!r.handled) return null
+
+  const steps: string[] = []
+  let guard = 0
+  while (r.handled && r.nextState && guard++ < 16) {
+    const msg = r.payload.message
+    const ans = solveCanonBlank(msg)
+    if (ans === null) break
+    const rendered = renderDemoStep(msg, ans, lang)
+    // Stop bij geen voortgang (zelfde stap opnieuw) om herhaling te vermijden.
+    if (steps.length && steps[steps.length - 1] === rendered) break
+    steps.push(rendered)
+    r = runTutorStateMachine({
+      state: r.nextState,
+      lastUserText: fmtDemoNum(ans),
+      userAge: input.userAge,
+      userLanguage: lang,
+    })
+  }
+
+  if (steps.length < 2) return null
+
+  const examplePretty = topic.example
+  const header = `Ik laat het stap voor stap zien met een voorbeeld: ${examplePretty}.`
+  const body = steps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+  const footer = `Wil je het nu zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`
+  return { message: `${header}\n\n${body}\n\n${footer}` }
 }
 

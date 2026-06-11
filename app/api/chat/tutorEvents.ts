@@ -3,7 +3,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 // Observability (roadmap stap 3): per beurt vastleggen welke laag
 // antwoordde. Voedt kwaliteitsbewaking, de roadmap (welke vragen vallen
 // door naar de LLM?) en later het ouderdashboard.
-export type TutorEventRoute = 'canon' | 'grammar' | 'policy' | 'llm' | 'error'
+export type TutorEventRoute = 'canon' | 'grammar' | 'policy' | 'llm' | 'error' | 'explain'
 
 export type TutorEvent = {
   userId: string

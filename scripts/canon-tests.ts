@@ -10,7 +10,7 @@
  *
  * Elke gefixte kaping of canon-bug hoort hier als test bij te komen.
  */
-import { runTutorStateMachine, type TutorSMState } from '../app/api/chat/tutorStateMachine'
+import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from '../app/api/chat/tutorStateMachine'
 import { routeGrammarTopic } from '../app/api/chat/grammar/routeMap'
 
 let passed = 0
@@ -155,6 +155,71 @@ flow('vat: €80, 20% korting, 21% btw', '€80 met 20% korting, daarna 21% btw.
   r = sm('ik weet het niet', state)
   const escMsg = String(r.handled ? r.payload.message : '')
   check('vat stuck: 2e "weet ik niet" maakt stap kleiner (135 ÷ 5)', escMsg.includes('135 ÷ 5'), `bericht: "${escMsg}"`)
+}
+
+// =====================================================================
+// 5) UITLEG-MODUS ("I Do"): volledige walkthrough in één bericht
+// =====================================================================
+const explain = (q: string) => buildCanonExplanation({ userText: q, userAge: 10, userLanguage: 'nl' })
+
+// Uitleg-intentie zonder concrete som → één compleet uitlegbericht
+const mustExplain: Array<[string, string]> = [
+  ['kun je me staartdelingen uitleggen?', '84 ÷ 7'],
+  ['hoe werkt vermenigvuldigen?', '12 × 8'],
+  ['leg optellen uit', '47 + 38'],
+  ['hoe werkt aftrekken', '82 − 47'],
+  ['leg procenten uit', '15% van 80'],
+  ['hoe reken je met kommagetallen?', '1,2 × 5'],
+  ['leg de volgorde van bewerkingen uit', '2 + 3 × 4'],
+]
+for (const [q, example] of mustExplain) {
+  const r = explain(q)
+  const msg = r?.message || ''
+  check(`Uitleg-modus: "${q}" geeft walkthrough met voorbeeld ${example}`, !!r && msg.includes(example), `kreeg: ${msg ? msg.slice(0, 80) : '(null)'}`)
+  check(`Uitleg-modus: "${q}" nodigt uit om zelf te proberen`, msg.includes('zelf proberen'), `kreeg: ${msg.slice(0, 80)}`)
+  check(`Uitleg-modus: "${q}" is meerstaps (≥ 2 stappen)`, /\n2\./.test(msg), `kreeg: ${msg.slice(0, 120)}`)
+}
+
+// Regressie: staartdeling rondt NIET te vroeg af (84 ÷ 7 = 12 rest 0, niet 11 rest 7)
+{
+  const r = explain('leg staartdelen uit')
+  const msg = r?.message || ''
+  check('Uitleg-modus: 84 ÷ 7 eindigt correct op 12 (rest 0)', msg.includes('84 ÷ 7 = 12 (rest 0)'), `kreeg: ${msg}`)
+}
+
+// Geen uitleg-modus voor kennisvragen → die horen bij de LLM
+for (const q of ['leg uit waarom de lucht blauw is', 'hoe werkt een vulkaan?', 'wie was napoleon?']) {
+  check(`Uitleg-modus laat kennisvraag los: "${q}"`, explain(q) === null, `kreeg uitleg ipv null`)
+}
+
+// Een concrete som is GÉÉN uitleg-demo (moet interactief opgelost worden)
+for (const q of ['84 ÷ 7', 'wat is 84 ÷ 7?', '15% van 80']) {
+  check(`Uitleg-modus negeert concrete som: "${q}"`, explain(q) === null, `kreeg demo ipv interactieve canon`)
+}
+
+// =====================================================================
+// 6) REGRESSIE: staartdeling met meerdere extra groepjes klopt
+// =====================================================================
+{
+  // 84 ÷ 7 vereist 10 + 1 + 1 groepjes; de canon mag niet te vroeg afronden.
+  let r = sm('84 ÷ 7')
+  let state = nextOf(r)
+  const feed = (a: string) => {
+    r = sm(a, state)
+    state = nextOf(r)
+    return String(r.handled ? r.payload.message : '')
+  }
+  feed('70') // 7×10
+  feed('14') // 84 − 70
+  feed('7') // 7×1
+  feed('7') // 14 − 7  (rest nog ≥ 7 → nog een groepje)
+  feed('7') // 7×1
+  const afterZero = feed('0') // 7 − 7 = 0 → quotiënt-som
+  check('div 84 ÷ 7: na rest 0 volgt quotiënt-som 10 + 2', afterZero.includes('10 + 2'), `bericht: "${afterZero}"`)
+  const finalPrompt = feed('12') // 10 + 2 = 12 → schrijf-het-antwoord (rest 0)
+  check('div 84 ÷ 7: eindstap heeft rest 0', finalPrompt.includes('rest 0'), `bericht: "${finalPrompt}"`)
+  const done = feed('12') // 84 ÷ 7 = 12 (rest 0)
+  check('div 84 ÷ 7: bevestigt quotiënt 12', done.includes('12'), `bericht: "${done}"`)
 }
 
 // =====================================================================

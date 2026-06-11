@@ -8,7 +8,7 @@ import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 import { createAdminClient } from '@/utils/supabase/admin'
-import { runTutorStateMachine, type TutorSMState } from './tutorStateMachine'
+import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from './tutorStateMachine'
 import { logTutorEvent, looksStuck } from './tutorEvents'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
@@ -246,6 +246,63 @@ OUTPUT-CONTRACT (CRITICAL)
     const lastMessageContent = lastMessage?.content || '';
     evUserText = String(lastMessageContent || '')
     let userParts: any[] = [{ text: lastMessageContent }];
+
+    // --- UITLEG-MODUS ("I Do"): volledige walkthrough in één bericht ---
+    // Als de leerling om een uitleg vraagt ("leg staartdelen uit", "hoe werkt
+    // procenten") in plaats van een concrete som, draaien we de bestaande canon
+    // zelf af op een voorbeeld en tonen alle stappen ineens. Zo hoeft de
+    // leerling niet na elke microstap te antwoorden.
+    if (images.length === 0) {
+      const explanation = buildCanonExplanation({
+        userText: String(lastMessageContent || ''),
+        userAge,
+        userLanguage,
+      })
+      if (explanation) {
+        // Een demo start geen interactieve sessie: ruim eventuele oude state op
+        // zodat de "probeer het zelf"-som daarna schoon kan beginnen.
+        if (sessionId) {
+          try {
+            const admin = createAdminClient()
+            await admin
+              .from('tutor_sessions')
+              .upsert(
+                {
+                  session_id: `${authUser.id}:${sessionId}`,
+                  user_id: authUser.id,
+                  state: {},
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'session_id' }
+              )
+          } catch {
+            /* state store optioneel; uitleg werkt ook zonder */
+          }
+        }
+
+        // De uitleg is al leeftijdsbewust opgebouwd uit de canon-coaching en is
+        // bewust meerregelig; niet door applyAgeStyleText halen (die kort in).
+        const payload = {
+          message: explanation.message,
+          topic: 'Rekenen',
+          action: 'none',
+        }
+        await logTutorEvent({
+          userId: authUser.id,
+          sessionId,
+          route: 'explain',
+          canonKind: null,
+          step: null,
+          result: 'explain',
+          userText: String(lastMessageContent || ''),
+          assistantText: payload.message,
+        })
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
 
     // --- STATEFUL TUTOR (Option A): deterministic state machine per session_id ---
     // This runs BEFORE any LLM call and avoids inferring state from text.
