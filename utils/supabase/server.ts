@@ -6,8 +6,6 @@ import { createServerClient } from '@supabase/ssr'
 /**
  * Cookie-based Supabase client for Route Handlers / Server Actions.
  * This is the ONLY way to read the logged-in user's session server-side.
- * (The old `utils/supabaseServer.ts` client has no cookie access and
- * therefore never sees a session in API routes.)
  */
 export function createSupabaseServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

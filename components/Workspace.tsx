@@ -104,11 +104,8 @@ export default function Workspace() {
         const { data: userData } = await supabase.auth.getUser()
         const userId = userData?.user?.id
         if (!userId) {
-          const { createFallbackProfile } = await import('../utils/auth')
-          const fallbackProfile = createFallbackProfile()
-          setUserProfile(fallbackProfile)
-          setUserRole('student')
-          setStudentName('Rens')
+          // Geen sessie: terug naar login (geen nep-profiel meer).
+          window.location.href = '/login'
           return
         }
 
@@ -143,25 +140,16 @@ export default function Workspace() {
 
           if (profile.role === 'student' && profile.student_name) setStudentName(profile.student_name)
           else if (profile.role === 'parent' && profile.parent_name) setStudentName(profile.parent_name)
-          else if (profile.role === 'teacher' && profile.teacher_name) setStudentName(profile.teacher_name)
-          else setStudentName(profile.student_name || profile.parent_name || profile.teacher_name || 'Gebruiker')
+          else setStudentName(profile.display_name || profile.student_name || profile.parent_name || 'Gebruiker')
         } else {
-          const { createFallbackProfile } = await import('../utils/auth')
-          const fallbackProfile = createFallbackProfile(userId)
-          setUserProfile(fallbackProfile)
-          setUserRole('student')
-          setStudentName('Rens')
+          // Wel ingelogd maar geen profiel kunnen laden: terug naar login.
+          window.location.href = '/login'
+          return
         }
       } catch (error) {
-        console.error('[WORKSPACE] Auth initialization error:', error);
-        // FALLBACK: Bij error, gebruik student profile
-        const { createFallbackProfile } = await import('../utils/auth');
-        const fallbackProfile = createFallbackProfile();
-        setUserProfile(fallbackProfile);
-        setUserRole('student');
-        setStudentName('Rens');
-        
-        console.log('DEBUG: Auth error, gebruik fallback student profile');
+        console.error('[WORKSPACE] Auth initialization error:', error)
+        window.location.href = '/login'
+        return
       } finally {
         setIsAuthLoading(false);
       }
@@ -496,29 +484,7 @@ export default function Workspace() {
 
   // --- NIEUWE SESSIE HANDLER ---
   const handleStartNewSession = async () => {
-    console.log('Starting new session...');
-    
-    // 1. POST-SESSION LOGICA: Genereer insight voor de oude sessie (als er messages zijn)
-    if (sessionId && messages.length > 1) { // Meer dan alleen het intro bericht
-      try {
-        await fetch('/api/insights', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: sessionId,
-            studentName: studentName, // Voeg student name toe voor koppeling
-            userAge: age,
-            tutorMode: tutorMode,
-            language: language
-          })
-        });
-        // Stil falen bij errors (graceful degradation volgens Blueprint)
-      } catch (error) {
-        console.error('Error generating insight:', error);
-      }
-    }
-    
-    // 2. Maak nieuwe ID
+    // 1. Maak nieuwe ID
     const newSessionId = crypto.randomUUID();
     setSessionId(newSessionId);
     localStorage.setItem('anima_session_id', newSessionId); // Bewaar, zodat F5 in deze nieuwe sessie blijft
@@ -1026,38 +992,6 @@ export default function Workspace() {
 
       // --- OPSLAAN MET HUIDIGE SESSION ID ---
       saveMessageToDb('assistant', finalChatMessage, sessionId, { userId: userProfile?.id ?? null, topic });
-
-      // TEST-TRIGGER: Genereer proef-insight na 3e bericht (gebruiker + AI = 2 berichten, na 3e AI bericht = totaal 6 berichten)
-      // Of simpelweg: na elke 3e user message (3 user messages = 6 totaal berichten)
-      const totalMessages = [...messages, userMessage, { id: aiMessageId, role: 'assistant' as const, content: finalChatMessage }].length;
-      const userMessageCount = [...messages, userMessage].filter(m => m.role === 'user').length;
-      
-      if (userMessageCount >= 3 && userMessageCount % 3 === 0) {
-        console.log(`[INSIGHTS TRIGGER] Generating test insight after ${userMessageCount} user messages...`);
-        try {
-          const insightResponse = await fetch('/api/insights', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: sessionId,
-              studentName: studentName, // Voeg student name toe
-              userAge: age,
-              tutorMode: tutorMode,
-              language: language
-            })
-          });
-
-          if (insightResponse.ok) {
-            const result = await insightResponse.json();
-            console.log('[INSIGHTS TRIGGER] ✅ Successfully generated insight:', result);
-          } else {
-            const error = await insightResponse.json();
-            console.error('[INSIGHTS TRIGGER] ❌ Error generating insight:', error);
-          }
-        } catch (error) {
-          console.error('[INSIGHTS TRIGGER] ❌ Exception while generating insight:', error);
-        }
-      }
 
       if (isVoiceOn) {
         speakText(finalChatMessage);
