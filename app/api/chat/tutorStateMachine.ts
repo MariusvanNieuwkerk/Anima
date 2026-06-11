@@ -1184,12 +1184,6 @@ function simplifyFrac(n: number, d: number): { n: number; d: number; g: number }
   return { n: nn, d: dd, g }
 }
 
-function fracHintNL(ageBand: AgeBand): string {
-  if (ageBand === 'student') return ''
-  if (ageBand === 'teen') return 'Regel: eerst noemers gelijk, dan tellers optellen/aftrekken.'
-  return 'Regel: maak eerst de noemers hetzelfde.'
-}
-
 function lcmPromptNL(ageBand: AgeBand, b: number, d: number): string {
   if (ageBand === 'junior') return `Vul in: kleinste noemer die bij ${b} en ${d} past = __`
   if (ageBand === 'teen') return `Vul in: kleinste gemene veelvoud van ${b} en ${d} = __`
@@ -1336,7 +1330,9 @@ function parseProblem(text: string): ParsedProblem | null {
       // Voorkomt dat "80 met 20% korting en 21% btw" doorvalt naar percent_word
       // en daar het verkeerde getal (21) als basis pakt.
       if (!Number.isFinite(subtotalDirect)) {
-        for (const m of low.matchAll(/(\d+(?:[.,]\d+)?)\s*(%?)/g)) {
+        const numRe = /(\d+(?:[.,]\d+)?)\s*(%?)/g
+        let m: RegExpExecArray | null
+        while ((m = numRe.exec(low))) {
           if (m[2] === '%') continue
           subtotalDirect = parseNum(m[1])
           break
@@ -1637,7 +1633,6 @@ function parseProblem(text: string): ParsedProblem | null {
   {
     const low = core0.toLowerCase()
     const pct = low.match(/(\d+(?:[.,]\d+)?)\s*%/)
-    const priceM = low.match(/€\s*(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s*euro\b|(\d+(?:[.,]\d+)?)/)
     if (pct) {
       const p = parseNum(pct[1])
       // prefer €-prefixed or euro-labelled value; fallback to first number after %
@@ -4622,7 +4617,6 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 
     if (!canAnswer) {
       const p = promptOf()
-      const hint = fracHintNL(ageBand)
       const w = fracStepWhy(ageBand, state.step, state.turn)
       const msg =
         ageBand === 'junior'
@@ -4717,7 +4711,6 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
         const simp = simplifyFrac(exp, lcm)
         if (simp.g === 1) {
           const p = lang === 'en' ? `Fill in: answer = __` : `Vul in: antwoord = __`
-          const w = juniorWhy('frac_addsub', 'final', state.turn, { a, b, c, d })
           return { handled: true, payload: { message: p, action: 'none' }, nextState: { ...state, turn: state.turn + 1, step: 'final', num: exp, numS: simp.n, denS: simp.d, gcd: 1 } }
         }
         const p = lang === 'en' ? `Fill in: GCD(${exp},${lcm}) = __` : gcdPromptNL(ageBand, exp, lcm)

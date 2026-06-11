@@ -29,6 +29,13 @@ function check(name: string, ok: boolean, detail?: string) {
 const sm = (lastUserText: string, state: TutorSMState | null = null) =>
   runTutorStateMachine({ state, lastUserText, userAge: 10, userLanguage: 'nl' })
 
+type SMResult = ReturnType<typeof sm>
+const nextOf = (r: SMResult): TutorSMState | null => (r.handled ? ((r.nextState as TutorSMState | null) ?? null) : null)
+const kindOf = (r: SMResult): string | null => {
+  const s = nextOf(r) as any
+  return s?.kind ?? null
+}
+
 // =====================================================================
 // 1) ANTI-KAPING: kennisvragen en gesprekjes blijven bij de LLM
 // =====================================================================
@@ -90,14 +97,14 @@ const mustStartCanon: Array<[string, string]> = [
 ]
 for (const [q, kind] of mustStartCanon) {
   const r = sm(q)
-  const gotKind = r.nextState ? (r.nextState as any).kind : null
+  const gotKind = kindOf(r)
   check(`Som start canon ${kind}: "${q}"`, r.handled && gotKind === kind, `handled=${r.handled}, kind=${gotKind}`)
 }
 
 // Kennisvragen mogen de rekencanon óók niet starten
 for (const q of mustReachLlm) {
   const r = sm(q)
-  check(`LLM-vraag niet gekaapt door rekenen: "${q}"`, !r.handled, `handled met kind=${r.nextState ? (r.nextState as any).kind : '-'}`)
+  check(`LLM-vraag niet gekaapt door rekenen: "${q}"`, !r.handled, `handled met kind=${kindOf(r) ?? '-'}`)
 }
 
 // =====================================================================
@@ -106,14 +113,14 @@ for (const q of mustReachLlm) {
 function flow(name: string, start: string, turns: Array<[answer: string, expectInMessage: string]>) {
   let r = sm(start)
   check(`${name} — start wordt afgehandeld`, r.handled, `handled=${r.handled}`)
-  let state = (r.nextState as TutorSMState | null) ?? null
+  let state = nextOf(r)
   let step = 0
   for (const [answer, expect] of turns) {
     step++
     r = sm(answer, state)
     const msg = String(r.handled ? r.payload.message : '')
     check(`${name} — stap ${step} ("${answer}" → verwacht "${expect}")`, r.handled && msg.includes(expect), `bericht: "${msg}"`)
-    state = (r.nextState as TutorSMState | null) ?? null
+    state = nextOf(r)
   }
 }
 
@@ -138,13 +145,13 @@ flow('vat: €80, 20% korting, 21% btw', '€80 met 20% korting, daarna 21% btw.
 // Golden test 5v-6: stuck-escalatie maakt de stap kleiner
 {
   let r = sm('Je koopt 3 kaartjes van €4,50 met 20% korting en daarna 21% btw. Wat betaal je?')
-  let state = (r.nextState as TutorSMState | null) ?? null
+  let state = nextOf(r)
   r = sm('13,5', state)
-  state = (r.nextState as TutorSMState | null) ?? null
+  state = nextOf(r)
   const stepMsg = String(r.handled ? r.payload.message : '')
   check('vat stuck: na subtotaal volgt 13,5 ÷ 5', stepMsg.includes('13,5 ÷ 5'), `bericht: "${stepMsg}"`)
   r = sm('ik weet het niet', state)
-  state = (r.nextState as TutorSMState | null) ?? null
+  state = nextOf(r)
   r = sm('ik weet het niet', state)
   const escMsg = String(r.handled ? r.payload.message : '')
   check('vat stuck: 2e "weet ik niet" maakt stap kleiner (135 ÷ 5)', escMsg.includes('135 ÷ 5'), `bericht: "${escMsg}"`)

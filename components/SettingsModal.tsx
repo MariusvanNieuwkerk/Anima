@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, Search, Zap, Compass, Sprout, Check, RefreshCw, LogOut, Baby, School, GraduationCap, PartyPopper } from 'lucide-react';
+import { X, Search, Zap, Compass, Sprout, Check, RefreshCw, LogOut, School, GraduationCap, PartyPopper } from 'lucide-react';
 import { supabase } from '../utils/supabase';
 import { type UserProfile } from '../utils/auth';
 

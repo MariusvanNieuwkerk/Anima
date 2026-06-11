@@ -129,19 +129,6 @@ const countRecentAttempts = (messages: any[]) => {
 
 const userIsNumberLike = (t: string) => /^\s*\d+([.,]\d+)?\s*$/.test(strip(t))
 
-const findLastUserNumber = (messages: any[]) => {
-  const arr = Array.isArray(messages) ? messages : []
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const m = arr[i]
-    if (m?.role !== 'user') continue
-    const t = strip(m?.content)
-    if (!userIsNumberLike(t)) continue
-    const n = parseNum(t)
-    if (Number.isFinite(n)) return n
-  }
-  return NaN
-}
-
 // For division canon: find the most recent "remainder" the student computed in response to a subtraction blank
 // like "184 − 160 = __" or "24 − 16 = __". This avoids confusing other numeric answers (e.g. "16" for "16×1").
 const findLastDivisionRemainder = (messages: any[]) => {
@@ -166,18 +153,6 @@ const findLastDivisionRemainder = (messages: any[]) => {
     return userN
   }
   return NaN
-}
-
-const countAssistantMatches = (messages: any[], re: RegExp) => {
-  const arr = Array.isArray(messages) ? messages : []
-  let n = 0
-  for (let i = Math.max(0, arr.length - 14); i < arr.length; i++) {
-    const m = arr[i]
-    if (m?.role === 'user') continue
-    const t = String(m?.content || '')
-    if (re.test(t)) n++
-  }
-  return n
 }
 
 const findLastFractionInHistory = (messages: any[]) => {
@@ -502,12 +477,6 @@ const canonStep = (lang: string, state: CanonState, messages: any[], lastUserTex
       if (ageBand === 'junior') return lang === 'en' ? ' (how many?)' : ' (hoe vaak?)'
       return lang === 'en' ? ' (quotient)' : ' (quotiënt)'
     })()
-    const finishWithQuotientStep = (q: number, rest: number) =>
-      ask(
-        `Vul in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`,
-        `Fill in: ${startChunk} + ${q - startChunk} = __${quotientLabel}`
-      )
-
     const divAsk = (nlWhy: string, nlPrompt: string, enWhy: string, enPrompt: string) => {
       const base = ask(nlPrompt, enPrompt)
       if (ageBand !== 'junior') return base

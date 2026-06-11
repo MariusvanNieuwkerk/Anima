@@ -34,15 +34,6 @@ const countAttempts = (messages: any[]) => {
   return n
 }
 
-const getPrevAssistantText = (messages: any[]) => {
-  const arr = Array.isArray(messages) ? messages : []
-  for (let i = arr.length - 2; i >= 0; i--) {
-    const m = arr[i]
-    if (m?.role && m.role !== 'user') return strip(m?.content)
-  }
-  return ''
-}
-
 const extractSentence = (messages: any[], lastUserText: string) => {
   // Prefer the most recent non-trivial user text as "the sentence".
   const t = strip(lastUserText)
@@ -74,7 +65,6 @@ export function grammarCanonStep(topic: GrammarTopicId, ctx: GrammarCanonContext
   const { lang, messages, lastUserText } = ctx
   const p = grammarPhrasesByLang[lang]
   const sentence = extractSentence(messages, lastUserText)
-  const prev = getPrevAssistantText(messages)
 
   // Deterministic escape hatch for grammar: keep the same micro-action but add a single rule line.
   if (isStuckSignal(lastUserText)) {

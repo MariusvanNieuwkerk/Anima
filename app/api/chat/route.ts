@@ -1292,7 +1292,6 @@ OUTPUT-CONTRACT (CRITICAL)
     // explain briefly and ask a clarifying question (keeps the student oriented).
     if (needsImage && payload.action === 'none') {
       const lang = String(userLanguage || 'nl')
-      const asked = String(lastMessageContent || '').trim()
       const alreadyMentions = typeof payload.message === 'string' && /geen.*(afbeelding|foto)|niets\s+gevonden|not\s+find/i.test(payload.message)
       if (!alreadyMentions) {
         const extra =

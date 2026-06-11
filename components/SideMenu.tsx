@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { X, Zap, Compass, Sprout, RefreshCw, LogOut, Search, Baby, GraduationCap, BookOpen, Check, PartyPopper, School } from 'lucide-react'
+import { useState } from 'react'
+import { X, Zap, Compass, Sprout, RefreshCw, LogOut, Search, GraduationCap, Check, PartyPopper, School } from 'lucide-react'
 
 type TutorMode = 'focus' | 'explorer' | 'growth'
 type Language = 'nl' | 'en' | 'es' | 'de' | 'fr' | 'it' | 'pt' | 'zh' | 'ar' | 'hi'

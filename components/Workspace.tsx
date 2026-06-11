@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Menu, Smartphone, Camera, Image as ImageIcon, QrCode, X, UploadCloud, Phone, Cloud, Monitor } from 'lucide-react'
+import { Menu, Smartphone, Camera, Image as ImageIcon, X } from 'lucide-react'
 import ChatColumn from './ChatColumn'
 import InputDock from './InputDock'
 import MobileHeader from './MobileHeader'
@@ -60,7 +60,7 @@ export default function Workspace() {
   const [language, setLanguage] = useState<Language>('nl')
   const [age, setAge] = useState(10)
   const [studentName, setStudentName] = useState<string>('')
-  const [animaName, setAnimaName] = useState<string>('Anima')
+  const [animaName] = useState<string>('Anima')
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
 
