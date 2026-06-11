@@ -280,12 +280,13 @@ OUTPUT-CONTRACT (CRITICAL)
           }
         }
 
-        // De uitleg is al leeftijdsbewust opgebouwd uit de canon-coaching en is
-        // bewust meerregelig; niet door applyAgeStyleText halen (die kort in).
+        // Chat praat kort, het bord schrijft de uitwerking: de stappen gaan
+        // als steps-payload naar het bord (action: show_steps).
         const payload = {
           message: explanation.message,
           topic: 'Rekenen',
-          action: 'none',
+          action: 'show_steps',
+          steps: explanation.board,
         }
         await logTutorEvent({
           userId: authUser.id,

@@ -8,6 +8,7 @@ import GraphView from '@/app/components/board/graph-view'
 import InlineErrorBoundary from './InlineErrorBoundary'
 import ImageView from '@/app/components/board/image-view'
 import FormulaView from '@/app/components/board/formula-view'
+import StepsView, { type StepsSpec } from '@/app/components/board/steps-view'
 
 type Message = {
   role: 'user' | 'assistant'
@@ -23,6 +24,7 @@ type BoardMode =
   | { type: 'IMAGE'; data: { url: string; title: string } }
   | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }
+  | { type: 'STEPS'; data: StepsSpec }
 
 function extractLatexForBoard(text: string): string | null {
   const t = String(text || '')
@@ -98,6 +100,11 @@ export default function VisualPane({
               const latex = (mode as any).data?.latex
               if (!latex) return null
               return <FormulaView latex={latex} />
+            }
+            case 'STEPS': {
+              const d = (mode as any).data
+              if (!d) return null
+              return <StepsView steps={d} />
             }
             case 'MAP': {
               const d = (mode as any).data

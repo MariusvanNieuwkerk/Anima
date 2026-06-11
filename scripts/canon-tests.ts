@@ -162,29 +162,40 @@ flow('vat: €80, 20% korting, 21% btw', '€80 met 20% korting, daarna 21% btw.
 // =====================================================================
 const explain = (q: string) => buildCanonExplanation({ userText: q, userAge: 10, userLanguage: 'nl' })
 
-// Uitleg-intentie zonder concrete som → één compleet uitlegbericht
-const mustExplain: Array<[string, string]> = [
-  ['kun je me staartdelingen uitleggen?', '84 ÷ 7'],
-  ['hoe werkt vermenigvuldigen?', '12 × 8'],
-  ['leg optellen uit', '47 + 38'],
-  ['hoe werkt aftrekken', '82 − 47'],
-  ['leg procenten uit', '15% van 80'],
-  ['hoe reken je met kommagetallen?', '1,2 × 5'],
-  ['leg de volgorde van bewerkingen uit', '2 + 3 × 4'],
+// Uitleg-intentie zonder concrete som → korte chattekst + uitgewerkte bordsom
+const mustExplain: Array<[string, string, string]> = [
+  ['kun je me staartdelingen uitleggen?', '84 ÷ 7', '84 ÷ 7 = 12'],
+  ['hoe werkt vermenigvuldigen?', '12 × 8', '12 × 8 = 96'],
+  ['leg optellen uit', '47 + 38', '47 + 38 = 85'],
+  ['hoe werkt aftrekken', '82 − 47', '82 − 47 = 35'],
+  ['leg procenten uit', '15% van 80', '15% van 80 = 12'],
+  ['hoe reken je met kommagetallen?', '1,2 × 5', '1,2 × 5 = 6'],
+  ['leg de volgorde van bewerkingen uit', '2 + 3 × 4', '2 + 3 × 4 = 14'],
+  ['leg korting uit', '20% korting op €80', 'Je betaalt €64'],
 ]
-for (const [q, example] of mustExplain) {
+for (const [q, example, conclusion] of mustExplain) {
   const r = explain(q)
   const msg = r?.message || ''
-  check(`Uitleg-modus: "${q}" geeft walkthrough met voorbeeld ${example}`, !!r && msg.includes(example), `kreeg: ${msg ? msg.slice(0, 80) : '(null)'}`)
-  check(`Uitleg-modus: "${q}" nodigt uit om zelf te proberen`, msg.includes('zelf proberen'), `kreeg: ${msg.slice(0, 80)}`)
-  check(`Uitleg-modus: "${q}" is meerstaps (≥ 2 stappen)`, /\n2\./.test(msg), `kreeg: ${msg.slice(0, 120)}`)
+  check(`Uitleg-modus: "${q}" verwijst naar het bord met voorbeeld ${example}`, !!r && msg.includes(example) && msg.includes('op het bord'), `kreeg: ${msg ? msg.slice(0, 100) : '(null)'}`)
+  check(`Uitleg-modus: "${q}" nodigt uit om zelf te proberen`, msg.includes('zelf proberen'), `kreeg: ${msg.slice(0, 100)}`)
+  check(`Uitleg-modus: "${q}" bord heeft ≥ 2 stappen`, (r?.board.lines.length ?? 0) >= 2, `kreeg: ${r?.board.lines.length ?? 0} stappen`)
+  check(`Uitleg-modus: "${q}" bordtitel = voorbeeld`, r?.board.title === example, `kreeg: ${r?.board.title}`)
+  check(`Uitleg-modus: "${q}" conclusie klopt`, r?.board.conclusion === conclusion, `kreeg: ${r?.board.conclusion}`)
 }
 
-// Regressie: staartdeling rondt NIET te vroeg af (84 ÷ 7 = 12 rest 0, niet 11 rest 7)
+// Demo-bordregels: geen coach-uitroepen ("Top!", "Slim:") en geen open blanks
 {
   const r = explain('leg staartdelen uit')
-  const msg = r?.message || ''
-  check('Uitleg-modus: 84 ÷ 7 eindigt correct op 12 (rest 0)', msg.includes('84 ÷ 7 = 12 (rest 0)'), `kreeg: ${msg}`)
+  const all = (r?.board.lines || []).map((l) => `${l.text} ${l.note || ''}`).join(' | ')
+  check('Uitleg-modus: bordnotities zonder coach-uitroepen', !/\b(Top|Slim|Mooi|Goed zo)\s*[!—:]/.test(all), `kreeg: ${all}`)
+  check('Uitleg-modus: geen open blanks op het bord', !all.includes('__'), `kreeg: ${all}`)
+  check('Uitleg-modus: geen "(rest 0)"-jargon', !all.includes('rest 0') && !(r?.board.conclusion || '').includes('rest 0'), `kreeg: ${all}`)
+}
+
+// Regressie: staartdeling rondt NIET te vroeg af (84 ÷ 7 = 12, niet 11 rest 7)
+{
+  const r = explain('leg staartdelen uit')
+  check('Uitleg-modus: 84 ÷ 7 eindigt correct op 12', r?.board.conclusion === '84 ÷ 7 = 12', `kreeg: ${r?.board.conclusion}`)
 }
 
 // Geen uitleg-modus voor kennisvragen → die horen bij de LLM

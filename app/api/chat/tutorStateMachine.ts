@@ -5428,17 +5428,62 @@ function fmtDemoNum(n: number): string {
   return String(Number(n.toFixed(4))).replace('.', ',')
 }
 
-// Maak van een canon-promptbericht een uitgewerkte stap (blank ingevuld).
-function renderDemoStep(message: string, answer: number, lang: string): string {
-  let s = String(message || '')
-  s = s.replace(/=\s*__/, `= ${fmtDemoNum(answer)}`)
-  s = s.replace(/\b(Vul in|Fill in)\s*:\s*/i, '')
-  // NL: laat kommagetallen netjes met een komma zien (canon gebruikt soms een punt).
-  if (lang === 'nl') s = s.replace(/(\d)\.(\d)/g, '$1,$2')
-  return s.trim()
+// Coach-uitroepen ("Top!", "Slim:") reageren op een antwoord van het kind;
+// in een uitleg zonder beurten zijn ze ruis. Strip ze van de waarom-zin.
+function cleanDemoNote(prose: string): string {
+  let s = String(prose || '').trim()
+  s = s.replace(/^(top|mooi|slim|goed(?:\s*zo)?|prima|netjes|super|knap|sterk)\s*[!—:,.\u2014-]+\s*/i, '')
+  s = s.trim()
+  if (s) s = s.charAt(0).toUpperCase() + s.slice(1)
+  return s
 }
 
-type DemoTopic = { example: string; tryExample: string }
+// Maak van een canon-promptbericht een uitgewerkte bordregel:
+// de som (blank ingevuld) + de waarom-zin als notitie ernaast.
+function renderDemoLine(message: string, answer: number): { text: string; note?: string } {
+  let s = String(message || '').trim()
+  s = s.replace(/=\s*__/, `= ${fmtDemoNum(answer)}`)
+  // NL: kommagetallen netjes met een komma (canon gebruikt soms een punt).
+  s = s.replace(/(\d)\.(\d)/g, '$1,$2')
+
+  let note: string | undefined
+  let text = s
+  const m = s.match(/\b(?:Vul in|Fill in)\s*:\s*/i)
+  if (m && m.index !== undefined) {
+    note = cleanDemoNote(s.slice(0, m.index)) || undefined
+    text = s.slice(m.index + m[0].length).trim()
+  }
+
+  // Bordregels ogen als nette sommen: spaties rond operatoren.
+  text = text.replace(/(\d)\s*([×÷])\s*(\d)/g, '$1 $2 $3')
+
+  // Een losse parenthetical aan het eind ("(dat is 1%)", "(hoe vaak?)")
+  // wordt de notitie als die er nog niet is.
+  if (!note) {
+    const p = text.match(/^(.*?)\s*\(([^()]+)\)\s*$/)
+    if (p) {
+      text = p[1].trim()
+      note = cleanDemoNote(p[2]) || undefined
+    }
+  }
+
+  return note ? { text, note } : { text }
+}
+
+export type ExplainBoard = {
+  title: string
+  lines: Array<{ text: string; note?: string }>
+  conclusion: string
+}
+
+type DemoTopic = {
+  example: string
+  tryExample: string
+  intro: string
+  // Voor woordsommen ("20% korting op €80") leest "som = antwoord" raar;
+  // dan formuleren we de conclusie als zin.
+  conclude?: (ans: string) => string
+}
 
 // Herken uitleg-intentie + map naar een bekend onderwerp met voorbeeldsom.
 // Geeft null als er geen canon-onderwerp bij past (dan handelt de LLM het af,
@@ -5456,14 +5501,55 @@ function detectExplainTopic(text: string): DemoTopic | null {
   // dan wil de leerling díe som doen, niet een uitleg-voorbeeld.
   if (/\d\s*[+\-*/×÷]\s*\d/.test(t)) return null
 
-  if (/staartdel|staart\s*del|\bdelen\b|deelsom|gedeeld|hoe\s+deel/i.test(t)) return { example: '84 ÷ 7', tryExample: '96 ÷ 8' }
-  if (/vermenigvuldig|keersom|\btafels?\b|\bmaal\b|hoe\s+keer/i.test(t)) return { example: '12 × 8', tryExample: '14 × 6' }
-  if (/optellen|plussom|optelsom|hoe.*\bplus\b|erbij/i.test(t)) return { example: '47 + 38', tryExample: '56 + 27' }
-  if (/aftrekken|minsom|aftreksom|hoe.*\bmin\b|eraf/i.test(t)) return { example: '82 − 47', tryExample: '73 − 28' }
-  if (/\bkorting\b|\bbtw\b/i.test(t)) return { example: '20% korting op €80', tryExample: '25% korting op €60' }
-  if (/procent|percentage/i.test(t)) return { example: '15% van 80', tryExample: '35% van 60' }
-  if (/kommagetal|\bkomma\b/i.test(t)) return { example: '1,2 × 5', tryExample: '0,6 × 4' }
-  if (/volgorde\s+van\s+bewerking|voorrang|haakjes\s+eerst/i.test(t)) return { example: '2 + 3 × 4', tryExample: '5 + 2 × 3' }
+  if (/staartdel|staart\s*del|\bdelen\b|deelsom|gedeeld|hoe\s+deel/i.test(t))
+    return {
+      example: '84 ÷ 7',
+      tryExample: '96 ÷ 8',
+      intro: 'Een staartdeling doe je door steeds groepjes van het deelgetal weg te halen.',
+    }
+  if (/vermenigvuldig|keersom|\btafels?\b|\bmaal\b|hoe\s+keer/i.test(t))
+    return {
+      example: '12 × 8',
+      tryExample: '14 × 6',
+      intro: 'Bij vermenigvuldigen splits je de som in makkelijke stukken.',
+    }
+  if (/optellen|plussom|optelsom|hoe.*\bplus\b|erbij/i.test(t))
+    return {
+      example: '47 + 38',
+      tryExample: '56 + 27',
+      intro: 'Bij optellen pak je eerst de tientallen en dan de eenheden.',
+    }
+  if (/aftrekken|minsom|aftreksom|hoe.*\bmin\b|eraf/i.test(t))
+    return {
+      example: '82 − 47',
+      tryExample: '73 − 28',
+      intro: 'Bij aftrekken haal je eerst de tientallen eraf en dan de eenheden.',
+    }
+  if (/\bkorting\b|\bbtw\b/i.test(t))
+    return {
+      example: '20% korting op €80',
+      tryExample: '25% korting op €60',
+      intro: 'Korting haal je van de prijs af.',
+      conclude: (ans) => `Je betaalt €${ans}`,
+    }
+  if (/procent|percentage/i.test(t))
+    return {
+      example: '15% van 80',
+      tryExample: '35% van 60',
+      intro: 'Procent betekent "per honderd": 1% is het getal gedeeld door 100.',
+    }
+  if (/kommagetal|\bkomma\b/i.test(t))
+    return {
+      example: '1,2 × 5',
+      tryExample: '0,6 × 4',
+      intro: 'Bij kommagetallen reken je eerst zonder komma en zet je de komma daarna terug.',
+    }
+  if (/volgorde\s+van\s+bewerking|voorrang|haakjes\s+eerst/i.test(t))
+    return {
+      example: '2 + 3 × 4',
+      tryExample: '5 + 2 × 3',
+      intro: 'De rekenregel is: eerst keer en delen, daarna plus en min.',
+    }
 
   return null
 }
@@ -5472,7 +5558,7 @@ export function buildCanonExplanation(input: {
   userText: string
   userAge?: number
   userLanguage?: string
-}): { message: string } | null {
+}): { message: string; board: ExplainBoard } | null {
   const lang = String(input.userLanguage || 'nl')
   // Uitleg-modus is nu NL-only; voor andere talen handelt de LLM het af.
   if (lang !== 'nl') return null
@@ -5488,16 +5574,18 @@ export function buildCanonExplanation(input: {
   })
   if (!r.handled) return null
 
-  const steps: string[] = []
+  const lines: Array<{ text: string; note?: string }> = []
+  let lastAnswer: number | null = null
   let guard = 0
   while (r.handled && r.nextState && guard++ < 16) {
     const msg = r.payload.message
     const ans = solveCanonBlank(msg)
     if (ans === null) break
-    const rendered = renderDemoStep(msg, ans, lang)
+    const line = renderDemoLine(msg, ans)
     // Stop bij geen voortgang (zelfde stap opnieuw) om herhaling te vermijden.
-    if (steps.length && steps[steps.length - 1] === rendered) break
-    steps.push(rendered)
+    if (lines.length && lines[lines.length - 1].text === line.text && lines[lines.length - 1].note === line.note) break
+    lines.push(line)
+    lastAnswer = ans
     r = runTutorStateMachine({
       state: r.nextState,
       lastUserText: fmtDemoNum(ans),
@@ -5506,12 +5594,27 @@ export function buildCanonExplanation(input: {
     })
   }
 
-  if (steps.length < 2) return null
+  if (lines.length < 2 || lastAnswer === null) return null
 
-  const examplePretty = topic.example
-  const header = `Ik laat het stap voor stap zien met een voorbeeld: ${examplePretty}.`
-  const body = steps.map((s, i) => `${i + 1}. ${s}`).join('\n')
-  const footer = `Wil je het nu zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`
-  return { message: `${header}\n\n${body}\n\n${footer}` }
+  // Conclusie: de oorspronkelijke som met het eindantwoord. "rest 0" is jargon
+  // dat niets toevoegt; weglaten. Een slotregel die de conclusie herhaalt
+  // (zoals de "schrijf het antwoord op"-stap van de deelcanon) vervalt.
+  const ansText = fmtDemoNum(lastAnswer)
+  const plainConclusion = `${topic.example} = ${ansText}`
+  const conclusion = topic.conclude ? topic.conclude(ansText) : plainConclusion
+  const lastText = (lines[lines.length - 1].text || '').replace(/\s*\(rest 0\)\s*/g, '').trim()
+  if (lastText === plainConclusion) lines.pop()
+
+  // Chat praat kort; het bord schrijft de uitwerking.
+  const message = `${topic.intro} Ik werk ${topic.example} stap voor stap uit op het bord. Wil je het daarna zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`
+
+  return {
+    message,
+    board: {
+      title: topic.example,
+      lines: lines.map((l) => ({ ...l, text: l.text.replace(/\s*\(rest 0\)\s*/g, '').trim() })),
+      conclusion,
+    },
+  }
 }
 

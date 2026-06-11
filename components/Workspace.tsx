@@ -39,12 +39,19 @@ type Message = {
 }
 
 // Clean-slate Board state (single active view) — discriminated union.
+type StepsSpec = {
+  title: string
+  lines: Array<{ text: string; note?: string }>
+  conclusion: string
+}
+
 type BoardMode =
   | { type: 'IDLE' }
   | { type: 'MAP'; data: any }
   | { type: 'IMAGE'; data: { url: string; title: string } }
   | { type: 'GRAPH'; data: { expressions: string[]; points?: Array<{ x: number; y: number; label?: string; color?: string }> } }
   | { type: 'FORMULA'; data: { latex: string } }
+  | { type: 'STEPS'; data: StepsSpec }
 
 export default function Workspace() {
   const [mobileView, setMobileView] = useState<'chat' | 'board'>('chat')
@@ -893,6 +900,22 @@ export default function Workspace() {
             }
           : null
 
+      // Uitgewerkte bordsom (uitleg-modus): titel + stappen + conclusie.
+      const stepsSpec: StepsSpec | null =
+        parsed?.steps &&
+        typeof parsed.steps === 'object' &&
+        typeof (parsed.steps as any).title === 'string' &&
+        Array.isArray((parsed.steps as any).lines) &&
+        typeof (parsed.steps as any).conclusion === 'string'
+          ? {
+              title: (parsed.steps as any).title,
+              lines: (parsed.steps as any).lines
+                .filter((l: any) => l && typeof l.text === 'string')
+                .map((l: any) => ({ text: l.text, note: typeof l.note === 'string' ? l.note : undefined })),
+              conclusion: (parsed.steps as any).conclusion,
+            }
+          : null
+
       const extractLatexForBoard = (text: string): string | null => {
         const t = String(text || '')
         if (!t.trim()) return null
@@ -965,8 +988,12 @@ export default function Workspace() {
           // Pass full spec through to MapPane so it can fetch + render outlines (GeoJSON) and fit bounds.
           return mapSpec && typeof mapSpec === 'object' ? { type: 'MAP', data: mapSpec } : { type: 'IDLE' }
         }
+        if (action === 'show_steps') {
+          return stepsSpec && stepsSpec.lines.length > 0 ? { type: 'STEPS', data: stepsSpec } : { type: 'IDLE' }
+        }
 
         // Fallback: infer from payload fields
+        if (stepsSpec?.lines?.length) return { type: 'STEPS', data: stepsSpec }
         if (graphSpec?.expressions?.length)
           return { type: 'GRAPH', data: { expressions: graphSpec.expressions, points: graphSpec.points } }
         if (imageSpec?.url) return { type: 'IMAGE', data: { url: imageSpec.url, title: imageSpec.caption || 'Afbeelding' } }
