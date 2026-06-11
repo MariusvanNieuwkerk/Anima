@@ -759,6 +759,50 @@ Doel: deze scripts kun je 1-op-1 copy/pasten in `/student/desk` om te checken of
 
 ---
 
+## 5v-4) Verhaalsom: korting + btw samen (Extended) (NL)
+**User**
+1. `€80 met 20% korting, daarna 21% btw. Wat betaal je?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de korting (20%): `Vul in: 80 ÷ 5 = __ (dat is 20%)` (of equivalent).
+- Stap 2: Anima vraagt prijs na korting: `Vul in: 80 − 16 = __ (na korting)` (of equivalent).
+- Stap 3: Anima vraagt btw (21%): `Vul in: 64 ÷ 100 = __ (dat is 1%)` (of equivalent).
+- Stap 4: Anima vraagt: `Vul in: 0,64 × 21 = __ (btw)` (of equivalent).
+- Stap 5: Anima vraagt eindprijs: `Vul in: 64 + 13,44 = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+**Must-not**
+- Niet starten met grammatica (bv. `Persoonsvorm = __`).
+
+---
+
+## 5v-5) Verhaalsom: korting + btw samen (met aantal × prijs) (Extended) (NL)
+**User**
+1. `Je koopt 2 kaartjes van €50 met 20% korting en daarna 21% btw. Wat betaal je?`
+
+**Must**
+- Stap 1: Anima vraagt eerst de samen-kost: `Vul in: 2 × 50 = __ (euro)` (of equivalent).
+- Stap 2: Anima vraagt korting (20%): `Vul in: 100 ÷ 5 = __ (dat is 20%)` (of equivalent).
+- Stap 3: Anima vraagt prijs na korting: `Vul in: 100 − 20 = __ (na korting)` (of equivalent).
+- Stap 4: Anima vraagt btw (21%): `Vul in: 80 ÷ 100 = __ (dat is 1%)` (of equivalent).
+- Stap 5: Anima vraagt: `Vul in: 0,8 × 21 = __ (btw)` (of equivalent).
+- Stap 6: Anima vraagt eindprijs: `Vul in: 80 + 16,8 = __ (euro)` (of equivalent).
+- Daarna korte bevestiging en **stop**.
+
+---
+
+## 5v-6) Verhaalsom: korting + btw samen (2× stuck → maak stap kleiner) (NL)
+**Setup**: Start met een som waarbij de %-stap een komma heeft, bv. `Je koopt 3 kaartjes van €4,50 met 20% korting en daarna 21% btw. Wat betaal je?` en ga door tot Anima vraagt: `Vul in: 13,5 ÷ 5 = __ (dat is 20%)`.
+
+**User**
+1. `ik weet het niet`
+2. `ik weet het niet`
+
+**Must**
+- Bij de **tweede** keer: Anima maakt de stap kleiner (bv. `Maak de komma weg. Vul in: 135 ÷ 5 = __`).
+
+---
+
 ## 5w) Verhaalsom: prijs per kg + wisselgeld (Extended) (NL)
 **User**
 1. `Je koopt 1,5 kg snoep à €4 per kg. Je betaalt met €10. Hoeveel wisselgeld krijg je terug?`

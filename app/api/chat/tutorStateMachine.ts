@@ -14,6 +14,7 @@ export type TutorSMKind =
   | 'money_fee'
   | 'money_split'
   | 'money_discount_total'
+  | 'money_discount_vat'
   | 'money_change_rate'
   | 'negatives'
   | 'unknown'
@@ -222,6 +223,48 @@ export type TutorSMState =
       help?: number
       unitScale?: number
       unitInt?: number
+    }
+  | {
+      v: 1
+      kind: 'money_discount_vat'
+      // subtotal -> discount (pDisc%) -> afterDiscount -> vat (pVat%) -> final
+      qty?: number
+      price?: number
+      subtotal: number
+      pDisc: number
+      pVat: number
+      discUnitPct: number
+      discDivisor: number
+      discMultiplier: number
+      vatUnitPct: number
+      vatDivisor: number
+      vatMultiplier: number
+      turn: number
+      step:
+        | 'subtotal'
+        | 'disc_unit'
+        | 'disc_unit_scaleup'
+        | 'disc_unit_scaledown'
+        | 'disc_scale'
+        | 'after_discount'
+        | 'vat_unit'
+        | 'vat_unit_scaleup'
+        | 'vat_unit_scaledown'
+        | 'vat_scale'
+        | 'final'
+      // computed along the way
+      discUnitValue?: number
+      discount?: number
+      afterDiscount?: number
+      vatUnitValue?: number
+      vat?: number
+      // deterministic help escalation counters
+      helpDisc?: number
+      helpVat?: number
+      discUnitScale?: number
+      discUnitInt?: number
+      vatUnitScale?: number
+      vatUnitInt?: number
     }
   | {
       v: 1
@@ -703,6 +746,7 @@ type ParsedProblem =
   | { kind: 'money_fee'; qty: number; price: number; fee: number }
   | { kind: 'money_split'; qty: number; price: number; people: number }
   | { kind: 'money_discount_total'; qty: number; price: number; p: number }
+  | { kind: 'money_discount_vat'; subtotal: number; pDisc: number; pVat: number; qty?: number; price?: number }
   | { kind: 'money_change_rate'; qty: number; rate: number; unit: 'kg' | 'g' | 'l' | 'ml'; paid: number }
   | { kind: 'negatives'; expr: string }
   | { kind: 'unknown'; op: '+' | '-'; b: number; c: number }
@@ -1262,6 +1306,46 @@ function parseProblem(text: string): ParsedProblem | null {
         ) {
           return { kind: 'money_change_rate', qty, rate, unit, paid }
         }
+      }
+    }
+  }
+
+  // Money discount on a subtotal (NL): "3 kaartjes van €4,50 met 20% korting. Wat betaal je?"
+  // Money discount + VAT together (NL): "€80 met 20% korting, daarna 21% btw. Wat betaal je?"
+  {
+    const low = core0.toLowerCase()
+    const hasDiscount = /\bkorting\b/.test(low)
+    const hasVat = /\b(btw|vat)\b/.test(low)
+    if (hasDiscount && hasVat) {
+      const pcts = Array.from(low.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)).map((m) => parseNum(m[1]))
+      const pDisc = pcts.length >= 1 ? pcts[0] : NaN
+      const pVat = pcts.length >= 2 ? pcts[1] : NaN
+
+      // subtotal can be either:
+      // - qty + unit price ("3 kaartjes van €4,50 ...")
+      // - direct total amount ("€80 ...")
+      const qtyM = low.match(/\b(\d+)\s*(?:x|keer)\b|\b(\d+)\s+(?:stuks?|stukken|kaartjes|tickets|boeken?|broden?|repen?|ijsjes|pizza'?s)\b/)
+      const priceEachM = low.match(/\b(?:van|voor)\s*(?:€\s*)?(\d+(?:[.,]\d+)?)/)
+      const qty = qtyM ? Number(qtyM[1] || qtyM[2]) : NaN
+      const price = priceEachM ? parseNum(priceEachM[1]) : NaN
+
+      const euroM = low.match(/€\s*(\d+(?:[.,]\d+)?)/) || low.match(/\b(\d+(?:[.,]\d+)?)\s*euro\b/)
+      const subtotalDirect = euroM ? parseNum(euroM[1]) : NaN
+
+      const hasQtyPrice = Number.isFinite(qty) && qty > 0 && Number.isFinite(price)
+      const subtotal = hasQtyPrice ? qty * price : subtotalDirect
+
+      if (
+        Number.isFinite(subtotal) &&
+        subtotal > 0 &&
+        Number.isFinite(pDisc) &&
+        pDisc > 0 &&
+        pDisc < 100 &&
+        Number.isFinite(pVat) &&
+        pVat > 0 &&
+        pVat < 100
+      ) {
+        return { kind: 'money_discount_vat', subtotal, pDisc, pVat, qty: hasQtyPrice ? qty : undefined, price: hasQtyPrice ? price : undefined }
       }
     }
   }
@@ -1954,6 +2038,57 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
           unitPct,
           divisor,
           multiplier,
+        },
+      }
+    }
+    if (problem.kind === 'money_discount_vat') {
+      const subtotal = Number(problem.subtotal)
+      const pDisc = Number(problem.pDisc)
+      const pVat = Number(problem.pVat)
+      const qty = problem.qty !== undefined ? Math.max(1, Math.trunc(problem.qty)) : undefined
+      const price = problem.price !== undefined ? Number(problem.price) : undefined
+
+      const discPlan = percentPlan(pDisc)
+      const vatPlan = percentPlan(pVat)
+
+      const startWithSubtotal = qty !== undefined && price !== undefined
+      const prompt = startWithSubtotal
+        ? lang === 'en'
+          ? `Fill in: ${qty} × ${price} = __ (euro)`
+          : `Vul in: ${qty} × ${fmtNL(price)} = __ (euro)`
+        : lang === 'en'
+          ? `Fill in: ${subtotal} ÷ ${discPlan.divisor} = __ (${discPlan.unitPct}% step)`
+          : `Vul in: ${fmtNL(subtotal)} ÷ ${discPlan.divisor} = __ (dat is ${discPlan.unitPct}%)`
+
+      const why =
+        ageBand === 'junior'
+          ? startWithSubtotal
+            ? 'Eerst reken je uit wat het samen kost.'
+            : 'We starten met de korting: eerst het % deel uitrekenen.'
+          : ''
+      const msg = ageBand === 'junior' ? coachJunior(lang, ageBand, 0, why, why, prompt, { forceTone: 'mid' }) : prompt
+
+      return {
+        handled: true,
+        payload: { message: msg, action: 'none' },
+        nextState: {
+          v: 1,
+          kind: 'money_discount_vat',
+          qty,
+          price,
+          subtotal,
+          pDisc,
+          pVat,
+          discUnitPct: discPlan.unitPct,
+          discDivisor: discPlan.divisor,
+          discMultiplier: discPlan.multiplier,
+          vatUnitPct: vatPlan.unitPct,
+          vatDivisor: vatPlan.divisor,
+          vatMultiplier: vatPlan.multiplier,
+          turn: 0,
+          step: startWithSubtotal ? 'subtotal' : 'disc_unit',
+          helpDisc: 0,
+          helpVat: 0,
         },
       }
     }
@@ -3772,6 +3907,388 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
     const expected = subtotal - disc
     if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
     return { handled: true, payload: { message: promptFinal(subtotal, disc), action: 'none' }, nextState: state }
+  }
+
+  if (state.kind === 'money_discount_vat') {
+    const subtotal = Number(state.subtotal)
+    const qty = state.qty
+    const price = state.price
+    const helpDisc = Number((state as any).helpDisc ?? 0)
+    const helpVat = Number((state as any).helpVat ?? 0)
+    const discUnitPct = state.discUnitPct
+    const discDivisor = state.discDivisor
+    const discMultiplier = state.discMultiplier
+    const vatUnitPct = state.vatUnitPct
+    const vatDivisor = state.vatDivisor
+    const vatMultiplier = state.vatMultiplier
+
+    const promptSubtotal = () =>
+      lang === 'en' && qty !== undefined && price !== undefined
+        ? `Fill in: ${qty} × ${price} = __ (euro)`
+        : `Vul in: ${qty} × ${fmtNL(Number(price))} = __ (euro)`
+
+    const discUnitLabel = lang === 'en' ? `(${discUnitPct}% step)` : `(dat is ${discUnitPct}%)`
+    const vatUnitLabel = lang === 'en' ? `(${vatUnitPct}% step)` : `(dat is ${vatUnitPct}%)`
+
+    const promptDiscUnit = (sub: number) =>
+      lang === 'en' ? `Fill in: ${sub} ÷ ${discDivisor} = __ ${discUnitLabel}` : `Vul in: ${fmtNL(sub)} ÷ ${discDivisor} = __ ${discUnitLabel}`
+    const promptDiscUnitScaleUp = (sub: number) => {
+      const k = decimalPlacesFromText(fmtNL(sub))
+      const scale = Math.pow(10, Math.max(0, k))
+      const subInt = Math.round(sub * scale)
+      return lang === 'en'
+        ? `Remove the decimal. Fill in: ${subInt} ÷ ${discDivisor} = __`
+        : `Maak de komma weg. Vul in: ${subInt} ÷ ${discDivisor} = __`
+    }
+    const promptDiscUnitScaleDown = (unitInt: number, scale: number) =>
+      lang === 'en'
+        ? `Put the decimal back. Fill in: ${unitInt} ÷ ${scale} = __ ${discUnitLabel}`
+        : `Zet de komma terug. Vul in: ${fmtNL(unitInt)} ÷ ${scale} = __ ${discUnitLabel}`
+    const promptDiscScale = (unitValue: number) =>
+      lang === 'en' ? `Fill in: ${fmtNL(unitValue)} × ${discMultiplier} = __ (discount)` : `Vul in: ${fmtNL(unitValue)} × ${discMultiplier} = __ (korting)`
+    const promptAfterDiscount = (sub: number, disc: number) =>
+      lang === 'en'
+        ? `Fill in: ${sub} − ${disc} = __ (after discount)`
+        : `Vul in: ${fmtNL(sub)} − ${fmtNL(disc)} = __ (na korting)`
+
+    const promptVatUnit = (after: number) =>
+      lang === 'en' ? `Fill in: ${after} ÷ ${vatDivisor} = __ ${vatUnitLabel}` : `Vul in: ${fmtNL(after)} ÷ ${vatDivisor} = __ ${vatUnitLabel}`
+    const promptVatUnitScaleUp = (after: number) => {
+      const k = decimalPlacesFromText(fmtNL(after))
+      const scale = Math.pow(10, Math.max(0, k))
+      const afterInt = Math.round(after * scale)
+      return lang === 'en'
+        ? `Remove the decimal. Fill in: ${afterInt} ÷ ${vatDivisor} = __`
+        : `Maak de komma weg. Vul in: ${afterInt} ÷ ${vatDivisor} = __`
+    }
+    const promptVatUnitScaleDown = (unitInt: number, scale: number) =>
+      lang === 'en'
+        ? `Put the decimal back. Fill in: ${unitInt} ÷ ${scale} = __ ${vatUnitLabel}`
+        : `Zet de komma terug. Vul in: ${fmtNL(unitInt)} ÷ ${scale} = __ ${vatUnitLabel}`
+    const promptVatScale = (unitValue: number) =>
+      lang === 'en' ? `Fill in: ${fmtNL(unitValue)} × ${vatMultiplier} = __ (VAT)` : `Vul in: ${fmtNL(unitValue)} × ${vatMultiplier} = __ (btw)`
+    const promptFinal = (after: number, vat: number) =>
+      lang === 'en' ? `Fill in: ${after} + ${vat} = __ (final)` : `Vul in: ${fmtNL(after)} + ${fmtNL(vat)} = __ (euro)`
+
+    const afterDiscountKnown = Number(state.afterDiscount)
+
+    if (!canAnswer) {
+      const isHelp = isStuck(lastUser)
+      const nextHelpDisc = isHelp ? helpDisc + 1 : helpDisc
+      const nextHelpVat = isHelp ? helpVat + 1 : helpVat
+
+      // Escalation on repeated stuck: scale away decimals for ÷5 on the % unit step.
+      const canScaleUpDisc = state.step === 'disc_unit' && discDivisor === 5 && decimalPlacesFromText(fmtNL(subtotal)) > 0 && nextHelpDisc >= 2
+      if (canScaleUpDisc) {
+        const p = promptDiscUnitScaleUp(subtotal)
+        const why = ageBand === 'junior' ? 'Maak de komma even weg, dan is het makkelijker.' : ''
+        const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+        const msg = isHelp ? `Tip: maak komma weg. ${msgBase}`.trim() : msgBase
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: { ...state, helpDisc: nextHelpDisc, step: 'disc_unit_scaleup' } }
+      }
+
+      const canScaleUpVat =
+        state.step === 'vat_unit' &&
+        vatDivisor === 5 &&
+        Number.isFinite(afterDiscountKnown) &&
+        decimalPlacesFromText(fmtNL(afterDiscountKnown)) > 0 &&
+        nextHelpVat >= 2
+      if (canScaleUpVat) {
+        const p = promptVatUnitScaleUp(afterDiscountKnown)
+        const why = ageBand === 'junior' ? 'Maak de komma even weg, dan is het makkelijker.' : ''
+        const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+        const msg = isHelp ? `Tip: maak komma weg. ${msgBase}`.trim() : msgBase
+        return { handled: true, payload: { message: msg, action: 'none' }, nextState: { ...state, helpVat: nextHelpVat, step: 'vat_unit_scaleup' } }
+      }
+
+      const p =
+        state.step === 'subtotal'
+          ? promptSubtotal()
+          : state.step === 'disc_unit'
+            ? promptDiscUnit(subtotal)
+            : state.step === 'disc_unit_scaleup'
+              ? promptDiscUnitScaleUp(subtotal)
+              : state.step === 'disc_unit_scaledown'
+                ? promptDiscUnitScaleDown(Number((state as any).discUnitInt), Number((state as any).discUnitScale))
+                : state.step === 'disc_scale'
+                  ? promptDiscScale(Number(state.discUnitValue))
+                  : state.step === 'after_discount'
+                    ? promptAfterDiscount(subtotal, Number(state.discount))
+                    : state.step === 'vat_unit'
+                      ? promptVatUnit(Number(state.afterDiscount))
+                      : state.step === 'vat_unit_scaleup'
+                        ? promptVatUnitScaleUp(Number(state.afterDiscount))
+                        : state.step === 'vat_unit_scaledown'
+                          ? promptVatUnitScaleDown(Number((state as any).vatUnitInt), Number((state as any).vatUnitScale))
+                          : state.step === 'vat_scale'
+                            ? promptVatScale(Number(state.vatUnitValue))
+                            : promptFinal(Number(state.afterDiscount), Number(state.vat))
+
+      const hint = (() => {
+        if (!isStuck(lastUser)) return ''
+        if (state.step === 'final') return 'Tip: eindprijs = na korting + btw.'
+        if (
+          state.step === 'vat_unit' ||
+          state.step === 'vat_unit_scaleup' ||
+          state.step === 'vat_unit_scaledown' ||
+          state.step === 'vat_scale'
+        )
+          return 'Tip: btw = erbij.'
+        if (
+          state.step === 'disc_unit' ||
+          state.step === 'disc_unit_scaleup' ||
+          state.step === 'disc_unit_scaledown' ||
+          state.step === 'disc_scale' ||
+          state.step === 'after_discount'
+        )
+          return 'Tip: korting = eraf.'
+
+        // subtotal step
+        const k = decimalPlacesFromText(fmtNL(Number(price)))
+        if (k <= 0) return 'Tip: vermenigvuldigen is “keer”.'
+        const scale = Math.pow(10, k)
+        const priceInt = Math.round(Number(price) * scale)
+        return `Tip: reken ${qty}×${priceInt} en deel door ${scale}.`
+      })()
+
+      const why =
+        ageBand === 'junior'
+          ? state.step === 'subtotal'
+            ? 'Eerst samen kost uitrekenen.'
+            : state.step === 'disc_unit' || state.step === 'disc_unit_scaleup' || state.step === 'disc_unit_scaledown' || state.step === 'disc_scale'
+              ? percentStepWhyNL(discUnitPct, discDivisor)
+              : state.step === 'after_discount'
+                ? 'Na korting = samen − korting.'
+                : state.step === 'vat_unit' || state.step === 'vat_unit_scaleup' || state.step === 'vat_unit_scaledown' || state.step === 'vat_scale'
+                  ? percentStepWhyNL(vatUnitPct, vatDivisor)
+                  : 'Eindprijs = na korting + btw.'
+          : ''
+
+      const msgBase = ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, p, { forceTone: 'mid' }) : p
+      const msg = hint ? `${hint} ${msgBase}`.trim() : msgBase
+
+      // increment the correct help counter when stuck
+      const nextState =
+        isHelp && (state.step === 'disc_unit' || state.step === 'disc_unit_scaleup' || state.step === 'disc_unit_scaledown' || state.step === 'disc_scale' || state.step === 'after_discount')
+          ? { ...state, helpDisc: nextHelpDisc }
+          : isHelp && (state.step === 'vat_unit' || state.step === 'vat_unit_scaleup' || state.step === 'vat_unit_scaledown' || state.step === 'vat_scale' || state.step === 'final')
+            ? { ...state, helpVat: nextHelpVat }
+            : state
+      return { handled: true, payload: { message: msg, action: 'none' }, nextState }
+    }
+
+    const userN = parseNum(lastUser)
+
+    if (state.step === 'subtotal') {
+      if (Math.abs(userN - subtotal) < 1e-9) {
+        const nextPrompt = promptDiscUnit(subtotal)
+        const why = ageBand === 'junior' ? 'Nu de korting uitrekenen.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'disc_unit', helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptSubtotal(), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'disc_unit') {
+      const expected = subtotal / discDivisor
+      if (Math.abs(userN - expected) < 1e-9) {
+        if (Math.abs(discMultiplier - 1) < 1e-9) {
+          const disc = expected
+          const nextPrompt = promptAfterDiscount(subtotal, disc)
+          const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'after_discount', discUnitValue: expected, discount: disc, helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+          }
+        }
+        const nextPrompt = promptDiscScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte korting.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'disc_scale', discUnitValue: expected, helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptDiscUnit(subtotal), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'disc_unit_scaleup') {
+      const k = decimalPlacesFromText(fmtNL(subtotal))
+      const discUnitScale = Math.pow(10, Math.max(0, k))
+      const subInt = Math.round(subtotal * discUnitScale)
+      const expectedInt = subInt / discDivisor
+      if (Math.abs(userN - expectedInt) < 1e-9) {
+        const nextPrompt = promptDiscUnitScaleDown(expectedInt, discUnitScale)
+        const why = ageBand === 'junior' ? 'Nu zet je de komma terug.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'disc_unit_scaledown', discUnitScale, discUnitInt: expectedInt, helpDisc: 0 },
+        }
+      }
+      return { handled: true, payload: { message: promptDiscUnitScaleUp(subtotal), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'disc_unit_scaledown') {
+      const discUnitScale = Number((state as any).discUnitScale)
+      const discUnitInt = Number((state as any).discUnitInt)
+      const expected = discUnitInt / discUnitScale
+      if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) {
+        if (Math.abs(discMultiplier - 1) < 1e-9) {
+          const disc = expected
+          const nextPrompt = promptAfterDiscount(subtotal, disc)
+          const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'after_discount', discUnitValue: expected, discount: disc, helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+          }
+        }
+        const nextPrompt = promptDiscScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte korting.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'disc_scale', discUnitValue: expected, helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+        }
+      }
+      return {
+        handled: true,
+        payload: { message: promptDiscUnitScaleDown(discUnitInt, discUnitScale), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    if (state.step === 'disc_scale') {
+      const discUnitValue = Number(state.discUnitValue)
+      const disc = discUnitValue * discMultiplier
+      if (Math.abs(userN - disc) < 1e-9) {
+        const nextPrompt = promptAfterDiscount(subtotal, disc)
+        const why = ageBand === 'junior' ? 'Nu de korting eraf.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'after_discount', discount: disc, helpDisc: 0, discUnitScale: undefined, discUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptDiscScale(discUnitValue), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'after_discount') {
+      const disc = Number(state.discount)
+      const expected = subtotal - disc
+      if (Math.abs(userN - expected) < 1e-9) {
+        const nextPrompt = promptVatUnit(expected)
+        const why = ageBand === 'junior' ? 'Nu de btw uitrekenen.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'vat_unit', afterDiscount: expected, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptAfterDiscount(subtotal, disc), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'vat_unit') {
+      const after = Number(state.afterDiscount)
+      const expected = after / vatDivisor
+      if (Math.abs(userN - expected) < 1e-9) {
+        if (Math.abs(vatMultiplier - 1) < 1e-9) {
+          const vat = expected
+          const nextPrompt = promptFinal(after, vat)
+          const why = ageBand === 'junior' ? 'Nu btw erbij.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', vatUnitValue: expected, vat, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+          }
+        }
+        const nextPrompt = promptVatScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte btw.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'vat_scale', vatUnitValue: expected, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptVatUnit(after), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'vat_unit_scaleup') {
+      const after = Number(state.afterDiscount)
+      const k = decimalPlacesFromText(fmtNL(after))
+      const vatUnitScale = Math.pow(10, Math.max(0, k))
+      const afterInt = Math.round(after * vatUnitScale)
+      const expectedInt = afterInt / vatDivisor
+      if (Math.abs(userN - expectedInt) < 1e-9) {
+        const nextPrompt = promptVatUnitScaleDown(expectedInt, vatUnitScale)
+        const why = ageBand === 'junior' ? 'Nu zet je de komma terug.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'vat_unit_scaledown', vatUnitScale, vatUnitInt: expectedInt, helpVat: 0 },
+        }
+      }
+      return { handled: true, payload: { message: promptVatUnitScaleUp(after), action: 'none' }, nextState: state }
+    }
+
+    if (state.step === 'vat_unit_scaledown') {
+      const vatUnitScale = Number((state as any).vatUnitScale)
+      const vatUnitInt = Number((state as any).vatUnitInt)
+      const expected = vatUnitInt / vatUnitScale
+      if (Number.isFinite(expected) && Math.abs(userN - expected) < 1e-9) {
+        const after = Number(state.afterDiscount)
+        if (Math.abs(vatMultiplier - 1) < 1e-9) {
+          const vat = expected
+          const nextPrompt = promptFinal(after, vat)
+          const why = ageBand === 'junior' ? 'Nu btw erbij.' : ''
+          return {
+            handled: true,
+            payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+            nextState: { ...state, turn: state.turn + 1, step: 'final', vatUnitValue: expected, vat, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+          }
+        }
+        const nextPrompt = promptVatScale(expected)
+        const why = ageBand === 'junior' ? 'Nu schalen naar de echte btw.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'vat_scale', vatUnitValue: expected, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+        }
+      }
+      return {
+        handled: true,
+        payload: { message: promptVatUnitScaleDown(vatUnitInt, vatUnitScale), action: 'none' },
+        nextState: state,
+      }
+    }
+
+    if (state.step === 'vat_scale') {
+      const vatUnitValue = Number(state.vatUnitValue)
+      const vat = vatUnitValue * vatMultiplier
+      if (Math.abs(userN - vat) < 1e-9) {
+        const after = Number(state.afterDiscount)
+        const nextPrompt = promptFinal(after, vat)
+        const why = ageBand === 'junior' ? 'Nu btw erbij.' : ''
+        return {
+          handled: true,
+          payload: { message: ageBand === 'junior' ? coachJunior(lang, ageBand, state.turn, why, why, nextPrompt, { forceTone: 'mid' }) : nextPrompt, action: 'none' },
+          nextState: { ...state, turn: state.turn + 1, step: 'final', vat, helpVat: 0, vatUnitScale: undefined, vatUnitInt: undefined },
+        }
+      }
+      return { handled: true, payload: { message: promptVatScale(vatUnitValue), action: 'none' }, nextState: state }
+    }
+
+    // final
+    const after = Number(state.afterDiscount)
+    const vat = Number(state.vat)
+    const expected = after + vat
+    if (Math.abs(userN - expected) < 1e-9) return { handled: true, payload: { message: lang === 'en' ? `Correct.` : `Juist.`, action: 'none' }, nextState: null }
+    return { handled: true, payload: { message: promptFinal(after, vat), action: 'none' }, nextState: state }
   }
 
   if (state.kind === 'money_change_rate') {
