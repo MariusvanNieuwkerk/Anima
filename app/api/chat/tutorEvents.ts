@@ -28,7 +28,21 @@ export function looksStuck(s: string): boolean {
   )
 }
 
+// Grove, anonieme categorie voor LLM-doorval: vertelt WAAR de volgende
+// canon moet komen, zonder dat we de inhoud van de vraag bewaren.
+function llmCategory(userText: string): string {
+  const t = String(userText || '').toLowerCase()
+  if (/\d/.test(t) && /[+\-*/×÷=%]/.test(t)) return 'rekenen'
+  if (/\b(reken|som|breuk|procent|korting|btw|keer|gedeeld|plus|min)\b/.test(t)) return 'rekenen'
+  if (/\b(zin|zinnen|woord|spelling|grammatica|werkwoord|taal|schrijf|opstel|brief|samenvatting)\b/.test(t)) return 'taal'
+  if (/\b(waar ligt|hoofdstad|land|rivier|kaart|wereld)\b/.test(t)) return 'wereld'
+  if (/\b(wie was|geschiedenis|oorlog|vroeger|eeuw)\b/.test(t)) return 'geschiedenis'
+  if (/\b(dier|plant|lichaam|natuur|waarom|hoe werkt|fotosynthese)\b/.test(t)) return 'natuur'
+  return 'overig'
+}
+
 export async function logTutorEvent(ev: TutorEvent): Promise<void> {
+  // 1) Gezins-event (eigendom van het gezin, RLS).
   try {
     const admin = createAdminClient()
     const { error } = await admin.from('tutor_events').insert({
@@ -45,5 +59,27 @@ export async function logTutorEvent(ev: TutorEvent): Promise<void> {
   } catch (e) {
     // Observability mag de chat nooit breken.
     console.warn('[tutor_events] insert failed:', (e as any)?.message || String(e))
+  }
+
+  // 2) Anonieme teller (geen user_id, geen tekst): productverbetering
+  //    over alle gebruikers heen, zonder aan hun data te zitten.
+  try {
+    const admin = createAdminClient()
+    const isCanonRoute = ev.route === 'canon' || ev.route === 'grammar'
+    const { error } = await admin.rpc('bump_anon_tutor_stat', {
+      p_route: ev.route,
+      p_canon_kind: isCanonRoute
+        ? ev.canonKind || ''
+        : ev.route === 'llm'
+          ? llmCategory(String(ev.userText || ''))
+          : '',
+      // Alleen rekencanon-stappen tellen; debugnamen (policy/grammar)
+      // zouden de tabel met hoge cardinaliteit vervuilen.
+      p_step: ev.route === 'canon' ? ev.step || '' : '',
+      p_result: ev.result || '',
+    })
+    if (error) throw error
+  } catch (e) {
+    console.warn('[anon_tutor_stats] bump failed:', (e as any)?.message || String(e))
   }
 }

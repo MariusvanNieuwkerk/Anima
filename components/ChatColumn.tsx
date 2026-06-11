@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, ThumbsDown } from 'lucide-react'
 import SvgDisplay from './SvgDisplay';
 import MapPane from './MapPane'
 import MarkdownMessage from './MarkdownMessage'
@@ -22,6 +22,7 @@ interface ChatColumnProps {
   renderSvgs?: boolean;
   renderMaps?: boolean;
   renderUploadThumbnails?: boolean;
+  sessionId?: string;
 }
 
 export default function ChatColumn({
@@ -31,11 +32,43 @@ export default function ChatColumn({
   renderSvgs = true,
   renderMaps = true,
   renderUploadThumbnails = true,
+  sessionId,
 }: ChatColumnProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [activeCopyId, setActiveCopyId] = useState<string | null>(null)
+  const [reportedIds, setReportedIds] = useState<Set<string>>(new Set())
+  const [reportingId, setReportingId] = useState<string | null>(null)
+
+  // Duimpje-omlaag = bewuste schenking van deze ene beurt aan Anima,
+  // zodat het antwoord verbeterd kan worden (zie /api/feedback).
+  const reportMessage = async (msg: Message) => {
+    if (reportedIds.has(msg.id) || reportingId === msg.id) return
+    const idx = messages.findIndex((m) => m.id === msg.id)
+    let userText = ''
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userText = messages[i].content || ''
+        break
+      }
+    }
+    setReportingId(msg.id)
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assistantText: msg.content, userText, sessionId: sessionId || null }),
+      })
+      if (res.ok) {
+        setReportedIds((prev) => new Set(prev).add(msg.id))
+      }
+    } catch {
+      // stil falen: feedback mag de chat nooit storen
+    } finally {
+      setReportingId(null)
+    }
+  }
 
   const isDataImage = (s: string) => /^data:image\//i.test(s || '')
 
@@ -227,9 +260,39 @@ export default function ChatColumn({
                 </button>
               ) : null}
 
+              {msg.role === 'assistant' && msg.content ? (
+                <button
+                  type="button"
+                  aria-label="Meld dit antwoord"
+                  title={reportedIds.has(msg.id) ? 'Bedankt voor je melding' : 'Niet goed? Stuur dit antwoord door zodat Anima beter wordt'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    reportMessage(msg)
+                  }}
+                  disabled={reportedIds.has(msg.id)}
+                  className={[
+                    'absolute top-2 right-11',
+                    'h-8 w-8 rounded-full border border-stone-200 bg-white/80 backdrop-blur',
+                    'flex items-center justify-center shadow-sm',
+                    activeCopyId === msg.id || reportedIds.has(msg.id) ? 'opacity-100' : 'opacity-0 pointer-events-none',
+                    'transition-opacity',
+                    'hover:bg-white hover:shadow',
+                    reportedIds.has(msg.id) ? 'text-red-400' : 'text-stone-600 hover:text-red-500',
+                  ].join(' ')}
+                >
+                  <ThumbsDown className={`h-4 w-4 ${reportingId === msg.id ? 'animate-pulse' : ''}`} />
+                </button>
+              ) : null}
+
               {copiedId === msg.id ? (
                 <div className="absolute -top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-stone-900 text-white shadow">
                   Gekopieerd
+                </div>
+              ) : null}
+
+              {reportedIds.has(msg.id) && activeCopyId === msg.id ? (
+                <div className="absolute -top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-stone-900 text-white shadow">
+                  Doorgestuurd, bedankt!
                 </div>
               ) : null}
               {renderMaps && msg.map ? (
