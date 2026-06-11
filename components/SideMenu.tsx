@@ -129,7 +129,6 @@ export default function SideMenu({
             </div>
             <div>
               <div className="font-semibold text-stone-900 text-lg">{studentName}</div>
-              <div className="text-sm text-stone-500">Student Account</div>
             </div>
           </div>
 

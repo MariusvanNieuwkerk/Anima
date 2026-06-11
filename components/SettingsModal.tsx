@@ -136,9 +136,6 @@ export default function SettingsModal({ isOpen, onClose, tutorMode, onModeChange
               <div className="font-semibold text-stone-900 text-lg">
                 {isLoadingProfile ? 'Laden...' : (profile?.student_name || profile?.parent_name || profile?.teacher_name || 'Gebruiker')}
               </div>
-              <div className="text-sm text-stone-500">
-                {profile?.role === 'student' ? 'Student Account' : profile?.role === 'parent' ? 'Parent Account' : profile?.role === 'teacher' ? 'Teacher Account' : 'Account'}
-              </div>
             </div>
           </div>
           
