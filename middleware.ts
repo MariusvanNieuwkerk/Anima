@@ -5,7 +5,6 @@ import { createServerClient } from '@supabase/ssr'
 const ROLE_HOME: Record<string, string> = {
   student: '/student/desk',
   parent: '/parent/dashboard',
-  teacher: '/teacher/clipboard',
 }
 
 const isPublicPath = (pathname: string) => {
@@ -80,10 +79,9 @@ export async function middleware(request: NextRequest) {
   // If user tries to access another role area, bounce to their home.
   const isRoleArea =
     pathname.startsWith('/student') ||
-    pathname.startsWith('/parent') ||
-    pathname.startsWith('/teacher')
+    pathname.startsWith('/parent')
 
-  if (pathname === '/student' || pathname === '/parent' || pathname === '/teacher') {
+  if (pathname === '/student' || pathname === '/parent') {
     const url = request.nextUrl.clone()
     url.pathname = home
     return NextResponse.redirect(url)
@@ -100,5 +98,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Only protect role-based areas; homepage stays public.
-  matcher: ['/student/:path*', '/parent/:path*', '/teacher/:path*'],
+  matcher: ['/student/:path*', '/parent/:path*'],
 }

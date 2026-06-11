@@ -4,12 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/utils/supabase'
 
-type RoleChoice = 'parent' | 'teacher'
-
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<RoleChoice>('parent')
+  // Gezinsproduct: signup is altijd een ouder-account; kinderen maak je aan via het ouderdashboard.
+  const role = 'parent'
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -102,38 +101,8 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Role choice */}
-            <div>
-              <div className="block text-sm font-medium text-stone-700 mb-2">Ik ben een…</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRole('parent')}
-                  className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-colors ${
-                    role === 'parent'
-                      ? 'bg-stone-800 text-white border-stone-800'
-                      : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                  }`}
-                  disabled={isLoading}
-                >
-                  Ouder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('teacher')}
-                  className={`px-4 py-3 rounded-xl border text-sm font-semibold transition-colors ${
-                    role === 'teacher'
-                      ? 'bg-stone-800 text-white border-stone-800'
-                      : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                  }`}
-                  disabled={isLoading}
-                >
-                  Leraar
-                </button>
-              </div>
-              <div className="text-xs text-stone-500 mt-2">
-                (Studenten worden meestal aangemaakt door een ouder/leraar.)
-              </div>
+            <div className="text-xs text-stone-500">
+              Je maakt een ouder-account aan. Kind-accounts maak je daarna aan in je ouderdashboard.
             </div>
 
             <button

@@ -51,7 +51,6 @@ export default function LoginPage() {
         // Ensure profile exists (service role route auto-creates if missing)
         const roleHome = (role?: string | null) => {
           if (role === 'parent') return '/parent/dashboard'
-          if (role === 'teacher') return '/teacher/clipboard'
           return '/student/desk'
         }
 

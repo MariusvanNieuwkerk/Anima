@@ -45,10 +45,10 @@ export async function POST(req: NextRequest) {
         const userEmail = user.email || 'unknown@example.com';
         const baseName = userEmail.split('@')[0] || 'Student';
 
+        // Gezinsproduct: alleen ouder- en kind-accounts.
         const metaRoleRaw = (user.user_metadata as any)?.role;
         const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw.toLowerCase() : null;
-        const role: 'student' | 'parent' | 'teacher' =
-          metaRole === 'parent' || metaRole === 'teacher' || metaRole === 'student' ? (metaRole as any) : 'student';
+        const role: 'student' | 'parent' = metaRole === 'parent' ? 'parent' : 'student';
 
         const rowBase: any = {
           id: user.id,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
           display_name: baseName,
           student_name: role === 'student' ? baseName : null,
           parent_name: role === 'parent' ? baseName : null,
-          teacher_name: role === 'teacher' ? baseName : null,
+          teacher_name: null,
           deep_read_mode: false,
           created_at: new Date().toISOString(),
         };

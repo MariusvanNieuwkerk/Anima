@@ -16,20 +16,6 @@ type ParentChildSummary =
     }
   | { ok: false; error: string }
 
-type TeacherStudentRow = {
-  id: string
-  name: string
-  username?: string | null
-  deep_read_mode: boolean
-  last_active_at?: string | null
-  status: 'flow' | 'focus' | 'inactive'
-  activityLabel: string
-}
-
-type TeacherDashboardResult =
-  | { ok: true; requiresMigration?: boolean; students: TeacherStudentRow[] }
-  | { ok: false; error: string }
-
 function createCookieServerClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -189,93 +175,4 @@ export async function getParentChildSummary(input: { childId: string }): Promise
     return { ok: false, error: 'Er ging iets mis. Probeer opnieuw.' }
   }
 }
-
-export async function getTeacherStudents(): Promise<TeacherDashboardResult> {
-  try {
-    const supabase = createCookieServerClient()
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser()
-    if (userErr || !user) return { ok: false, error: 'Niet ingelogd. Log opnieuw in.' }
-
-    const { data: teacherProfile } = await supabase.from('profiles').select('id, role').eq('id', user.id).maybeSingle()
-    if (!teacherProfile || (teacherProfile as any).role !== 'teacher') {
-      return { ok: false, error: 'Alleen leraren kunnen dit dashboard zien.' }
-    }
-
-    const admin = createAdminClient()
-    // last_active_at is optional → try with it first.
-    const q1 = await admin
-      .from('profiles')
-      .select('id, student_name, display_name, username, deep_read_mode, last_active_at')
-      .eq('role', 'student')
-      .order('last_active_at', { ascending: false })
-      .limit(50)
-
-    let kids: any[] = []
-    let requiresMigration = false
-    if (q1.error) {
-      const msg = String(q1.error.message || '')
-      if (isMissingColumn(msg, 'last_active_at', 'profiles')) {
-        requiresMigration = true
-        const q2 = await admin
-          .from('profiles')
-          .select('id, student_name, display_name, username, deep_read_mode, updated_at')
-          .eq('role', 'student')
-          .order('updated_at', { ascending: false })
-          .limit(50)
-        if (q2.error) return { ok: false, error: q2.error.message || 'Kon studenten niet laden.' }
-        kids = Array.isArray(q2.data) ? (q2.data as any[]) : []
-      } else if (isMissingColumn(msg, 'display_name', 'profiles')) {
-        const q2 = await admin
-          .from('profiles')
-          .select('id, student_name, username, deep_read_mode, last_active_at')
-          .eq('role', 'student')
-          .order('last_active_at', { ascending: false })
-          .limit(50)
-        if (q2.error) return { ok: false, error: q2.error.message || 'Kon studenten niet laden.' }
-        kids = Array.isArray(q2.data) ? (q2.data as any[]) : []
-      } else {
-        return { ok: false, error: q1.error.message || 'Kon studenten niet laden.' }
-      }
-    } else {
-      kids = Array.isArray(q1.data) ? (q1.data as any[]) : []
-    }
-
-    const now = Date.now()
-    const toStatus = (last: string | null) => {
-      if (!last) return { status: 'inactive' as const, label: 'Geen activiteit' }
-      const dt = new Date(last).getTime()
-      const mins = Math.max(0, Math.round((now - dt) / 60000))
-      if (mins <= 25) return { status: 'flow' as const, label: `Vandaag, ${mins} min` }
-      if (mins <= 180) return { status: 'focus' as const, label: `Vandaag, ${Math.round(mins / 5) * 5} min` }
-      return { status: 'inactive' as const, label: 'Eerder vandaag' }
-    }
-
-    const students: TeacherStudentRow[] = kids.map((k: any) => {
-      const name = String(k.display_name || k.student_name || 'Student')
-      const last = (k.last_active_at || k.updated_at || null) as string | null
-      const s = toStatus(last)
-      return {
-        id: String(k.id),
-        name,
-        username: k.username ?? null,
-        deep_read_mode: k.deep_read_mode === true,
-        last_active_at: last,
-        status: s.status,
-        activityLabel: s.label,
-      }
-    })
-
-    return { ok: true, requiresMigration, students }
-  } catch (e: any) {
-    const msg = String(e?.message || '')
-    if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
-      return { ok: false, error: 'Server mist SUPABASE_SERVICE_ROLE_KEY. Voeg deze toe aan .env.local en Vercel env.' }
-    }
-    return { ok: false, error: 'Er ging iets mis. Probeer opnieuw.' }
-  }
-}
-
 

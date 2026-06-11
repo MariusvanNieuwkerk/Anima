@@ -9,7 +9,6 @@ import VisualPane from './VisualPane'
 import SideMenu from './SideMenu'
 import SettingsModal from './SettingsModal'
 import ParentDashboard from './ParentDashboard'
-import TeacherDashboard from './TeacherDashboard'
 import DebugBanner from './DebugBanner'
 import { supabase } from '../utils/supabase'
 import { type UserProfile } from '../utils/auth'
@@ -1114,14 +1113,6 @@ export default function Workspace() {
           parentName={userProfile?.parent_name || 'Ouder'}
           userProfile={userProfile}
         />
-      </div>
-    );
-  }
-
-  if (userRole === 'teacher') {
-    return (
-      <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 overflow-hidden">
-        <TeacherDashboard userProfile={userProfile} />
       </div>
     );
   }
