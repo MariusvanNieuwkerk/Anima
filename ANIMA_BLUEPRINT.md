@@ -77,8 +77,9 @@ Datum: 17 Januari 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exacthe
 * Prikkelarm & Warm Design: “Paper Feel”, stone‑tinten, rustig.
 * Fail‑Safe: Stil falen. Geen agressieve errors; liever een tekstuele fallback dan een kapotte visual.
 * Global & Inclusive: Leeftijd en taal sturen toon en moeilijkheid.
-2. User Roles & Separation of Concerns (The Tri-App Strategy)
-Om datavervuiling te voorkomen en pedagogische doelen te halen, zien de drie gebruikersgroepen een totaal andere interface:
+2. User Roles & Separation of Concerns (Het Gezinsproduct)
+Anima is een product voor gezinnen: ouders en kinderen. De data is en blijft eigendom van het gezin (de MOAT). Het leraar-spoor is bewust geschrapt om het product simpel, veilig en gefocust te houden; B2B/school kan later heropend worden bovenop hetzelfde datamodel.
+De twee gebruikersgroepen zien een totaal andere interface:
 A. Het Kind ("De Maker")
 * Doel: Flow & Focus.
 * Interface: Direct op het bureau (Chat + Board). Geen administratie.
@@ -94,13 +95,7 @@ B. De Ouder ("De Toeschouwer")
 * Visuals: Flow Meter (Worsteling vs. In de Zone) & Focus Cirkel.
 * Interactie: Gespreksstarters ("Vraag Rens hoe hij de breuk oploste").
 * Rechten: Read-Only. Kan niet chatten (voorkomt data-vervuiling). Wel toegang tot instellingen (Diep-Lees Modus).
-C. De Leraar ("De Regisseur")
-* Doel: Inzicht & Sturing.
-* Interface: "Het Klembord".
-* Overzicht: Insight Cards (Top 3 Knelpunten, bijv. "12 leerlingen vast op Breuken").
-* Detail: Klassenlijst (Lijstweergave met status-badges, geen tegels).
-* Diepte: AI Diagnose per leerling (Pedagogische samenvatting, geen chatlogs).
-* Rechten: Topics pushen ("Focus morgen op breuken"). Geen inzage in privé-chats.
+* Eigendom: De ouder beheert de kind-accounts (aanmaken, koppelen, verwijderen) en kan alle gezinsdata exporteren of definitief wissen.
 3. Technische Architectuur & Data
 * State Management: SPA in app/page.tsx met strikte scheiding via centrale boardContent state (Manager Pattern) om conflicten tussen tools te voorkomen.
 * AI Core Strategy:
@@ -137,7 +132,7 @@ C. De Leraar ("De Regisseur")
     * Empty State: Groot potlood-icoon + tekst "Ik wacht op je idee...".
 * Navigation:
     * Kind: Hamburger menu (Slide-over drawer met Settings/Profiel) en Input Dock (vast onderaan).
-    * Ouder/Leraar: Aparte dashboard layouts (Brief & Klembord).
+    * Ouder: Apart dashboard layout (De Nieuwsbrief).
 5. Interactie-Details & Intelligentie 💡
 A. De 3 Tutor Modi (Instelbaar door Kind) Het kind kiest zijn eigen "Coach Stijl" in het Master Menu:
 1. ⚡️ Focus (De Trainer): Kort, zakelijk, geen emojis. Escape: De Regel-Hint.
@@ -176,7 +171,7 @@ Fase 2b: Rekenen (CORE → EXTENDED → INSIGHTS) (NU)
   * [ ] Oppervlakte / omtrek / inhoud (optioneel).
   * [ ] Multi-step word problems (meer context).
 * Daarna:
-  * [ ] Leerprofiel + Insights (Supabase): per canon‑stap logging → sterke/zwakke punten voor kind/ouder/leraar.
+  * [ ] Leerprofiel + Insights (Supabase): per canon‑stap logging → sterke/zwakke punten voor kind en ouder.
 Fase 2c: Begrijpend Lezen (na rekenen) (PLAN)
 * [ ] Hoofdgedachte / kernzin per alinea (1-move prompts).
 * [ ] Signaalwoorden → relatie (oorzaak/gevolg, tegenstelling, opsomming).
@@ -213,20 +208,16 @@ Fase 3: Scaling & Polish
 * Fase 3 (Launch): MVP met SaaS model.
 * Merkpositionering: Publiceer het "Why Anima doesn't give answers" manifesto.
 9. Business Model (SaaS Strategie)
-We hanteren een Premium Abonnement model. Geen credits, geen micro-transacties.
-A. B2C Model (Voor Ouders) The Cash Cow. Ouders betalen voor resultaat en rust.
+We hanteren een Premium Abonnement model. Geen credits, geen micro-transacties. Focus: 100% gezinnen (B2C). B2B/school is bewust geparkeerd en kan later als distributiekanaal heropend worden.
 * Single Student Plan: € 14,95 per maand.
     * Inclusief: Onbeperkt chatten, Vision, Ouder Dashboard.
 * Family Pack: € 24,95 per maand.
     * Inclusief: Tot 3 kinderen + Dashboard.
 * Acquisitie: 14 Dagen Gratis Proefperiode (Volledige toegang).
-B. B2B Model (Voor Scholen) The Distribution Channel.
-* Teacher Dashboard: GRATIS.
-    * Doel: Leraren gebruiken het in de klas -> leerlingen vragen thuis om abonnement.
-* School Licentie: Alleen op aanvraag (Volume deals).
 Unit Economics:
 * Dankzij het verwijderen van Flux en het gebruik van Client-Side Rendering (Maffs/LaTeX) zijn de marginale kosten per gebruiker drastisch verlaagd (~90% marge).
 10. Ethics, Privacy & Compliance 🛡️
 * Privacy (AVG/GDPR): Data opslag in EU. Recht op vergetelheid.
-* Data Hygiëne: Ouders en Leraren kunnen niet chatten, zodat het profiel van het kind zuiver blijft.
+* Data-eigendom (MOAT): De leerdata is van het gezin. Ouders kunnen alles inzien (van eigen kinderen), exporteren en definitief wissen. Row Level Security dwingt dit af op databaseniveau.
+* Data Hygiëne: Ouders kunnen niet chatten, zodat het profiel van het kind zuiver blijft.
 * Veiligheid: Strict Gemini Safety Filters & PII filtering.
