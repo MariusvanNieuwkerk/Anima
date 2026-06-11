@@ -178,7 +178,8 @@ OUTPUT-CONTRACT (CRITICAL)
     const genAI = new GoogleGenerativeAI(apiKey);
     // Prefer JSON-only responses to reduce fragile formatting. If unsupported, Gemini will ignore it.
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+      // gemini-2.0-flash is door Google uitgefaseerd (404 sinds juni 2026).
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       generationConfig: {
         responseMimeType: "application/json",
       },
