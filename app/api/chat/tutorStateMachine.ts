@@ -1557,7 +1557,11 @@ function parseProblem(text: string): ParsedProblem | null {
       const bText = m[3]
       const a = parseNum(aText)
       const b = parseNum(bText)
-      if (Number.isFinite(a) && Number.isFinite(b)) return { kind: 'dec_muldiv', op, aText, bText }
+      // Alleen als er écht een kommagetal in staat. Anders kaapt deze parser
+      // gehele getallen ("84 ÷ 7") en breuken ("1/4 + 1/8") die bij hun
+      // eigen canon horen.
+      const hasDecimal = /[.,]\d/.test(aText) || /[.,]\d/.test(bText)
+      if (hasDecimal && Number.isFinite(a) && Number.isFinite(b)) return { kind: 'dec_muldiv', op, aText, bText }
     }
   }
 
