@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '@/utils/supabase/server';
 import { extractMoneyLike } from './skills/ocrUtils'
 // NOTE: Time tutoring is handled by the main tutor policy + model.
 // Keep domain helpers out of the request flow to avoid brittle, "baked-in" responses.
-import { searchWikimedia } from '@/app/lib/wiki'
+import { findImageSmart } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
@@ -1230,9 +1230,14 @@ OUTPUT-CONTRACT (CRITICAL)
     }
 
     // Resolve Wikipedia/Wikimedia image queries server-side into a concrete URL.
+    // Concept-first: artikel-hoofdafbeelding / Wikidata vóór losse bestandszoektocht.
     if (payload.image && !payload.image.url && typeof payload.image.query === 'string') {
       try {
-        const result = await searchWikimedia(payload.image.query)
+        const result = await findImageSmart({
+          modelQuery: payload.image.query,
+          userText: String(lastMessageContent || ''),
+          lang: userLanguage,
+        })
         if (result.found && result.url) {
           payload.image = {
             url: result.url,
@@ -1249,49 +1254,27 @@ OUTPUT-CONTRACT (CRITICAL)
       }
     }
 
-    // If the user asked for an image but the model forgot, retry once to request an image query.
+    // If the user asked for an image but the model forgot the query, resolve it
+    // deterministically from the user's own words (concept-first). Geen extra
+    // LLM-call meer nodig.
     if (needsImage && !payload.image && !needsGraph) {
-      // Deterministic preset (e.g., Dutch cultural terms) before asking the model again.
       const preset = imageQueryPreset(lastMessageContent || '')
-      if (preset) {
-        payload.image = { query: preset.query, caption: preset.caption }
-      }
-
-      const strictImage =
-        '\n\n[SYSTEEM OVERRIDE (STRICT): De gebruiker vraagt om een afbeelding. Antwoord met geldige JSON en voeg een "image" object toe met {"query":"...","caption":"..."} (query in het Engels). Zet action op "show_image". GEEN graph, geen SVG, geen plaatjes genereren.]'
-      if (!payload.image) {
-        const retryParts = partsCloneWithTextSuffix(userParts, strictImage)
-        const retryText = await runOnceWithRetry(retryParts, 'image_retry', 2)
-        try {
-          const jsonText2 = extractJsonFromModelText(retryText)
-          if (jsonText2) {
-            const payload2 = JSON.parse(jsonText2)
-            const v2 = validatePayload(payload2)
-            if (v2.ok && payload2.image) {
-              payload = payload2
-            }
+      try {
+        const result = await findImageSmart({
+          modelQuery: preset?.query,
+          userText: String(lastMessageContent || ''),
+          lang: userLanguage,
+        })
+        if (result.found && result.url) {
+          payload.image = {
+            url: result.url,
+            caption: preset?.caption || result.caption || result.title,
+            sourceUrl: result.pageUrl,
           }
-        } catch {
-          // ignore
+          payload.action = 'show_image'
         }
-      }
-      // Resolve if we got a query.
-      if (payload.image && !payload.image.url && typeof payload.image.query === 'string') {
-        try {
-          const result = await searchWikimedia(payload.image.query)
-          if (result.found && result.url) {
-            payload.image = {
-              url: result.url,
-              caption: payload.image.caption || result.caption || result.title,
-              sourceUrl: result.pageUrl,
-            }
-            payload.action = 'show_image'
-          } else {
-            delete payload.image
-          }
-        } catch {
-          delete payload.image
-        }
+      } catch {
+        // geen beeld gevonden: quality gate hieronder handelt het af
       }
     }
 
@@ -1324,7 +1307,14 @@ OUTPUT-CONTRACT (CRITICAL)
       userId: authUser.id,
       sessionId,
       route: 'llm',
-      result: looksStuck(String(lastMessageContent || '')) ? 'stuck' : null,
+      // 'image_miss' = kind vroeg om beeld, maar we konden niets betrouwbaars
+      // tonen. Zichtbaar in anon-stats zonder gespreksinhoud te lezen.
+      result:
+        needsImage && payload?.action !== 'show_image'
+          ? 'image_miss'
+          : looksStuck(String(lastMessageContent || ''))
+            ? 'stuck'
+            : null,
       userText: String(lastMessageContent || ''),
       assistantText: String(payload?.message || ''),
     })

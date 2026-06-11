@@ -7,6 +7,177 @@ export type WikiImageResult = {
   pageUrl?: string
 }
 
+// ====================================================================
+// CONCEPT-FIRST BEELDKEUZE (Curator 2.0)
+// Filosofie: zoek geen bestanden, zoek het BEGRIP. Wikipedia heeft voor
+// vrijwel elk begrip al een door mensen gekozen hoofdafbeelding; Wikidata
+// heeft per concept een canonieke afbeelding (P18). De losse Commons-
+// bestandszoektocht (searchWikimedia hieronder) is alleen nog vangnet.
+// ====================================================================
+
+const WIKI_UA = { 'User-Agent': 'Anima/1.0 (concept-images)' }
+
+async function wikiQuery(host: string, params: Record<string, string>): Promise<any | null> {
+  // LET OP: geen `origin=*` — dat is alleen nodig voor browser-CORS en
+  // zet de request in Wikipedia's anonieme (zwaar gelimiteerde) bucket.
+  // Server-side met een nette User-Agent krijgen we normale limieten.
+  const url = new URL(`https://${host}/w/api.php`)
+  url.searchParams.set('format', 'json')
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url.toString(), { headers: WIKI_UA, cache: 'no-store' })
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get('retry-after')) || 0
+        await new Promise((r) => setTimeout(r, Math.max(retryAfter * 1000, 500 * attempt)))
+        continue
+      }
+      if (!res.ok) return null
+      return await res.json()
+    } catch {
+      if (attempt === 3) return null
+      await new Promise((r) => setTimeout(r, 300 * attempt))
+    }
+  }
+  return null
+}
+
+// Haal het onderwerp uit een kindvraag: "hoe ziet een koboldhaai eruit?" → "koboldhaai".
+export function extractImageSubject(text: string): string {
+  let t = String(text || '').toLowerCase()
+  t = t.replace(/[?!.]+/g, ' ')
+  t = t.replace(
+    /\b(hoe|ziet|zien|zie|eruit|er uit|laat|laten|toon|tonen|me|mij|eens|even|een|de|het|wat|is|zijn|er|kun|kan|je|u|mag|ik|wil|graag|foto(?:'s)?|plaatje(?:s)?|afbeelding(?:en)?|van|over|how|does|do|a|an|the|look|looks|like|show|picture|photo|image|of|what)\b/g,
+    ' '
+  )
+  return t.replace(/\s+/g, ' ').trim()
+}
+
+type ImageCandidate = { url: string; caption?: string; pageUrl?: string }
+
+const extOf = (url: string): string => {
+  const m = String(url || '').toLowerCase().match(/\.([a-z0-9]{2,5})(?:[?#]|$)/)
+  return m ? m[1] : ''
+}
+const isPreferredExt = (url: string) => ['jpg', 'jpeg', 'png', 'webp'].includes(extOf(url))
+const isAcceptableExt = (url: string) => isPreferredExt(url) || extOf(url) === 'gif'
+
+// Hoofdafbeelding + EN-titel + Wikidata-id van het best passende artikel.
+async function articleLead(
+  host: string,
+  searchTerm: string
+): Promise<{ title: string; image?: string; enTitle?: string; wikidataId?: string; pageUrl?: string } | null> {
+  const search = await wikiQuery(host, {
+    action: 'query',
+    list: 'search',
+    srnamespace: '0',
+    srlimit: '1',
+    srsearch: searchTerm,
+  })
+  const title = String(search?.query?.search?.[0]?.title || '')
+  if (!title) return null
+
+  const page = await wikiQuery(host, {
+    action: 'query',
+    titles: title,
+    redirects: '1',
+    prop: 'pageimages|langlinks|pageprops|info',
+    piprop: 'original',
+    lllang: 'en',
+    inprop: 'url',
+  })
+  const pages = page?.query?.pages || {}
+  const p: any = Object.values(pages)[0]
+  if (!p) return null
+  return {
+    title: String(p.title || title),
+    image: typeof p.original?.source === 'string' ? p.original.source : undefined,
+    enTitle: typeof p.langlinks?.[0]?.['*'] === 'string' ? p.langlinks[0]['*'] : undefined,
+    wikidataId: typeof p.pageprops?.wikibase_item === 'string' ? p.pageprops.wikibase_item : undefined,
+    pageUrl: typeof p.fullurl === 'string' ? p.fullurl : undefined,
+  }
+}
+
+// Wikidata P18: dé canonieke afbeelding van een concept.
+async function wikidataImage(entityId: string): Promise<string | null> {
+  const json = await wikiQuery('www.wikidata.org', {
+    action: 'wbgetclaims',
+    entity: entityId,
+    property: 'P18',
+  })
+  const file = json?.claims?.P18?.[0]?.mainsnak?.datavalue?.value
+  if (typeof file !== 'string' || !file) return null
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=1200`
+}
+
+export async function resolveConceptImage(rawTerm: string, lang: string = 'nl'): Promise<WikiImageResult> {
+  const term = String(rawTerm || '').trim()
+  if (!term) return { found: false }
+
+  const host = `${/^[a-z]{2}$/.test(lang) ? lang : 'nl'}.wikipedia.org`
+  const candidates: ImageCandidate[] = []
+
+  const local = await articleLead(host, term)
+  if (local?.image) candidates.push({ url: local.image, caption: local.title, pageUrl: local.pageUrl })
+
+  // Engels artikel: vaak een betere/echte foto (en het EN-bestand werkt net zo goed).
+  if (local?.enTitle && host !== 'en.wikipedia.org') {
+    const en = await articleLead('en.wikipedia.org', local.enTitle)
+    if (en?.image) candidates.push({ url: en.image, caption: local.title, pageUrl: en.pageUrl })
+    if (!local.wikidataId && en?.wikidataId) local.wikidataId = en.wikidataId
+  }
+
+  // Geen artikel in eigen taal? Probeer Engels direct (model-queries zijn vaak al Engels).
+  if (!local && host !== 'en.wikipedia.org') {
+    const en = await articleLead('en.wikipedia.org', term)
+    if (en?.image) candidates.push({ url: en.image, caption: en.title, pageUrl: en.pageUrl })
+    if (en?.wikidataId) {
+      const p18 = await wikidataImage(en.wikidataId)
+      if (p18) candidates.push({ url: p18, caption: en.title, pageUrl: en.pageUrl })
+    }
+  } else if (local?.wikidataId) {
+    const p18 = await wikidataImage(local.wikidataId)
+    if (p18) candidates.push({ url: p18, caption: local.title, pageUrl: local.pageUrl })
+  }
+
+  // Voorkeur: echte foto-formaten; gif alleen als er niets beters is. Nooit svg/pdf.
+  const best = candidates.find((c) => isPreferredExt(c.url)) || candidates.find((c) => isAcceptableExt(c.url))
+  if (!best) return { found: false }
+  return { found: true, url: best.url, title: best.caption, caption: best.caption, pageUrl: best.pageUrl }
+}
+
+// De volledige keten: begrip (modelquery) → begrip (kindvraag) → losse
+// Commons-zoektocht als laatste vangnet.
+export async function findImageSmart(args: {
+  modelQuery?: string
+  userText?: string
+  lang?: string
+}): Promise<WikiImageResult> {
+  const lang = String(args.lang || 'nl').toLowerCase()
+  const modelQuery = String(args.modelQuery || '').trim()
+  const subject = extractImageSubject(String(args.userText || ''))
+
+  if (modelQuery) {
+    // Model-queries zijn (horen) Engels (te zijn): probeer EN-concept eerst.
+    const viaModel = await resolveConceptImage(modelQuery, 'en')
+    if (viaModel.found) return viaModel
+  }
+
+  if (subject && subject.length >= 3) {
+    const viaUser = await resolveConceptImage(subject, lang)
+    if (viaUser.found) return viaUser
+  }
+
+  if (modelQuery && lang !== 'en') {
+    // Model gaf misschien tóch een term in de eigen taal.
+    const viaModelLocal = await resolveConceptImage(modelQuery, lang)
+    if (viaModelLocal.found) return viaModelLocal
+  }
+
+  return searchWikimedia(modelQuery || subject)
+}
+
 export async function searchWikimedia(query: string): Promise<WikiImageResult> {
   const raw = String(query || '').trim()
   if (!raw) return { found: false }
