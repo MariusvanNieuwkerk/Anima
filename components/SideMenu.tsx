@@ -65,7 +65,7 @@ const getInitials = (name: string) => {
 export default function SideMenu({
   isOpen,
   onClose,
-  studentName = 'Rens',
+  studentName = '',
   tutorMode,
   onTutorModeChange,
   language,

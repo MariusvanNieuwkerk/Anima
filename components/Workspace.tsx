@@ -8,7 +8,6 @@ import MobileHeader from './MobileHeader'
 import VisualPane from './VisualPane'
 import SideMenu from './SideMenu'
 import SettingsModal from './SettingsModal'
-import ParentDashboard from './ParentDashboard'
 import DebugBanner from './DebugBanner'
 import { supabase } from '../utils/supabase'
 import { type UserProfile } from '../utils/auth'
@@ -60,7 +59,7 @@ export default function Workspace() {
   const [userRole, setUserRole] = useState<UserRole>('student')
   const [language, setLanguage] = useState<Language>('nl')
   const [age, setAge] = useState(10)
-  const [studentName, setStudentName] = useState<string>('Rens')
+  const [studentName, setStudentName] = useState<string>('')
   const [animaName, setAnimaName] = useState<string>('Anima')
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
@@ -1038,17 +1037,10 @@ export default function Workspace() {
     );
   }
 
-  // ROLE-BASED RENDERING: Alleen juiste dashboard tonen op basis van role
+  // Ouders horen op hun eigen dashboard (middleware stuurt ze daar normaal al heen).
   if (userRole === 'parent') {
-    return (
-      <div className="h-[100dvh] w-screen flex flex-col bg-stone-50 overflow-hidden">
-        <ParentDashboard 
-          studentName={userProfile?.student_name || 'Rens'} 
-          parentName={userProfile?.parent_name || 'Ouder'}
-          userProfile={userProfile}
-        />
-      </div>
-    );
+    if (typeof window !== 'undefined') window.location.href = '/parent/dashboard'
+    return null;
   }
 
   // Student view - alleen studenten kunnen de chat interface zien
