@@ -29,8 +29,10 @@ export async function middleware(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    // Fail-open for deployments missing env vars, to avoid locking you out.
-    return NextResponse.next()
+    // Fail-closed: zonder Supabase-config kunnen we niemand verifiëren.
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
   // IMPORTANT: use a response we can mutate cookies on
