@@ -46,6 +46,9 @@ create policy "Own profile update"
 -- =====================================================================
 alter table public.messages enable row level security;
 
+-- KRITIEK: oude wagenwijd-open policy ("ALL" voor iedereen) verwijderen.
+drop policy if exists "Public Access" on public.messages;
+
 drop policy if exists "Own messages read" on public.messages;
 create policy "Own messages read"
   on public.messages
@@ -91,6 +94,10 @@ alter table public.tutor_sessions enable row level security;
 -- UUID) is het capability-token; zonder kolomfilter kan dat niet in
 -- RLS worden afgedwongen. We beperken select/delete tot rijen jonger
 -- dan 1 uur zodat de tabel niet als doorzoekbaar archief kan dienen.
+-- KRITIEK: oude wagenwijd-open policy ("ALL" voor iedereen) verwijderen.
+-- De insert-policy ("Iedereen mag uploaden") blijft: dat is de QR-bridge.
+drop policy if exists "Public Access Uploads" on public.mobile_uploads;
+
 drop policy if exists "Allow select on mobile_uploads" on public.mobile_uploads;
 create policy "Allow select on recent mobile_uploads"
   on public.mobile_uploads
