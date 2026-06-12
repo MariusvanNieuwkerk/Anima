@@ -11,6 +11,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from './tutorStateMachine'
 import { shouldExplain, generateLlmExplanation } from './explain'
 import { logTutorEvent, looksStuck } from './tutorEvents'
+import { buildLearnerProfileBlock } from './learnerProfile'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
 export const runtime = 'nodejs';
@@ -73,6 +74,10 @@ export async function POST(req: Request) {
     
     const targetLanguage = languageMap[userLanguage] || 'Nederlands';
 
+    // LEERPROFIEL (de moat): compact blok uit tutor_events, gaat mee in
+    // elke prompt zodat de tutor het kind echt kent. Faalt stil naar null.
+    const learnerProfileBlock = await buildLearnerProfileBlock(authUser.id)
+
     let coachInstructions = "";
     let visualStrategy = "";
     const ageBand: 'junior' | 'teen' | 'student' =
@@ -129,6 +134,11 @@ MODE: ${String(tutorMode || 'explorer')} (focus/explorer/growth)
 COACH PROFIEL: ${coachInstructions}
 VISUAL STRATEGY: ${visualStrategy}
 ${adaptivePacing}
+${learnerProfileBlock ? `
+LEERLINGPROFIEL (uit eerdere sessies van dit kind):
+${learnerProfileBlock}
+GEBRUIK: sluit aan op wat het kind al kan en waar het vastliep. Bij een begroeting of "wat zullen we doen?" mag je hier één keer warm aan refereren ("vorige keer oefende je..."). Noem het verder alleen als het echt relevant is — geen opsomming naar het kind toe.
+` : ''}
 
 NORTH STAR (LOW-FRICTION TUTOR — HOUD DIT ALTIJD AAN)
 1) Leeractie boven tekst: elk bericht is ontworpen om de leerling 1 kleine denk-actie te laten doen.
@@ -186,8 +196,8 @@ OUTPUT-CONTRACT (CRITICAL)
     const genAI = new GoogleGenerativeAI(apiKey);
     // Prefer JSON-only responses to reduce fragile formatting. If unsupported, Gemini will ignore it.
     const model = genAI.getGenerativeModel({
-      // gemini-2.0-flash is door Google uitgefaseerd (404 sinds juni 2026).
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      // gemini-3.5-flash: frontier-niveau, sneller en beter dan 2.5-flash.
+      model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
       generationConfig: {
         responseMimeType: "application/json",
       },
@@ -287,6 +297,7 @@ OUTPUT-CONTRACT (CRITICAL)
           targetLanguage,
           studentName: effectiveProfile.student_name,
           boardVisible,
+          profileBlock: learnerProfileBlock,
         })
 
         // Vangnet: deterministische canon-walkthrough (alleen rekenonderwerpen).

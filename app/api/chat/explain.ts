@@ -125,23 +125,23 @@ export function validatePracticePrompt(p: unknown, userAge?: number, userLanguag
 function registerRules(userAge: number): string {
   if (userAge <= 12) {
     return [
-      '- Korte zinnen. Warme, enthousiaste toon.',
+      '- Korte zinnen. Warme, natuurlijke toon — zoals een lievelingsjuf of -meester die naast je komt zitten.',
       '- GEEN vaktermen of afkortingen zonder ze meteen in gewone woorden uit te leggen (dus nooit kaal "kgv" of "ggd").',
       '- Gebruik een concreet beeld uit het dagelijks leven (snoepjes, zakgeld, pizza).',
-      '- Maximaal ±120 woorden in "message".',
+      '- Richtlijn: ±150 woorden. Liever iets langer en helder dan kort en cryptisch.',
     ].join('\n')
   }
   if (userAge <= 16) {
     return [
       '- Normale zinnen, geen kleutertoon en niet neerbuigend.',
       '- Vaktermen mogen, maar leg ze de eerste keer kort uit.',
-      '- Maximaal ±160 woorden in "message".',
+      '- Richtlijn: ±200 woorden.',
     ].join('\n')
   }
   return [
     '- Efficiënt en helder, hoger tempo.',
     '- Vaktermen zijn prima.',
-    '- Maximaal ±200 woorden in "message".',
+    '- Richtlijn: ±250 woorden.',
   ].join('\n')
 }
 
@@ -152,6 +152,7 @@ function buildExplainPrompt(opts: {
   targetLanguage: string
   studentName?: string | null
   boardVisible: boolean
+  profileBlock?: string | null
 }): string {
   const name = (opts.studentName || '').trim()
   const recent = (opts.history || [])
@@ -178,11 +179,14 @@ function buildExplainPrompt(opts: {
     `Je bent Anima, een warme, geduldige privéleraar voor ${name || 'een leerling'} van ${opts.userAge} jaar.`,
     `Dit is een UITLEG-beurt: de leerling wil iets begrijpen. Het is geen overhoring.`,
     '',
-    'DIDACTISCH RECEPT (verplicht, in deze volgorde):',
-    '1. Open met één zin: wat is het en waarvoor gebruik je het in het echt.',
-    '2. Leg de methode uit met ÉÉN concreet, volledig doorgewerkt voorbeeld in kleine stappen.',
-    '3. Sluit af met één veelgemaakte fout: "Let op: ..."',
-    '4. Geef GEEN oefenvraag of wedervraag in "message" — het systeem voegt zelf een uitnodiging toe.',
+    opts.profileBlock
+      ? `WAT JE AL WEET OVER DEZE LEERLING (gebruik dit om de uitleg te laten aansluiten; benoem het alleen als het relevant is):\n${opts.profileBlock}\n`
+      : '',
+    'DIDACTISCHE RICHTING (gebruik dit als kompas, niet als sjabloon — schrijf natuurlijk):',
+    '- Maak ergens vroeg duidelijk waarvoor je dit in het echt gebruikt.',
+    '- De kern is ÉÉN concreet, volledig doorgewerkt voorbeeld in kleine stappen die elkaar logisch opvolgen.',
+    '- Benoem de veelgemaakte fout of valkuil, op een plek waar die natuurlijk past.',
+    '- Geef GEEN oefenvraag of wedervraag in "message" — het systeem voegt zelf een uitnodiging toe.',
     '',
     'REGISTER:',
     registerRules(opts.userAge),
@@ -212,9 +216,9 @@ const EXPLAIN_TIMEOUT_MS = 25_000
 async function callModel(apiKey: string, prompt: string): Promise<string> {
   const genAI = new GoogleGenerativeAI(apiKey)
   const model = genAI.getGenerativeModel({
-    // Uitleg is de beurt waar kwaliteit telt: standaard een topmodel,
-    // overschrijfbaar via env (bv. terugschakelen bij kosten/limieten).
-    model: process.env.GEMINI_EXPLAIN_MODEL || 'gemini-2.5-pro',
+    // Uitleg is de beurt waar kwaliteit telt: frontier-model (snel én slim),
+    // overschrijfbaar via env (bv. gemini-3.1-pro-preview voor max kwaliteit).
+    model: process.env.GEMINI_EXPLAIN_MODEL || 'gemini-3.5-flash',
     generationConfig: { responseMimeType: 'application/json' },
   })
   const result = (await Promise.race([
@@ -224,7 +228,7 @@ async function callModel(apiKey: string, prompt: string): Promise<string> {
   return result.response.text()
 }
 
-export async function generateLlmExplanation(opts: {
+type ExplainOpts = {
   apiKey: string
   userText: string
   history: Array<{ role: string; content: string }>
@@ -233,28 +237,62 @@ export async function generateLlmExplanation(opts: {
   targetLanguage: string
   studentName?: string | null
   boardVisible: boolean
-}): Promise<ExplainResult | null> {
-  const prompt = buildExplainPrompt(opts)
+  profileBlock?: string | null
+}
 
+// Verwijst de chattekst naar het bord? (nl + en)
+const mentionsBoard = (s: string) => /\bbord\b|\bboard\b/i.test(s)
+
+// Eén modelpoging. Gooit bij netwerk/parse-fouten; geeft null bij lege message.
+async function attemptExplain(opts: ExplainOpts, boardVisible: boolean): Promise<ExplainResult | null> {
+  const raw = await callModel(opts.apiKey, buildExplainPrompt({ ...opts, boardVisible }))
+  const parsed = JSON.parse(raw)
+  const message = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
+  if (!message) return null
+
+  // Telefoon: bord hard uitzetten, ook als het model er toch één stuurt.
+  const steps = boardVisible ? sanitizeSteps(parsed?.board) : null
+  if (boardVisible && parsed?.board && !steps) {
+    console.warn('[explain] bord van model afgekeurd (structuur of rekenfout)')
+  }
+
+  const practice = validatePracticePrompt(parsed?.practicePrompt, opts.userAge, opts.userLanguage)
+  const invite =
+    practice == null
+      ? ''
+      : opts.userLanguage === 'en'
+        ? `\n\nWant to try one yourself? Type: ${practice}`
+        : `\n\nWil je er nu zelf één proberen? Typ: ${practice}`
+
+  return { message: `${message}${invite}`, steps }
+}
+
+export async function generateLlmExplanation(opts: ExplainOpts): Promise<ExplainResult | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const raw = await callModel(opts.apiKey, prompt)
-      const parsed = JSON.parse(raw)
-      const message = typeof parsed?.message === 'string' ? parsed.message.trim() : ''
-      if (!message) continue
+      const result = await attemptExplain(opts, opts.boardVisible)
+      if (!result) continue
 
-      // Telefoon: bord hard uitzetten, ook als het model er toch één stuurt.
-      const steps = opts.boardVisible ? sanitizeSteps(parsed?.board) : null
+      // Bord-belofte zonder bord ("kijk op het bord" terwijl het bord is
+      // afgekeurd): één keer opnieuw genereren in inline-vorm, zodat de
+      // volledige uitleg in de chat staat en nergens naar een leeg bord wijst.
+      if (opts.boardVisible && !result.steps && mentionsBoard(result.message)) {
+        try {
+          const inline = await attemptExplain(opts, false)
+          if (inline) return inline
+        } catch {
+          /* inline-herkansing mislukt → val door naar de bord-loze message */
+        }
+        // Laatste redmiddel: zinnen met bordverwijzing wegknippen.
+        const stripped = result.message
+          .split(/(?<=[.!?])\s+/)
+          .filter((s) => !mentionsBoard(s))
+          .join(' ')
+          .trim()
+        if (stripped) return { message: stripped, steps: null }
+      }
 
-      const practice = validatePracticePrompt(parsed?.practicePrompt, opts.userAge, opts.userLanguage)
-      const invite =
-        practice == null
-          ? ''
-          : opts.userLanguage === 'en'
-            ? `\n\nWant to try one yourself? Type: ${practice}`
-            : `\n\nWil je er nu zelf één proberen? Typ: ${practice}`
-
-      return { message: `${message}${invite}`, steps }
+      return result
     } catch (e) {
       const msg = (e as any)?.message || String(e)
       console.warn(`[explain] attempt ${attempt + 1} failed:`, msg)
