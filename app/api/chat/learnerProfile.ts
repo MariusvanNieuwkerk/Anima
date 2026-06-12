@@ -85,10 +85,9 @@ export async function buildLearnerProfileBlock(userId: string): Promise<string |
 
       if (r.route === 'canon' && r.canon_kind) {
         const kind = String(r.canon_kind)
-        const agg = skills.get(kind) || { starts: 0, dones: 0, stucks: 0, lastAt: String(r.created_at) }
         // rows zijn aflopend gesorteerd: de eerste keer dat we deze skill
-        // zien is meteen de recentste activiteit.
-        if (!skills.has(kind)) agg.lastAt = String(r.created_at)
+        // zien is meteen de recentste activiteit (lastAt).
+        const agg = skills.get(kind) || { starts: 0, dones: 0, stucks: 0, lastAt: String(r.created_at) }
         if (result === 'start') agg.starts++
         if (result === 'done') agg.dones++
         if (result === 'stuck') agg.stucks++

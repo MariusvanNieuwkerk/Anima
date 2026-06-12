@@ -84,7 +84,6 @@ export default function Workspace() {
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [hasNewImage, setHasNewImage] = useState(false)
   const [boardMode, setBoardMode] = useState<BoardMode>({ type: 'IDLE' })
-  const boardTopicRef = useRef<string | null>(null)
 
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -1009,13 +1008,13 @@ export default function Workspace() {
         return { type: 'IDLE' }
       })()
 
-      // If topic changes and we didn't produce a new board item, wipe the board.
-      if (topic && boardTopicRef.current && topic !== boardTopicRef.current && nextBoard.type === 'IDLE') {
-        setBoardMode({ type: 'IDLE' })
-      } else {
+      // BORD-REGEL (simpel): het bord houdt zijn inhoud tot er een nieuwe
+      // visual voor in de plaats komt. Zo blijft de uitgewerkte voorbeeldsom
+      // als spiekbriefje staan terwijl het kind oefent. Een nieuwe sessie
+      // begint met een leeg bord (zie handleNewChat).
+      if (nextBoard.type !== 'IDLE') {
         setBoardMode(nextBoard)
       }
-      if (topic) boardTopicRef.current = topic
 
       // Mobile/tablet: show a "new" badge on Board if a visual arrived while in Chat view.
       if (mobileView === 'chat' && nextBoard.type !== 'IDLE') {

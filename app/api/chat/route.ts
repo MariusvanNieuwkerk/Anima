@@ -927,8 +927,7 @@ OUTPUT-CONTRACT (CRITICAL)
 
     const runOnce = async (parts: any[]) => {
       const r = await chat.sendMessage(parts)
-      const txt = (r as any)?.response?.text?.() ? (r as any).response.text() : (r as any)?.response?.text?.() || ''
-      return String(txt || '')
+      return String((r as any)?.response?.text?.() || '')
     }
 
     const runOnceWithRetry = async (parts: any[], label: string, maxAttempts: number = 2) => {
