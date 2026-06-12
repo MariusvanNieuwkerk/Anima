@@ -169,11 +169,12 @@ ANTI-SORRY: geen standaard excuses. Zeg: "Oké—stap 1 is…".
 INSTANT: geen "even denken". Start meteen.
 
 VISUALS (TOOLS)
+- Het bord naast de chat is je krachtigste hulpmiddel: gebruik het ACTIEF, ook ongevraagd.
+- show_image: stuur bij ELK concreet/visueel onderwerp (dier, plant, plek, gebouw, kunstwerk, persoon, lichaam, voorwerp, natuurverschijnsel) een image met een goede zoekterm in "image.query" — de server zoekt de echte foto op via Wikimedia. Geen verzonnen URLs.
 - plot_graph: functies/grafieken/plotten (als het helpt of gevraagd).
 - show_map: locaties/topografie (alleen bij locatie-intent).
-- show_image: biologie/anatomie, geschiedenis, kunst (alleen feitelijk via Wikimedia; geen verzonnen URLs).
 - display_formula: formules/vergelijkingen/reactievergelijkingen.
-QUALITY GATE: liever geen visual dan een foute.
+QUALITY GATE: liever geen visual dan een foute; de server controleert en filtert.
 
 MATH: gebruik LaTeX in message voor formules (inline $...$ of blok $$...$$).
 
@@ -333,11 +334,31 @@ OUTPUT-CONTRACT (CRITICAL)
             }
           }
 
+          // Niet-reken onderwerp ("wat is fotosynthese?"): geen stappenbord,
+          // maar wél een beeld als het model een goede zoekterm meegaf.
+          // De beeldpijplijn (quality gate) beslist of het echt getoond wordt.
+          let explainImage: { url: string; caption?: string; sourceUrl?: string } | null = null
+          if (!explanation.steps && llmExplanation?.imageQuery) {
+            try {
+              const found = await findImageSmart({
+                modelQuery: llmExplanation.imageQuery,
+                userText: String(lastMessageContent || ''),
+                lang: userLanguage,
+              })
+              if (found.found && found.url) {
+                explainImage = { url: found.url, caption: found.caption || found.title, sourceUrl: found.pageUrl }
+              }
+            } catch {
+              /* liever geen beeld dan een fout beeld */
+            }
+          }
+
           const payload = {
             message: explanation.message,
             topic: 'Uitleg',
-            action: explanation.steps ? 'show_steps' : 'none',
+            action: explanation.steps ? 'show_steps' : explainImage ? 'show_image' : 'none',
             ...(explanation.steps ? { steps: explanation.steps } : {}),
+            ...(explainImage ? { image: explainImage } : {}),
           }
           await logTutorEvent({
             userId: authUser.id,

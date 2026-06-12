@@ -147,8 +147,30 @@ export async function resolveConceptImage(rawTerm: string, lang: string = 'nl'):
   return { found: true, url: best.url, title: best.caption, caption: best.caption, pageUrl: best.pageUrl }
 }
 
-// De volledige keten: begrip (modelquery) → begrip (kindvraag) → losse
-// Commons-zoektocht als laatste vangnet.
+// Guard voor het cross-taal vangnet: het gevonden artikel moet herkenbaar
+// over de zoekterm gaan. Zoeken met een NL-term op en.wikipedia "lukt"
+// anders bijna altijd — maar dan met een willekeurig artikel dat het woord
+// toevallig bevat (vulkaan → een oude kaart van Europa).
+function titleMatchesQuery(title: string | undefined, query: string): boolean {
+  const norm = (s: string) =>
+    String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const a = norm(title || '')
+  const b = norm(query)
+  if (!a || !b) return false
+  if (a.includes(b) || b.includes(a)) return true
+  const wordsA = a.split(' ').filter((w) => w.length >= 4)
+  const wordsB = b.split(' ').filter((w) => w.length >= 4)
+  return wordsB.some((w) => wordsA.includes(w))
+}
+
+// De volledige keten: begrip in de gesprekstaal → begrip uit de kindvraag →
+// Engels vangnet (met relevantie-guard) → losse Commons-zoektocht.
 export async function findImageSmart(args: {
   modelQuery?: string
   userText?: string
@@ -159,8 +181,10 @@ export async function findImageSmart(args: {
   const subject = extractImageSubject(String(args.userText || ''))
 
   if (modelQuery) {
-    // Model-queries zijn (horen) Engels (te zijn): probeer EN-concept eerst.
-    const viaModel = await resolveConceptImage(modelQuery, 'en')
+    // Model-queries volgen de gesprekstaal: eerst de eigen wiki proberen.
+    // (Een Engelse term vindt daar via de zoekindex meestal ook het juiste
+    // artikel; andersom geeft een NL-term op en.wikipedia valse treffers.)
+    const viaModel = await resolveConceptImage(modelQuery, lang)
     if (viaModel.found) return viaModel
   }
 
@@ -170,9 +194,8 @@ export async function findImageSmart(args: {
   }
 
   if (modelQuery && lang !== 'en') {
-    // Model gaf misschien tóch een term in de eigen taal.
-    const viaModelLocal = await resolveConceptImage(modelQuery, lang)
-    if (viaModelLocal.found) return viaModelLocal
+    const viaEn = await resolveConceptImage(modelQuery, 'en')
+    if (viaEn.found && titleMatchesQuery(viaEn.title, modelQuery)) return viaEn
   }
 
   return searchWikimedia(modelQuery || subject)

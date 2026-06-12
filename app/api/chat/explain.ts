@@ -28,6 +28,10 @@ export type ExplainSteps = {
 export type ExplainResult = {
   message: string
   steps: ExplainSteps | null
+  // Zoekterm voor een Wikimedia-afbeelding bij niet-reken onderwerpen
+  // ("fotosynthese", "Nachtwacht"). De caller lost dit op via de
+  // beeldpijplijn (quality gate) en zet het resultaat op het bord.
+  imageQuery: string | null
 }
 
 // ---------------------------------------------------------------
@@ -77,12 +81,21 @@ const parseNumLoose = (s: string): number | null => {
 // ("15% van 80 = 12") kunnen we niet generiek narekenen; die laten we staan.
 export function boardMathIsSound(steps: ExplainSteps): boolean {
   for (const line of steps.lines || []) {
-    const m = String(line.text || '').match(/^([0-9\s.,+\-*/×÷()−–]+)=\s*(-?[\d.,]+)\s*$/)
+    const m = String(line.text || '').match(/^([0-9\s.,+\-*/×÷:()−–]+)=\s*(-?[\d.,]+)\s*$/)
     if (!m) continue
     const expected = evalArithExpr(m[1])
     const stated = parseNumLoose(m[2])
     if (expected === null || stated === null) continue
-    if (Math.abs(expected - stated) > 1e-6) return false
+    if (Math.abs(expected - stated) <= 1e-6) continue
+    // Staartdeling-conventie: "7 ÷ 3 = 2" betekent quotiënt-met-rest.
+    // Dat is op een bord met deelstappen correct, geen rekenfout.
+    const div = m[1].match(/^\s*(\d+)\s*[÷/:]\s*(\d+)\s*$/)
+    if (div) {
+      const a = Number(div[1])
+      const b = Number(div[2])
+      if (b > 0 && Number.isInteger(stated) && stated === Math.floor(a / b)) continue
+    }
+    return false
   }
   return true
 }
@@ -196,8 +209,10 @@ function buildExplainPrompt(opts: {
     '',
     '"practicePrompt": alleen bij reken-onderwerpen — een kale, intypbare som die lijkt op het voorbeeld maar met andere getallen (bv. "96 ÷ 8" of "25% van 60"). Bij andere onderwerpen: null.',
     '',
+    '"imageQuery": alleen bij onderwerpen waar een echte foto of erkende plaat het begrip helpt (dier, plant, plek, gebouw, kunstwerk, persoon, orgaan, natuurverschijnsel): een korte zoekterm voor Wikipedia (bv. "fotosynthese" of "Nachtwacht Rembrandt"). Bij reken- en taalonderwerpen: null.',
+    '',
     `Antwoord UITSLUITEND met geldige JSON in dit formaat, in het ${opts.targetLanguage}:`,
-    '{"message": string, "board": null | {"title": string, "lines": [{"text": string, "note": string|null}], "conclusion": string}, "practicePrompt": string|null}',
+    '{"message": string, "board": null | {"title": string, "lines": [{"text": string, "note": string|null}], "conclusion": string}, "practicePrompt": string|null, "imageQuery": string|null}',
     '',
     recent ? `GESPREK TOT NU TOE:\n${recent}` : '',
     '',
@@ -264,7 +279,12 @@ async function attemptExplain(opts: ExplainOpts, boardVisible: boolean): Promise
         ? `\n\nWant to try one yourself? Type: ${practice}`
         : `\n\nWil je er nu zelf één proberen? Typ: ${practice}`
 
-  return { message: `${message}${invite}`, steps }
+  const imageQuery =
+    typeof parsed?.imageQuery === 'string' && parsed.imageQuery.trim()
+      ? parsed.imageQuery.trim().slice(0, 80)
+      : null
+
+  return { message: `${message}${invite}`, steps, imageQuery }
 }
 
 export async function generateLlmExplanation(opts: ExplainOpts): Promise<ExplainResult | null> {
@@ -289,7 +309,7 @@ export async function generateLlmExplanation(opts: ExplainOpts): Promise<Explain
           .filter((s) => !mentionsBoard(s))
           .join(' ')
           .trim()
-        if (stripped) return { message: stripped, steps: null }
+        if (stripped) return { message: stripped, steps: null, imageQuery: result.imageQuery }
       }
 
       return result

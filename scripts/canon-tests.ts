@@ -261,6 +261,25 @@ check(
   }),
   'fout bord passeerde'
 )
+// Staartdeling-conventie: quotiënt-met-rest is geen rekenfout
+check(
+  'Bordvalidatie: "7 ÷ 3 = 2" (quotiënt met rest) passeert',
+  boardMathIsSound({
+    title: '72 ÷ 3',
+    lines: [{ text: '7 ÷ 3 = 2', note: '3 past 2 keer in 7, rest 1' }, { text: '12 ÷ 3 = 4' }],
+    conclusion: '72 ÷ 3 = 24',
+  }),
+  'staartdelingsstap werd afgekeurd'
+)
+check(
+  'Bordvalidatie: "7 ÷ 3 = 3" blijft fout',
+  !boardMathIsSound({
+    title: '72 ÷ 3',
+    lines: [{ text: '7 ÷ 3 = 3' }],
+    conclusion: '72 ÷ 3 = 24',
+  }),
+  'echt foute deelstap passeerde'
+)
 
 // practicePrompt alleen doorlaten als hij echt een canon start
 check('practicePrompt geldig: "96 ÷ 8"', validatePracticePrompt('96 ÷ 8', 10, 'nl') === '96 ÷ 8', 'werd afgekeurd')
