@@ -9,6 +9,7 @@ import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from './tutorStateMachine'
+import { shouldExplain, generateLlmExplanation } from './explain'
 import { logTutorEvent, looksStuck } from './tutorEvents'
 
 // SWITCH RUNTIME: Gebruik nodejs runtime voor betere Vision support (geen edge timeout)
@@ -247,61 +248,103 @@ OUTPUT-CONTRACT (CRITICAL)
     evUserText = String(lastMessageContent || '')
     let userParts: any[] = [{ text: lastMessageContent }];
 
-    // --- UITLEG-MODUS ("I Do"): volledige walkthrough in één bericht ---
-    // Als de leerling om een uitleg vraagt ("leg staartdelen uit", "hoe werkt
-    // procenten") in plaats van een concrete som, draaien we de bestaande canon
-    // zelf af op een voorbeeld en tonen alle stappen ineens. Zo hoeft de
-    // leerling niet na elke microstap te antwoorden.
-    if (images.length === 0) {
-      const explanation = buildCanonExplanation({
-        userText: String(lastMessageContent || ''),
-        userAge,
-        userLanguage,
-      })
-      if (explanation) {
-        // Een demo start geen interactieve sessie: ruim eventuele oude state op
-        // zodat de "probeer het zelf"-som daarna schoon kan beginnen.
-        if (sessionId) {
-          try {
-            const admin = createAdminClient()
-            await admin
-              .from('tutor_sessions')
-              .upsert(
-                {
-                  session_id: `${authUser.id}:${sessionId}`,
-                  user_id: authUser.id,
-                  state: {},
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'session_id' }
-              )
-          } catch {
-            /* state store optioneel; uitleg werkt ook zonder */
-          }
+    // --- UITLEG-MODUS: topmodel legt uit, canons blijven voor oefenen ---
+    // Uitlegvragen ("hoe werkt een staartdeling?", "wat is fotosynthese?")
+    // gaan naar het LLM met een didactisch promptcontract en (op desktop)
+    // bordstappen. Vangnet: de deterministische canon-walkthrough, en
+    // anders de normale flow. Concrete sommen en lopende oefensessies
+    // worden door shouldExplain + de state-guard met rust gelaten.
+    if (images.length === 0 && shouldExplain(String(lastMessageContent || ''))) {
+      // Guard: midden in een oefensessie ("waarom?") kapen we het kind
+      // niet weg uit zijn som; dan handelt de normale flow het af.
+      let inActiveCanon = false
+      if (sessionId) {
+        try {
+          const admin = createAdminClient()
+          const load = await admin
+            .from('tutor_sessions')
+            .select('state')
+            .eq('session_id', `${authUser.id}:${sessionId}`)
+            .maybeSingle()
+          inActiveCanon = Boolean((load.data as any)?.state?.kind)
+        } catch {
+          /* state store optioneel */
         }
+      }
 
-        // Chat praat kort, het bord schrijft de uitwerking: de stappen gaan
-        // als steps-payload naar het bord (action: show_steps).
-        const payload = {
-          message: explanation.message,
-          topic: 'Rekenen',
-          action: 'show_steps',
-          steps: explanation.board,
-        }
-        await logTutorEvent({
-          userId: authUser.id,
-          sessionId,
-          route: 'explain',
-          canonKind: null,
-          step: null,
-          result: 'explain',
+      if (!inActiveCanon) {
+        const boardVisible = data?.boardVisible === true
+        const history = Array.isArray(messages)
+          ? messages.slice(0, -1).map((m: any) => ({ role: String(m?.role || 'user'), content: String(m?.content || '') }))
+          : []
+
+        const llmExplanation = await generateLlmExplanation({
+          apiKey,
           userText: String(lastMessageContent || ''),
-          assistantText: payload.message,
+          history,
+          userAge,
+          userLanguage,
+          targetLanguage,
+          studentName: effectiveProfile.student_name,
+          boardVisible,
         })
-        return new Response(JSON.stringify(payload), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+
+        // Vangnet: deterministische canon-walkthrough (alleen rekenonderwerpen).
+        const fallback = llmExplanation
+          ? null
+          : buildCanonExplanation({ userText: String(lastMessageContent || ''), userAge, userLanguage, boardVisible })
+
+        const explanation = llmExplanation
+          ? { message: llmExplanation.message, steps: llmExplanation.steps }
+          : fallback
+            ? { message: fallback.message, steps: boardVisible ? fallback.board : null }
+            : null
+
+        if (explanation) {
+          // Een uitleg start geen oefensessie: oude state opruimen zodat de
+          // "probeer het zelf"-som daarna schoon kan beginnen.
+          if (sessionId) {
+            try {
+              const admin = createAdminClient()
+              await admin
+                .from('tutor_sessions')
+                .upsert(
+                  {
+                    session_id: `${authUser.id}:${sessionId}`,
+                    user_id: authUser.id,
+                    state: {},
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'session_id' }
+                )
+            } catch {
+              /* state store optioneel; uitleg werkt ook zonder */
+            }
+          }
+
+          const payload = {
+            message: explanation.message,
+            topic: 'Uitleg',
+            action: explanation.steps ? 'show_steps' : 'none',
+            ...(explanation.steps ? { steps: explanation.steps } : {}),
+          }
+          await logTutorEvent({
+            userId: authUser.id,
+            sessionId,
+            route: 'explain',
+            canonKind: null,
+            step: llmExplanation ? 'llm' : 'canon_fallback',
+            result: 'explain',
+            userText: String(lastMessageContent || ''),
+            assistantText: payload.message,
+          })
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        // Geen uitleg mogelijk (bv. API-storing op niet-rekenonderwerp):
+        // val door naar de normale flow, die geeft altijd een antwoord.
       }
     }
 

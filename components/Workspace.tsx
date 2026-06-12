@@ -789,6 +789,11 @@ export default function Workspace() {
     setIsTyping(true);
     
     try {
+      // Het bord staat alleen naast de chat op de xl-layout; op telefoon moet
+      // de uitleg volledig inline komen ("kijk op het bord" zonder bord is dom).
+      const boardVisible =
+        typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches
+
       const requestBody = JSON.stringify({
         // IMPORTANT: use the latest message list (ref) to preserve context reliably.
         messages: [...messagesRef.current, userMessage],
@@ -798,6 +803,7 @@ export default function Workspace() {
           userAge: age,
           userLanguage: language,
           images: imagesToSend,
+          boardVisible,
         },
       })
 

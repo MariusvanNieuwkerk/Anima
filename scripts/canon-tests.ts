@@ -11,6 +11,7 @@
  * Elke gefixte kaping of canon-bug hoort hier als test bij te komen.
  */
 import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from '../app/api/chat/tutorStateMachine'
+import { shouldExplain, boardMathIsSound, validatePracticePrompt } from '../app/api/chat/explain'
 import { routeGrammarTopic } from '../app/api/chat/grammar/routeMap'
 
 let passed = 0
@@ -206,6 +207,73 @@ for (const q of ['leg uit waarom de lucht blauw is', 'hoe werkt een vulkaan?', '
 // Een concrete som is GÉÉN uitleg-demo (moet interactief opgelost worden)
 for (const q of ['84 ÷ 7', 'wat is 84 ÷ 7?', '15% van 80']) {
   check(`Uitleg-modus negeert concrete som: "${q}"`, explain(q) === null, `kreeg demo ipv interactieve canon`)
+}
+
+// =====================================================================
+// 5b) LLM-UITLEGROUTE: intentie-gate + kapings-guards (puur, geen API)
+// =====================================================================
+
+// Uitlegvragen (ook buiten rekenen) gaan naar de LLM-uitlegroute
+const mustTriggerExplain = [
+  'hoe werkt een staartdeling?',
+  'wat is fotosynthese?',
+  'waarom waren de romeinen belangrijk?',
+  'leg breuken uit',
+  'hoe vind je de persoonsvorm?',
+  'kun je uitleggen hoe je een samenvatting schrijft',
+  'hoe werkt delen met kommagetallen?',
+  'waarom?',
+]
+for (const q of mustTriggerExplain) {
+  check(`Uitleg-gate AAN: "${q}"`, shouldExplain(q), `shouldExplain gaf false`)
+}
+
+// Concrete sommen en niet-uitlegvragen blijven bij de oefen-flow/normale flow
+const mustNotTriggerExplain = [
+  'wat is 25% van 80?', // som → canon (TSM-guard)
+  'wat is 84 ÷ 7?', // som → operator-guard
+  '96 ÷ 8',
+  'kun je 1/2 + 1/4 uitleggen', // eigen som → operator-guard
+  'hallo',
+  'ik snap het niet',
+  '15',
+]
+for (const q of mustNotTriggerExplain) {
+  check(`Uitleg-gate UIT: "${q}"`, !shouldExplain(q), `shouldExplain gaf true`)
+}
+
+// Bordsommen van het LLM worden nagerekend
+check(
+  'Bordvalidatie: kloppende sommen passeren',
+  boardMathIsSound({
+    title: '84 ÷ 7',
+    lines: [{ text: '7 × 10 = 70' }, { text: '84 − 70 = 14', note: 'wat blijft over' }, { text: '15% van 80 = 12' }],
+    conclusion: '84 ÷ 7 = 12',
+  }),
+  'kloppend bord werd afgekeurd'
+)
+check(
+  'Bordvalidatie: foute som wordt afgekeurd',
+  !boardMathIsSound({
+    title: '84 ÷ 7',
+    lines: [{ text: '7 × 10 = 70' }, { text: '84 − 70 = 15' }],
+    conclusion: '84 ÷ 7 = 12',
+  }),
+  'fout bord passeerde'
+)
+
+// practicePrompt alleen doorlaten als hij echt een canon start
+check('practicePrompt geldig: "96 ÷ 8"', validatePracticePrompt('96 ÷ 8', 10, 'nl') === '96 ÷ 8', 'werd afgekeurd')
+check('practicePrompt geldig: "25% van 60"', validatePracticePrompt('25% van 60', 10, 'nl') === '25% van 60', 'werd afgekeurd')
+check('practicePrompt ongeldig: vrije tekst', validatePracticePrompt('schrijf een verhaal over de zee', 10, 'nl') === null, 'passeerde')
+check('practicePrompt ongeldig: leeg', validatePracticePrompt('', 10, 'nl') === null, 'passeerde')
+
+// Mobiel vangnet: canon-walkthrough zonder bord zet de stappen inline
+{
+  const r = buildCanonExplanation({ userText: 'leg staartdelen uit', userAge: 10, userLanguage: 'nl', boardVisible: false })
+  const msg = r?.message || ''
+  check('Mobiel vangnet: stappen inline in de chat', /\n2\.\s/.test(msg) && msg.includes('Dus: 84 ÷ 7 = 12'), `kreeg: ${msg.slice(0, 140)}`)
+  check('Mobiel vangnet: verwijst niet naar het bord', !msg.includes('op het bord'), `kreeg: ${msg.slice(0, 140)}`)
 }
 
 // =====================================================================

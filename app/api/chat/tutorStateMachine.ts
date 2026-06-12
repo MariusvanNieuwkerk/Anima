@@ -5358,7 +5358,8 @@ export function runTutorStateMachine(input: TutorSMInput): TutorSMOutput {
 // ====================================================================
 
 // Veilige rekenmachine voor de "= __"-blanks (alleen + - × ÷ en haakjes).
-function evalArithExpr(expr: string): number | null {
+// Ook gebruikt door de LLM-uitlegroute om bordsommen na te rekenen.
+export function evalArithExpr(expr: string): number | null {
   const norm = String(expr || '')
     .replace(/×/g, '*')
     .replace(/÷/g, '/')
@@ -5558,6 +5559,8 @@ export function buildCanonExplanation(input: {
   userText: string
   userAge?: number
   userLanguage?: string
+  // false = geen bord zichtbaar (telefoon): zet de stappen inline in de chat.
+  boardVisible?: boolean
 }): { message: string; board: ExplainBoard } | null {
   const lang = String(input.userLanguage || 'nl')
   // Uitleg-modus is nu NL-only; voor andere talen handelt de LLM het af.
@@ -5605,14 +5608,28 @@ export function buildCanonExplanation(input: {
   const lastText = (lines[lines.length - 1].text || '').replace(/\s*\(rest 0\)\s*/g, '').trim()
   if (lastText === plainConclusion) lines.pop()
 
-  // Chat praat kort; het bord schrijft de uitwerking.
-  const message = `${topic.intro} Ik werk ${topic.example} stap voor stap uit op het bord. Wil je het daarna zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`
+  const cleanLines = lines.map((l) => ({ ...l, text: l.text.replace(/\s*\(rest 0\)\s*/g, '').trim() }))
+
+  // Desktop: chat praat kort, het bord schrijft de uitwerking.
+  // Telefoon (geen bord zichtbaar): de hele uitwerking inline in de chat.
+  const message =
+    input.boardVisible === false
+      ? [
+          `${topic.intro} Kijk, zo werk je ${topic.example} uit:`,
+          '',
+          ...cleanLines.map((l, i) => `${i + 1}. ${l.text}${l.note ? ` — ${l.note}` : ''}`),
+          '',
+          `Dus: ${conclusion}.`,
+          '',
+          `Wil je het nu zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`,
+        ].join('\n')
+      : `${topic.intro} Ik werk ${topic.example} stap voor stap uit op het bord. Wil je het daarna zelf proberen? Typ bijvoorbeeld: ${topic.tryExample}`
 
   return {
     message,
     board: {
       title: topic.example,
-      lines: lines.map((l) => ({ ...l, text: l.text.replace(/\s*\(rest 0\)\s*/g, '').trim() })),
+      lines: cleanLines,
       conclusion,
     },
   }
