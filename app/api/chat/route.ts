@@ -8,7 +8,7 @@ import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
 import { checkBlankAnswer, skillOf, looksLikeMathProblem } from './mathChecker'
-import { shouldExplain, generateLlmExplanation } from './explain'
+import { shouldExplain, generateLlmExplanation, sanitizeSteps } from './explain'
 import { logTutorEvent, looksStuck } from './tutorEvents'
 import { buildLearnerProfileBlock } from './learnerProfile'
 
@@ -68,6 +68,7 @@ export async function POST(req: Request) {
     const userLanguage = data?.userLanguage || 'nl'; 
     const images = data?.images || (data?.image ? [data.image] : []);
     const sessionId = typeof data?.sessionId === 'string' ? data.sessionId : null
+    const boardVisible = data?.boardVisible === true
     evUserId = authUser.id
     evSessionId = sessionId
     
@@ -168,12 +169,14 @@ ANTI-SORRY: geen standaard excuses. Zeg: "Oké—stap 1 is…".
 INSTANT: geen "even denken". Start meteen.
 
 VISUALS (TOOLS)
-- Het bord naast de chat is je krachtigste hulpmiddel: gebruik het ACTIEF, ook ongevraagd.
+${boardVisible ? '- Het bord naast de chat is je krachtigste hulpmiddel: gebruik het ACTIEF, ook ongevraagd.' : '- BORD NIET ZICHTBAAR (klein scherm): verwijs NIET naar "het bord"; zet stappen en voorbeelden gewoon in je bericht. show_image/show_map/plot_graph mag wel (de leerling kan ernaar toe wisselen).'}
 - show_image: stuur bij ELK concreet/visueel onderwerp (dier, plant, plek, gebouw, kunstwerk, persoon, lichaam, voorwerp, natuurverschijnsel) een image met een goede zoekterm in "image.query" — de server zoekt de echte foto op via Wikimedia. Geen verzonnen URLs.
+- show_steps: korte uitgewerkte stappen op het bord (titel + regels + conclusie). Ook perfect voor taal: rijtjes zoals "ik loop → ik vind / jij loopt → jij vindt" of "één hond → twee honden → dus -d". Elke regel: "text" (de stap) + optioneel "note" (waarom).
 - plot_graph: functies/grafieken/plotten (als het helpt of gevraagd).
 - show_map: locaties/topografie (alleen bij locatie-intent).
 - display_formula: formules/vergelijkingen/reactievergelijkingen.
-QUALITY GATE: liever geen visual dan een foute; de server controleert en filtert.
+BORD LOOPT MEE (CRITICAL): het bord blijft je LAATSTE visual tonen totdat jij een nieuwe stuurt. Ga je naar een nieuw voorbeeld, een nieuwe deelvraag of een nieuwe regel, stuur dan in diezelfde beurt een verse visual (meestal show_steps) — anders staat er iets ouds naast je uitleg. Past het bord nog precies bij je bericht, stuur dan niets (action "none").
+QUALITY GATE: liever geen visual dan een foute; de server controleert en filtert (rekenstappen op het bord worden nagerekend).
 
 MATH: gebruik LaTeX in message voor formules (inline $...$ of blok $$...$$).
 
@@ -186,11 +189,12 @@ OUTPUT-CONTRACT (CRITICAL)
 - Geef ALLEEN geldige JSON terug, zonder extra tekst ervoor/erna.
 - message = natuurlijke taal (met LaTeX waar nodig). NOOIT JSON/code in message.
 - Gebruik alleen deze velden:
-  { "message": "...", "topic": "...", "action": "none|plot_graph|show_map|show_image|display_formula",
+  { "message": "...", "topic": "...", "action": "none|plot_graph|show_map|show_image|display_formula|show_steps",
     "graph": { "expressions": ["x^2"], "points": [{"x":0,"y":0,"label":"top"}] },
     "map": { "lat": 0, "lng": 0, "zoom": 10, "title": "..." },
     "image": { "query": "...", "caption": "..." },
-    "formula": { "latex": "$$...$$", "title": "..." } }
+    "formula": { "latex": "$$...$$", "title": "..." },
+    "steps": { "title": "...", "lines": [{ "text": "...", "note": "..." }], "conclusion": "..." } }
 `;
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -264,7 +268,6 @@ OUTPUT-CONTRACT (CRITICAL)
     // desktop, een beeld bij visuele onderwerpen, en een gevalideerde
     // oefen-uitnodiging. Concrete sommen laat shouldExplain met rust.
     if (images.length === 0 && shouldExplain(String(lastMessageContent || ''))) {
-      const boardVisible = data?.boardVisible === true
       const history = Array.isArray(messages)
         ? messages.slice(0, -1).map((m: any) => ({ role: String(m?.role || 'user'), content: String(m?.content || '') }))
         : []
@@ -1151,6 +1154,24 @@ OUTPUT-CONTRACT (CRITICAL)
       }
     }
 
+    // BORD LOOPT MEE: het model mag per beurt verse bordstappen sturen
+    // (show_steps), ook in gewone lessen (taalrijtjes, rekenstappen).
+    // Zelfde contract als de uitlegroute: valideren + sommen narekenen;
+    // op kleine schermen (geen bord) sturen we ze niet mee.
+    if (payload.steps != null) {
+      const cleanSteps = boardVisible ? sanitizeSteps(payload.steps) : null
+      if (cleanSteps) {
+        payload.steps = cleanSteps
+        if (!payload.action || payload.action === 'none') payload.action = 'show_steps'
+        // Eén visual per beurt: stappen winnen van formule/grafiek.
+        delete payload.formula
+        delete payload.graph
+      } else {
+        delete payload.steps
+        if (payload.action === 'show_steps') payload.action = 'none'
+      }
+    }
+
     // Map requests: if model didn't provide a map, deterministically geocode the place name.
     if (needsMap && !payload.map && !needsGraph) {
       const place =
@@ -1184,6 +1205,7 @@ OUTPUT-CONTRACT (CRITICAL)
       payload.action = 'plot_graph'
       delete payload.map
       delete payload.image
+      delete payload.steps
       // Keep formula only if explicitly asked; usually graphs should stand alone.
       if (!needsFormula) delete payload.formula
     } else if (needsMap) {
@@ -1192,6 +1214,7 @@ OUTPUT-CONTRACT (CRITICAL)
       delete payload.graph
       delete payload.image
       delete payload.formula
+      delete payload.steps
       // If model gave an incomplete map, we'll still try to produce one via deterministic geocode above.
     } else if (needsImage) {
       // Visual appearance/anatomy/history/biology always maps to show_image.
@@ -1200,11 +1223,13 @@ OUTPUT-CONTRACT (CRITICAL)
       delete payload.map
       // Clean slate: do not mix visuals.
       delete payload.formula
+      delete payload.steps
     } else if (needsFormula) {
       payload.action = 'display_formula'
       delete payload.graph
       delete payload.map
       delete payload.image
+      delete payload.steps
     }
 
     // If we expected a graph but got none, retry once with a strict override.
@@ -1313,6 +1338,9 @@ OUTPUT-CONTRACT (CRITICAL)
       payload.action = 'none'
     }
     if (payload.action === 'show_map' && !payload.map) {
+      payload.action = 'none'
+    }
+    if (payload.action === 'show_steps' && !payload.steps) {
       payload.action = 'none'
     }
 

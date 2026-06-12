@@ -16,7 +16,7 @@
  */
 import { applyTutorPolicyWithDebug } from '../app/api/chat/tutorPolicy'
 import { evalArithExpr, looksLikeMathProblem, checkBlankAnswer, skillOf } from '../app/api/chat/mathChecker'
-import { shouldExplain, boardMathIsSound, validatePracticePrompt } from '../app/api/chat/explain'
+import { shouldExplain, boardMathIsSound, validatePracticePrompt, sanitizeSteps } from '../app/api/chat/explain'
 
 let passed = 0
 let failed = 0
@@ -270,6 +270,34 @@ check(
     conclusion: '72 ÷ 3 = 24',
   }),
   'echt foute deelstap passeerde'
+)
+
+// Bord-loopt-mee: verse stappen uit de hoofdroute door dezelfde sanitizer
+check(
+  'sanitizeSteps: taalrijtje (geen sommen) passeert',
+  sanitizeSteps({
+    title: 'd of t aan het eind?',
+    lines: [
+      { text: 'één hond → twee honden', note: 'je hoort een d, dus hond met -d' },
+      { text: 'één taart → twee taarten', note: 'je hoort een t, dus taart met -t' },
+    ],
+    conclusion: 'Maak het woord langer, dan hoor je de letter.',
+  }) !== null,
+  'taalrijtje werd afgekeurd'
+)
+check(
+  'sanitizeSteps: foute bordsom wordt afgekeurd',
+  sanitizeSteps({
+    title: '84 ÷ 7',
+    lines: [{ text: '7 × 10 = 70' }, { text: '84 − 70 = 15' }],
+    conclusion: '84 ÷ 7 = 12',
+  }) === null,
+  'fout bord passeerde'
+)
+check(
+  'sanitizeSteps: te weinig stappen → null',
+  sanitizeSteps({ title: 'x', lines: [{ text: 'één regel' }], conclusion: 'y' }) === null,
+  'passeerde'
 )
 
 // practicePrompt alleen doorlaten als het echt een intypbare som is

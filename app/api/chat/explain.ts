@@ -87,7 +87,9 @@ export function boardMathIsSound(steps: ExplainSteps): boolean {
   return true
 }
 
-function sanitizeSteps(raw: any): ExplainSteps | null {
+// Ook gebruikt door de hoofdroute: het model mag daar per beurt verse
+// bordstappen sturen (show_steps), met dezelfde validatie + narekening.
+export function sanitizeSteps(raw: any): ExplainSteps | null {
   if (!raw || typeof raw !== 'object') return null
   const title = typeof raw.title === 'string' ? raw.title.trim() : ''
   const conclusion = typeof raw.conclusion === 'string' ? raw.conclusion.trim() : ''
