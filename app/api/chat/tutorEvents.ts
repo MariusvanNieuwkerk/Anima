@@ -1,9 +1,10 @@
 import { createAdminClient } from '@/utils/supabase/admin'
 
-// Observability (roadmap stap 3): per beurt vastleggen welke laag
-// antwoordde. Voedt kwaliteitsbewaking, de roadmap (welke vragen vallen
-// door naar de LLM?) en later het ouderdashboard.
-export type TutorEventRoute = 'canon' | 'grammar' | 'policy' | 'llm' | 'error' | 'explain'
+// Observability: per beurt vastleggen welke laag antwoordde. Voedt het
+// leerprofiel (de moat), kwaliteitsbewaking en later het ouderdashboard.
+// 'canon' en 'grammar' bestaan alleen nog als historische data; nieuwe
+// oefenstappen loggen als 'practice' (reken-vangrail).
+export type TutorEventRoute = 'canon' | 'grammar' | 'policy' | 'llm' | 'error' | 'explain' | 'practice'
 
 export type TutorEvent = {
   userId: string
@@ -11,7 +12,7 @@ export type TutorEvent = {
   route: TutorEventRoute
   canonKind?: string | null
   step?: string | null
-  result?: string | null // 'start' | 'continue' | 'done' | 'stuck' | null
+  result?: string | null // 'correct' | 'wrong' | 'stuck' | 'explain' | null
   userText?: string | null
   assistantText?: string | null
 }
@@ -65,17 +66,16 @@ export async function logTutorEvent(ev: TutorEvent): Promise<void> {
   //    over alle gebruikers heen, zonder aan hun data te zitten.
   try {
     const admin = createAdminClient()
-    const isCanonRoute = ev.route === 'canon' || ev.route === 'grammar'
     const { error } = await admin.rpc('bump_anon_tutor_stat', {
       p_route: ev.route,
-      p_canon_kind: isCanonRoute
-        ? ev.canonKind || ''
-        : ev.route === 'llm'
-          ? llmCategory(String(ev.userText || ''))
-          : '',
-      // Alleen rekencanon-stappen tellen; debugnamen (policy/grammar)
-      // zouden de tabel met hoge cardinaliteit vervuilen.
-      p_step: ev.route === 'canon' ? ev.step || '' : '',
+      p_canon_kind:
+        ev.route === 'practice'
+          ? ev.canonKind || ''
+          : ev.route === 'llm'
+            ? llmCategory(String(ev.userText || ''))
+            : '',
+      // Stap-teksten niet anoniem tellen: hoge cardinaliteit vervuilt de tabel.
+      p_step: '',
       p_result: ev.result || '',
     })
     if (error) throw error

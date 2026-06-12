@@ -1,22 +1,22 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { runTutorStateMachine, evalArithExpr } from './tutorStateMachine'
+import { evalArithExpr, looksLikeMathProblem } from './mathChecker'
 
 // ====================================================================
 // LLM-UITLEGROUTE ("I Do" 2.0)
 //
 // Uitlegvragen ("hoe werkt een staartdeling?", "wat is fotosynthese?")
-// gaan naar een topmodel met een didactisch promptcontract. De canons
-// blijven voor het oefenen; dit is alleen de uitleg-beurt.
+// gaan naar het LLM met een didactisch promptcontract; dit is alleen de
+// uitleg-beurt, oefenen loopt via de normale flow + reken-vangrail.
 //
 // Contract met het model (JSON):
 //   { message, board: null | {title,lines,conclusion}, practicePrompt }
 //
 // De server vertrouwt niets blind:
 // - bordsommen worden nagerekend (evalArithExpr)
-// - practicePrompt wordt door de TutorStateMachine gehaald: alleen een
-//   som die echt een canon start, wordt als uitnodiging getoond
+// - practicePrompt moet een echt intypbare som zijn (looksLikeMathProblem),
+//   anders is de uitnodiging een dode link
 // - kapot/leeg antwoord → één retry → daarna valt de caller terug op de
-//   canon-walkthrough of de normale flow
+//   normale flow
 // ====================================================================
 
 export type ExplainSteps = {
@@ -47,24 +47,11 @@ export function detectExplainIntent(text: string): boolean {
 }
 
 // Volledige gate: uitleg-intentie ZONDER dat het eigenlijk een som is.
-// Concrete sommen horen bij de oefen-flow (canon), niet bij de uitleg.
+// Concrete sommen ("wat is 25% van 80?") horen bij de oefen-flow.
 export function shouldExplain(text: string): boolean {
   const t = String(text || '').trim()
   if (!t || !detectExplainIntent(t)) return false
-
-  // Kapings-guard 1: cijfers met een operator ertussen = een eigen som.
-  if (/\d\s*[+\-*/×÷:]\s*\d/.test(t)) return false
-  // Breuknotatie ("1/2 + 1/4") valt hier ook onder via de operator-check.
-
-  // Kapings-guard 2: alles wat de TutorStateMachine als som herkent
-  // (bv. "wat is 25% van 80?") gaat naar de canon, niet naar de uitleg.
-  try {
-    const r = runTutorStateMachine({ state: null, lastUserText: t, userAge: 10, userLanguage: 'nl' })
-    if (r.handled) return false
-  } catch {
-    /* bij twijfel: geen kaping van de oefen-flow */
-  }
-
+  if (looksLikeMathProblem(t)) return false
   return true
 }
 
@@ -118,14 +105,13 @@ function sanitizeSteps(raw: any): ExplainSteps | null {
   return steps
 }
 
-// practicePrompt alleen doorlaten als hij echt een canon start; anders is
-// de uitnodiging een dode link.
-export function validatePracticePrompt(p: unknown, userAge?: number, userLanguage?: string): string | null {
+// practicePrompt alleen doorlaten als het echt een intypbare som is; anders
+// is de uitnodiging een dode link.
+export function validatePracticePrompt(p: unknown): string | null {
   const t = typeof p === 'string' ? p.trim() : ''
   if (!t || t.length > 60) return null
   try {
-    const r = runTutorStateMachine({ state: null, lastUserText: t, userAge: userAge ?? 10, userLanguage: userLanguage || 'nl' })
-    return r.handled ? t : null
+    return looksLikeMathProblem(t) ? t : null
   } catch {
     return null
   }
@@ -271,7 +257,7 @@ async function attemptExplain(opts: ExplainOpts, boardVisible: boolean): Promise
     console.warn('[explain] bord van model afgekeurd (structuur of rekenfout)')
   }
 
-  const practice = validatePracticePrompt(parsed?.practicePrompt, opts.userAge, opts.userLanguage)
+  const practice = validatePracticePrompt(parsed?.practicePrompt)
   const invite =
     practice == null
       ? ''

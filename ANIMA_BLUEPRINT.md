@@ -35,7 +35,7 @@ Datum: 11 juni 2026 Kernfilosofie: "Warm Inzicht boven Kille Data" & "Exactheid 
   * Stopcriteria (CRITICAL):
     * Stop pas als de leerling een **concrete eindoutput** heeft gegeven, of als de leerling expliciet stopt (“stop/klaar/niets/laat maar”).
 * AI als Tutor (Scaffolded Guide): Anima leert de methode, niet alleen het eindantwoord. Ze geeft heldere structuur en zet de leerling aan het werk.
-* Routing-Contract (CRITICAL): **het gesprek wint bij twijfel.** Canons (rekenen/grammatica) grijpen alleen in bij expliciete, herkenbare intentie (een som, "wat is de persoonsvorm in deze zin: …"). Alles daaronder gaat naar de LLM. Routers herkennen intentie, geen vorm ("eindigt op een vraagteken" is geen intentie). Dit voorkomt structureel dat kennisvragen worden gekaapt door een oefen-canon.
+* Routing-Contract (CRITICAL): **één LLM-route voor alles, het gesprek wint altijd.** De server onderschept alleen wat een server beter kan: stopsignalen/afrondingen (dunne gespreksregels), uitlegvragen (didactisch promptcontract met bord) en het exact narekenen van invulstappen (reken-vangrail). Er is géén canon-motor meer die uit de chatgeschiedenis sommen opgraaft — dat is de structurele fix tegen gekaapte gesprekken.
 * Termination Protocol (CRITICAL): Bij een duidelijk correct antwoord:
   * Bevestig kort (bv. “Juist.” / “Exact.” / “Helemaal goed.”).
   * Stop daarna (geen “Snap je het?” / “Nog een som?”).
@@ -103,25 +103,24 @@ B. De Ouder ("De Toeschouwer")
 3. Technische Architectuur & Data
 * State Management: SPA in app/page.tsx met strikte scheiding via centrale boardContent state (Manager Pattern) om conflicten tussen tools te voorkomen.
 * AI Core Strategy:
-    * Model: Google Gemini 2.5 Flash (Text & Vision), instelbaar via env var `GEMINI_MODEL`.
+    * Model: Google Gemini 3.5 Flash (Text & Vision), instelbaar via env var `GEMINI_MODEL`.
     * System Prompts: 3 unieke Hard-coded System Prompts (Focus/Verkenner/Groei), aangestuurd door variabele Leeftijd.
     * Tooling: Strict defined tools (plot_graph, display_formula, show_image, show_map).
-* Deterministische Tutor State Machine (Option A — server-side):
-    * Probleem dat dit oplost: “regex jenga” + text-inference uit chat history → herhaling, verkeerde volgende stap, resets.
-    * Oplossing: een expliciete state machine op de server die per sessie de **canon**, **stap** en relevante **getallen/context** bijhoudt.
-    * Persistente state: Supabase tabel `tutor_sessions` (key: `session_id`, value: `state` als JSON).
-    * Deterministische transitions: op basis van laatste user input (getal/ACK/stuck/stop) → volgende One‑Move stap.
-    * LLM-bypass: als een canon herkend is, geeft de state machine de volgende stap terug **zonder** LLM-call (maximale stabiliteit).
-    * Leeftijdsstijl: `ageBand` stuurt stapgrootte + korte “warm & speels” coach-zinnen (junior), compacter voor teen/student.
-    * Status (nu): state machine dekt rekenen‑canons incl. **delen, vermenigvuldigen, optellen, aftrekken**, plus **breuken (vereenvoudigen/±/×/÷)**, **percentages (p% van…, korting/btw)**, **kommagetallen (×/÷)**, **geld (korting+btw samen, aantal × prijs)**, **volgorde van bewerkingen**, **negatieve getallen**, **unknowns/mini‑algebra**, **eenheden** en **omrekenen (breuk↔decimaal↔procent)** — incl. ACK/stuck/restart/stop gedrag.
+* Dunne tutorlagen (de grote opschoning, juni 2026 — verving ~7.700 regels canon-machinerie):
+    * Probleem dat dit oplost: de canon-state-machines en text-inference uit chatgeschiedenis kaapten gesprekken ("kunnen we begrijpend lezen oefenen?" → "Vul in: 8×10 = __") en leverden stijvere uitleg dan een frontier-LLM.
+    * `mathChecker.ts` (reken-vangrail, ~200 regels): veilige rekenmachine (shunting-yard), somdetectie, skill-classificatie en de blank-check: vroeg Anima "EXPR = __" en antwoordt het kind met een getal, dan rekent de server het exact na en krijgt het model het verdict mee ([REKENCHECK]). Het model kan dus nooit "goed" zeggen tegen een fout antwoord.
+    * `tutorPolicy.ts` (gespreksregels, ~200 regels): stopsignalen, kale ja/nee zonder openstaande vraag, "ok" op een vraag, "klaar"-hygiëne. Meer niet.
+    * `explain.ts` (uitlegroute): didactisch promptcontract met bordstappen (desktop) of inline stappen (mobiel); bordsommen worden server-side nagerekend, de oefen-uitnodiging moet een echt intypbare som zijn.
+    * `learnerProfile.ts` (de moat in werking): bouwt per kind een compact profiel uit `tutor_events` (wat geoefend, wat goed/mis, waar vastgelopen) en injecteert dat in élke prompt — Anima kent het kind.
+    * Sokratisch oefenen zelf doet de LLM (leeftijd, toon en escape hatch via het systeemprompt), met de vangrail als zekering.
 * Testsuites als poortwachter (niets gaat live zonder):
-    * `npm run test:canons`: anti-kaping (kennisvragen blijven bij de LLM), canon-routing en golden conversations als code (volledige meerstaps-flows, stuck-escalatie). Elke gefixte bug wordt een permanente test.
+    * `npm run test:tutor`: anti-kaping (gewone vragen bereiken altijd de LLM, ook na een rekenhistorie), gespreksregels, reken-vangrail (blank-check, quotiënt-conventie) en uitleg-gates. Elke gefixte bug wordt een permanente test.
     * `npm run test:images`: typische "hoe ziet X eruit?"-kindvragen moeten een echte foto-URL opleveren (netwerktest tegen Wikipedia/Wikidata).
 * Zelfverbeterloop (observability, met respect voor de data-eigendom-belofte):
-    * `tutor_events` (gezinsdata, RLS): per beurt welke laag antwoordde (canon/grammar/policy/llm/error), welke canon, stap en resultaat (start/continue/done/stuck/image_miss). Eigen events leesbaar; ouders lezen events van gekoppelde kinderen; alleen de server schrijft.
-    * `anon_tutor_stats` (anoniem, geen user_id, geen tekst): tellers per dag/route/canon/stap/resultaat over álle gebruikers. LLM-doorval krijgt een grove categorie (rekenen/taal/wereld/…) → dat is de roadmap voor de volgende canon, zonder ooit een gesprek te lezen.
+    * `tutor_events` (gezinsdata, RLS): per beurt welke laag antwoordde (practice/explain/policy/llm/error; canon/grammar bestaan als historische data), welke skill, stap en resultaat (correct/wrong/stuck/explain/image_miss). Dit voedt het leerprofiel. Eigen events leesbaar; ouders lezen events van gekoppelde kinderen; alleen de server schrijft.
+    * `anon_tutor_stats` (anoniem, geen user_id, geen tekst): tellers per dag/route/skill/resultaat over álle gebruikers. LLM-doorval krijgt een grove categorie (rekenen/taal/wereld/…) — productverbetering zonder ooit een gesprek te lezen.
     * `feedback_reports` (duimpje-omlaag in de chat): de gebruiker schenkt bewust die ene beurt. Dit is de **enige** route waarlangs gespreksinhoud bij ons komt — expliciet, per geval, cascade delete bij accountverwijdering.
-    * De cirkel: tellers wijzen aan wáár het hapert → duimpjes tonen wát er misging → fix in canon-code (geen training op kinderdata) → fix wordt test → iedereen profiteert direct.
+    * De cirkel: tellers wijzen aan wáár het hapert → duimpjes tonen wát er misging → fix in prompt/vangrail-code (geen training op kinderdata) → fix wordt test → iedereen profiteert direct.
 * Security & Auth (gehard, juni 2026):
     * Row Level Security op alle kerntabellen volgens het gezinsprincipe; `anon` heeft nergens toegang tot kerndata; tutor-state en events zijn service-role-only voor schrijven.
     * Chat vereist een ingelogde sessie (cookie-based); tutor-state is per gebruiker geïsoleerd (`userId:sessionId`).
@@ -164,16 +163,15 @@ C. Ouderlijke Controle: "Diep-Lees Modus"
 * Doel: Dwingt het kind tot vertragen en typen (begrijpend lezen) i.p.v. scannen en rennen.
 6. Gerealiseerde Milestones
 * [x] Vercel Deployment: Live & HTTPS.
-* [x] Brain Upgrade: Gemini 2.5 Flash integratie met Vision (2.0 uitgefaseerd door Google).
+* [x] Brain Upgrade: Gemini 3.5 Flash integratie met Vision (2.0/2.5 uitgefaseerd).
 * [x] Camera Interface: Mobile Bridge (QR logic) volledig werkend via Supabase.
 * [x] Visual Engine: Maffs (Grafieken), LaTeX (Formules) & Wikimedia (Afbeeldingen) geïmplementeerd. Flux & Image Generation verwijderd.
 * [x] UI Warmth Upgrade: Stone-theme & Dot Grid.
 * [x] UX Upgrade: Master Menu & Smart Age Slider Design.
-* [x] Tutor State Machine (Option A): server-side, persistent, deterministisch voor ~25 reken-canons incl. leeftijdsstijl en stuck-escalatie.
 * [x] Grote schoonmaak (gezinsproduct): leraar-spoor volledig verwijderd, dode code opgeruimd, typecheck strikt schoon.
 * [x] Security hardening: RLS op alle kerntabellen, anon-toegang ingetrokken, auth verplicht voor chat, fail-closed middleware, wachtwoord-reset flow.
-* [x] Routing-contract: "het gesprek wint bij twijfel" — grammatica-router vuurt alleen op expliciete intentie (paus-bug structureel opgelost).
-* [x] Testsuites als poortwachter: `test:canons` (anti-kaping + golden flows) en `test:images` (kindvragen → foto's).
+* [x] De grote opschoning (clean & light): ~7.700 regels canon-state-machines vervangen door één LLM-route + dunne vangrails (`mathChecker`, dunne `tutorPolicy`, uitleg-gates) + leerprofiel in elke prompt. Kaping uit chatgeschiedenis structureel onmogelijk gemaakt.
+* [x] Testsuites als poortwachter: `test:tutor` (anti-kaping + vangrails + uitleg-gates) en `test:images` (kindvragen → foto's).
 * [x] Zelfverbeterloop: `tutor_events` (gezinsdata), `anon_tutor_stats` (anonieme tellers) en duimpje-omlaag (`feedback_reports`).
 * [x] Curator 2.0: concept-first beeldketen via Wikipedia/Wikidata (koboldhaai-klasse bugs structureel opgelost).
 7. Roadmap naar V3
@@ -184,18 +182,12 @@ Fase 2: Authenticatie & Rollen (NU)
 * [x] Role-Based Auth: Routing naar Bureau (Kind) of Dashboard (Ouder).
 * [ ] Ouder Dashboard: Bouwen van de "Glow Feed" & Diep-Lees Modus toggle.
 * [x] Integratie Leaflet (Kaarten) in de Board Manager.
-Fase 2b: Rekenen (CORE → EXTENDED → INSIGHTS) (NU)
-* CORE (MVP):
-  * [x] Kommagetallen ×/÷ (deterministisch, junior micro-stappen) + geld (korting/btw, aantal × prijs).
-  * [x] Core‑stabiliteit sweep: start/ACK/stuck/restart/stop + junior taal (geen jargon) — bewaakt door `test:canons`.
-* EXTENDED (pas na CORE):
-  * [ ] Kommagetallen +/− (canon).
-  * [ ] Verhoudingen / schaal (1:3, kaart‑schaal).
-  * [ ] Afronden / schatten.
-  * [ ] Oppervlakte / omtrek / inhoud (optioneel).
-  * [ ] Multi-step word problems (meer context).
-* Daarna:
-  * [~] Leerprofiel + Insights: per canon‑stap logging staat (`tutor_events`); ouderdashboard-weergave ("liep 2× vast op gelijke noemers") moet nog gebouwd.
+Fase 2b: Rekenen (NU — LLM-gedreven met vangrails)
+* [x] Oefenen via de LLM (sokratisch, leeftijdsbewust) met de reken-vangrail: elke "EXPR = __"-stap wordt server-side exact nagerekend.
+* [x] Uitlegroute met nagerekende bordstappen (desktop) en inline stappen (mobiel).
+* [x] Leerprofiel uit `tutor_events` in elke prompt (skills, goed/mis, vastlopers).
+* [ ] Vangrail verbreden: eindantwoord-check op de oorspronkelijke som; breuk-antwoorden ("3/4") narekenen.
+* [~] Insights: ouderdashboard-weergave ("liep 2× vast op gelijke noemers") moet nog gebouwd.
 Fase 2c: Begrijpend Lezen (na rekenen) (PLAN)
 * [ ] Hoofdgedachte / kernzin per alinea (1-move prompts).
 * [ ] Signaalwoorden → relatie (oorzaak/gevolg, tegenstelling, opsomming).
@@ -220,9 +212,9 @@ Fase 2f: Studievaardigheden (PLAN)
 * [ ] Plannen: taken opdelen + tijdschatting + prioriteit (micro-taken).
 * [ ] Golden tests + leeftijdsstijl consistent.
 Fase 2g: Product Polishing & Betrouwbaarheid (GROTENDEELS AF)
-* [x] Tutor event logging + monitoring (canon fallbacks, stuck-loops, image-misses, LLM-doorval).
+* [x] Tutor event logging + monitoring (practice-stappen, stuck-loops, image-misses, LLM-doorval).
 * [x] Content consistency sweep (junior/teen, geen jargon).
-* [x] Golden tests als regressiesuite (`test:canons`, `test:images`; CI-koppeling later).
+* [x] Golden tests als regressiesuite (`test:tutor`, `test:images`; CI-koppeling later).
 * [ ] Wekelijkse productloop: gezin gebruikt het, events uitlezen, top-ergernissen fixen, elke fix wordt een test.
 Fase 3: Scaling & Polish
 * [ ] Long Term Memory (Supabase Vector Store).
@@ -245,6 +237,6 @@ Unit Economics:
 * Privacy (AVG/GDPR): Data opslag in EU. Recht op vergetelheid.
 * Data-eigendom (MOAT): De leerdata is van het gezin. Ouders kunnen alles inzien (van eigen kinderen), exporteren en definitief wissen. Row Level Security dwingt dit af op databaseniveau.
 * Verbeteren zonder meekijken: productverbetering draait op anonieme tellers (geen user_id, geen tekst). Gespreksinhoud bereikt ons alleen via een bewuste schenking (duimpje-omlaag, per beurt) — en gaat mee in de cascade delete. De belofte is dus niet "wij gaan er netjes mee om" maar "wij kúnnen niet meekijken, tenzij jullie één beurt opsturen".
-* Canons leren in code, niet in een model: een fix voor één gezin helpt iedereen, zonder dat er ooit kinderdata in een model getraind hoeft te worden.
+* Verbeteren in code, niet in een model: een fix (prompt, vangrail, test) voor één gezin helpt iedereen, zonder dat er ooit kinderdata in een model getraind hoeft te worden.
 * Data Hygiëne: Ouders kunnen niet chatten, zodat het profiel van het kind zuiver blijft.
 * Veiligheid: Strict Gemini Safety Filters & PII filtering.

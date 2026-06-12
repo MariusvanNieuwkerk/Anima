@@ -7,8 +7,7 @@ import { findImageSmart } from '@/app/lib/wiki'
 import { anatomyCandidates } from '@/utils/anatomyDictionary'
 import type { MapSpec } from '@/components/mapTypes'
 import { applyAgeStyleText, applyTutorPolicy, applyTutorPolicyWithDebug } from './tutorPolicy'
-import { createAdminClient } from '@/utils/supabase/admin'
-import { runTutorStateMachine, buildCanonExplanation, type TutorSMState } from './tutorStateMachine'
+import { checkBlankAnswer, skillOf, looksLikeMathProblem } from './mathChecker'
 import { shouldExplain, generateLlmExplanation } from './explain'
 import { logTutorEvent, looksStuck } from './tutorEvents'
 import { buildLearnerProfileBlock } from './learnerProfile'
@@ -259,251 +258,148 @@ OUTPUT-CONTRACT (CRITICAL)
     evUserText = String(lastMessageContent || '')
     let userParts: any[] = [{ text: lastMessageContent }];
 
-    // --- UITLEG-MODUS: topmodel legt uit, canons blijven voor oefenen ---
+    // --- UITLEG-MODUS ---
     // Uitlegvragen ("hoe werkt een staartdeling?", "wat is fotosynthese?")
-    // gaan naar het LLM met een didactisch promptcontract en (op desktop)
-    // bordstappen. Vangnet: de deterministische canon-walkthrough, en
-    // anders de normale flow. Concrete sommen en lopende oefensessies
-    // worden door shouldExplain + de state-guard met rust gelaten.
+    // gaan naar het LLM met een didactisch promptcontract: bordstappen op
+    // desktop, een beeld bij visuele onderwerpen, en een gevalideerde
+    // oefen-uitnodiging. Concrete sommen laat shouldExplain met rust.
     if (images.length === 0 && shouldExplain(String(lastMessageContent || ''))) {
-      // Guard: midden in een oefensessie ("waarom?") kapen we het kind
-      // niet weg uit zijn som; dan handelt de normale flow het af.
-      let inActiveCanon = false
-      if (sessionId) {
-        try {
-          const admin = createAdminClient()
-          const load = await admin
-            .from('tutor_sessions')
-            .select('state')
-            .eq('session_id', `${authUser.id}:${sessionId}`)
-            .maybeSingle()
-          inActiveCanon = Boolean((load.data as any)?.state?.kind)
-        } catch {
-          /* state store optioneel */
+      const boardVisible = data?.boardVisible === true
+      const history = Array.isArray(messages)
+        ? messages.slice(0, -1).map((m: any) => ({ role: String(m?.role || 'user'), content: String(m?.content || '') }))
+        : []
+
+      const llmExplanation = await generateLlmExplanation({
+        apiKey,
+        userText: String(lastMessageContent || ''),
+        history,
+        userAge,
+        userLanguage,
+        targetLanguage,
+        studentName: effectiveProfile.student_name,
+        boardVisible,
+        profileBlock: learnerProfileBlock,
+      })
+
+      if (llmExplanation) {
+        // Niet-reken onderwerp ("wat is fotosynthese?"): geen stappenbord,
+        // maar wél een beeld als het model een goede zoekterm meegaf.
+        // De beeldpijplijn (quality gate) beslist of het echt getoond wordt.
+        let explainImage: { url: string; caption?: string; sourceUrl?: string } | null = null
+        if (!llmExplanation.steps && llmExplanation.imageQuery) {
+          try {
+            const found = await findImageSmart({
+              modelQuery: llmExplanation.imageQuery,
+              userText: String(lastMessageContent || ''),
+              lang: userLanguage,
+            })
+            if (found.found && found.url) {
+              explainImage = { url: found.url, caption: found.caption || found.title, sourceUrl: found.pageUrl }
+            }
+          } catch {
+            /* liever geen beeld dan een fout beeld */
+          }
         }
-      }
 
-      if (!inActiveCanon) {
-        const boardVisible = data?.boardVisible === true
-        const history = Array.isArray(messages)
-          ? messages.slice(0, -1).map((m: any) => ({ role: String(m?.role || 'user'), content: String(m?.content || '') }))
-          : []
-
-        const llmExplanation = await generateLlmExplanation({
-          apiKey,
+        const payload = {
+          message: llmExplanation.message,
+          topic: 'Uitleg',
+          action: llmExplanation.steps ? 'show_steps' : explainImage ? 'show_image' : 'none',
+          ...(llmExplanation.steps ? { steps: llmExplanation.steps } : {}),
+          ...(explainImage ? { image: explainImage } : {}),
+        }
+        await logTutorEvent({
+          userId: authUser.id,
+          sessionId,
+          route: 'explain',
+          canonKind: null,
+          step: 'llm',
+          result: 'explain',
           userText: String(lastMessageContent || ''),
-          history,
-          userAge,
-          userLanguage,
-          targetLanguage,
-          studentName: effectiveProfile.student_name,
-          boardVisible,
-          profileBlock: learnerProfileBlock,
+          assistantText: payload.message,
         })
-
-        // Vangnet: deterministische canon-walkthrough (alleen rekenonderwerpen).
-        const fallback = llmExplanation
-          ? null
-          : buildCanonExplanation({ userText: String(lastMessageContent || ''), userAge, userLanguage, boardVisible })
-
-        const explanation = llmExplanation
-          ? { message: llmExplanation.message, steps: llmExplanation.steps }
-          : fallback
-            ? { message: fallback.message, steps: boardVisible ? fallback.board : null }
-            : null
-
-        if (explanation) {
-          // Een uitleg start geen oefensessie: oude state opruimen zodat de
-          // "probeer het zelf"-som daarna schoon kan beginnen.
-          if (sessionId) {
-            try {
-              const admin = createAdminClient()
-              await admin
-                .from('tutor_sessions')
-                .upsert(
-                  {
-                    session_id: `${authUser.id}:${sessionId}`,
-                    user_id: authUser.id,
-                    state: {},
-                    updated_at: new Date().toISOString(),
-                  },
-                  { onConflict: 'session_id' }
-                )
-            } catch {
-              /* state store optioneel; uitleg werkt ook zonder */
-            }
-          }
-
-          // Niet-reken onderwerp ("wat is fotosynthese?"): geen stappenbord,
-          // maar wél een beeld als het model een goede zoekterm meegaf.
-          // De beeldpijplijn (quality gate) beslist of het echt getoond wordt.
-          let explainImage: { url: string; caption?: string; sourceUrl?: string } | null = null
-          if (!explanation.steps && llmExplanation?.imageQuery) {
-            try {
-              const found = await findImageSmart({
-                modelQuery: llmExplanation.imageQuery,
-                userText: String(lastMessageContent || ''),
-                lang: userLanguage,
-              })
-              if (found.found && found.url) {
-                explainImage = { url: found.url, caption: found.caption || found.title, sourceUrl: found.pageUrl }
-              }
-            } catch {
-              /* liever geen beeld dan een fout beeld */
-            }
-          }
-
-          const payload = {
-            message: explanation.message,
-            topic: 'Uitleg',
-            action: explanation.steps ? 'show_steps' : explainImage ? 'show_image' : 'none',
-            ...(explanation.steps ? { steps: explanation.steps } : {}),
-            ...(explainImage ? { image: explainImage } : {}),
-          }
-          await logTutorEvent({
-            userId: authUser.id,
-            sessionId,
-            route: 'explain',
-            canonKind: null,
-            step: llmExplanation ? 'llm' : 'canon_fallback',
-            result: 'explain',
-            userText: String(lastMessageContent || ''),
-            assistantText: payload.message,
-          })
-          return new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-        // Geen uitleg mogelijk (bv. API-storing op niet-rekenonderwerp):
-        // val door naar de normale flow, die geeft altijd een antwoord.
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
       }
+      // Uitleg mislukt (bv. API-storing): val door naar de normale flow.
     }
 
-    // --- STATEFUL TUTOR (Option A): deterministic state machine per session_id ---
-    // This runs BEFORE any LLM call and avoids inferring state from text.
-    if (images.length === 0 && sessionId) {
-      try {
-        const admin = createAdminClient()
-        // Scope state to the logged-in user: a guessed sessionId can never
-        // read or overwrite someone else's tutor state.
-        const sessionKey = `${authUser.id}:${sessionId}`
-        const load = await admin
-          .from('tutor_sessions')
-          .select('state')
-          .eq('session_id', sessionKey)
-          .maybeSingle()
-        const rawState = (load.data as any)?.state
-        const state: TutorSMState | null = rawState && typeof rawState === 'object' ? (rawState as any) : null
-
-        const sm = runTutorStateMachine({
-          state,
-          lastUserText: String(lastMessageContent || ''),
-          userAge,
-          userLanguage,
-        })
-
-        if (sm.handled) {
-          // Persist next state (or clear).
-          await admin
-            .from('tutor_sessions')
-            .upsert(
-              {
-                session_id: sessionKey,
-                user_id: authUser.id,
-                state: sm.nextState || {},
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'session_id' }
-            )
-
-          const payload = {
-            message: applyAgeStyleText(String(sm.payload.message || ''), { userAge, userLanguage }),
-            topic: 'Rekenen',
-            action: 'none',
-          }
-
-          const nextSm: any = sm.nextState
-          await logTutorEvent({
-            userId: authUser.id,
-            sessionId,
-            route: 'canon',
-            canonKind: nextSm?.kind || (state as any)?.kind || null,
-            step: nextSm?.step || null,
-            result: looksStuck(String(lastMessageContent || ''))
-              ? 'stuck'
-              : !state
-                ? 'start'
-                : nextSm && nextSm.kind
-                  ? 'continue'
-                  : 'done',
-            userText: String(lastMessageContent || ''),
-            assistantText: payload.message,
-          })
-
-          return new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          })
-        }
-      } catch (e) {
-        // If state store is unavailable (RLS/migration not applied), fall back to existing flow.
-        console.warn('[CHAT API] tutor state machine unavailable:', (e as any)?.message || String(e))
-      }
-    }
-
-    // --- DETERMINISTIC CANON PREFLIGHT (math/grammar) ---
-    // If tutorPolicy can deterministically respond based on the user's last message alone (no images),
-    // we bypass the LLM call entirely. This prevents regressions like starting subtraction with
-    // "Vul in: 82 − 47 = __" and makes math canons fully stable.
+    // --- DETERMINISTISCHE GESPREKSREGELS (dun) ---
+    // Alleen gespreksbesturing die een server beter doet dan een model:
+    // stopsignalen, kale ja/nee zonder openstaande vraag, "ok" op een vraag.
+    // Geen canons meer: rekenen en taal gaan naar de LLM met vangrails.
     if (images.length === 0) {
       const preflight = applyTutorPolicyWithDebug(
         { message: '' },
         { userLanguage, userAge, messages, lastUserText: String(lastMessageContent || '') }
       )
       const preMsg = String(preflight?.payload?.message || '').trim()
-      const preAction = String(preflight?.payload?.action || 'none')
       const preDeterministic = Array.isArray(preflight?.debug)
         ? preflight.debug.some((e) =>
-            [
-              'stop_signal',
-              'grammar_route',
-              'math_canon_step',
-              'ack_only_continue_math_canon',
-              'ack_only_answer_last_q',
-              'bare_yes_no_close',
-            ].includes(String(e?.name || ''))
+            ['stop_signal', 'ack_only_answer_last_q', 'bare_yes_no_close'].includes(String(e?.name || ''))
           )
         : false
 
-      if (preDeterministic && preMsg && (preAction === 'none' || preAction === '')) {
-        // Apply age-style trimming (does not affect one-move blanks).
-        preflight.payload.message = applyAgeStyleText(String(preflight.payload.message || ''), { userAge, userLanguage })
-
-        const grammarHit = (preflight.debug || []).find((e: any) => String(e?.name) === 'grammar_route')
+      if (preDeterministic && preMsg) {
         await logTutorEvent({
           userId: authUser.id,
           sessionId,
-          route: grammarHit ? 'grammar' : 'policy',
-          canonKind: grammarHit ? String((grammarHit as any)?.details?.topic || '') || null : null,
+          route: 'policy',
+          canonKind: null,
           step: (preflight.debug || []).map((e: any) => String(e?.name)).join(',') || null,
           result: looksStuck(String(lastMessageContent || '')) ? 'stuck' : null,
           userText: String(lastMessageContent || ''),
-          assistantText: String(preflight.payload.message || ''),
+          assistantText: preMsg,
         })
-        if (process.env.ANIMA_DEBUG_MATH === '1') {
-          console.log('[ANIMA_DEBUG_MATH][preflight]', {
-            git: process.env.VERCEL_GIT_COMMIT_SHA || null,
-            deploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
-            userLanguage,
-            lastUserText: String(lastMessageContent || ''),
-            out: preMsg,
-            debug: preflight.debug,
-          })
-        }
         return new Response(JSON.stringify(preflight.payload), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // --- REKEN-VANGRAIL (dun) ---
+    // Vroeg Anima net "EXPR = __" en antwoordt het kind met een kaal getal?
+    // Dan rekent de server het exact na en krijgt het model het verdict mee.
+    // Het model formuleert de reactie, maar kan niet meer "goed" zeggen
+    // tegen een fout antwoord (of andersom).
+    if (images.length === 0) {
+      const prevAssistantText = (() => {
+        const arr = Array.isArray(messages) ? messages : []
+        for (let i = arr.length - 2; i >= 0; i--) {
+          if (arr[i]?.role && arr[i].role !== 'user') return String(arr[i]?.content || '')
+        }
+        return ''
+      })()
+      const verdict = checkBlankAnswer(prevAssistantText, String(lastMessageContent || ''))
+      if (verdict) {
+        const fmt = (n: number) =>
+          Math.abs(n % 1) < 1e-9 ? String(Math.trunc(n)) : String(Number(n.toFixed(4))).replace('.', ',')
+        userParts[0].text += verdict.correct
+          ? `\n\n[REKENCHECK (server, zeker): "${verdict.expr} = ${fmt(verdict.given)}" is CORRECT. Bevestig kort en ga natuurlijk verder met de volgende stap — of rond af als de som klaar is.]`
+          : `\n\n[REKENCHECK (server, zeker): "${verdict.expr}" is NIET ${fmt(verdict.given)} (juist: ${fmt(verdict.expected)}). Zeg het juiste antwoord NIET voor. Help de leerling deze stap opnieuw met één kleine hint.]`
+
+        // Leerprofiel voeden: welke skill oefende het kind, en ging het goed?
+        const practicedProblem = (() => {
+          const arr = Array.isArray(messages) ? messages : []
+          for (let i = arr.length - 1; i >= 0; i--) {
+            if (arr[i]?.role === 'user' && looksLikeMathProblem(String(arr[i]?.content || ''))) {
+              return String(arr[i].content)
+            }
+          }
+          return ''
+        })()
+        await logTutorEvent({
+          userId: authUser.id,
+          sessionId,
+          route: 'practice',
+          canonKind: skillOf(practicedProblem) || skillOf(verdict.expr),
+          step: verdict.expr,
+          result: verdict.correct ? 'correct' : 'wrong',
+          userText: String(lastMessageContent || ''),
+          assistantText: null,
         })
       }
     }
@@ -1212,7 +1108,7 @@ OUTPUT-CONTRACT (CRITICAL)
       payload = applyTutorPolicy(payload, { userLanguage, userAge, messages, lastUserText: lastMessageContent })
       payload.message = applyAgeStyleText(String(payload.message || ''), { userAge, userLanguage })
     }
-    // NOTE: Tutor-flow postprocessing lives in tutorPolicy.ts (anti-parrot, stop markers, ack-only, anti-repeat, etc.).
+    // NOTE: tutorPolicy.ts is bewust dun: stopsignalen, ack/ja-nee-afronding en "klaar"-hygiëne.
 
     // If we have LaTeX in the message and no explicit formula field, attach it for the board.
     if (!payload.formula) {

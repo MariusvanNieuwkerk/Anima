@@ -52,9 +52,9 @@ function daysAgoText(iso: string): string {
 }
 
 type SkillAgg = {
-  starts: number
-  dones: number
-  stucks: number
+  attempts: number
+  good: number
+  bad: number
   lastAt: string
 }
 
@@ -83,14 +83,22 @@ export async function buildLearnerProfileBlock(userId: string): Promise<string |
       const result = String(r.result || '')
       if (result === 'stuck') stuckRecent++
 
-      if (r.route === 'canon' && r.canon_kind) {
+      // 'practice' = nieuwe reken-vangrail (per stap correct/fout);
+      // 'canon' = historische oefen-data van de oude state machine.
+      if ((r.route === 'practice' || r.route === 'canon') && r.canon_kind) {
         const kind = String(r.canon_kind)
         // rows zijn aflopend gesorteerd: de eerste keer dat we deze skill
         // zien is meteen de recentste activiteit (lastAt).
-        const agg = skills.get(kind) || { starts: 0, dones: 0, stucks: 0, lastAt: String(r.created_at) }
-        if (result === 'start') agg.starts++
-        if (result === 'done') agg.dones++
-        if (result === 'stuck') agg.stucks++
+        const agg = skills.get(kind) || { attempts: 0, good: 0, bad: 0, lastAt: String(r.created_at) }
+        if (r.route === 'practice') {
+          agg.attempts++
+          if (result === 'correct') agg.good++
+          if (result === 'wrong') agg.bad++
+        } else {
+          if (result === 'start') agg.attempts++
+          if (result === 'done') agg.good++
+          if (result === 'stuck') agg.bad++
+        }
         skills.set(kind, agg)
       }
 
@@ -102,16 +110,15 @@ export async function buildLearnerProfileBlock(userId: string): Promise<string |
 
     const lines: string[] = []
 
-    const ordered = [...skills.entries()].sort(
+    const ordered = Array.from(skills.entries()).sort(
       (a, b) => new Date(b[1].lastAt).getTime() - new Date(a[1].lastAt).getTime()
     )
     for (const [kind, agg] of ordered.slice(0, 6)) {
-      const total = Math.max(agg.starts, agg.dones)
-      if (total === 0 && agg.stucks === 0) continue
+      if (agg.attempts === 0 && agg.good === 0 && agg.bad === 0) continue
       const parts: string[] = []
-      if (agg.starts > 0) parts.push(`${agg.starts} ${agg.starts === 1 ? 'som' : 'sommen'} geoefend`)
-      if (agg.dones > 0) parts.push(`${agg.dones} afgemaakt`)
-      if (agg.stucks > 0) parts.push(`${agg.stucks}× vastgelopen`)
+      if (agg.attempts > 0) parts.push(`${agg.attempts}× geoefend`)
+      if (agg.good > 0) parts.push(`${agg.good} goed`)
+      if (agg.bad > 0) parts.push(`${agg.bad}× mis of vastgelopen`)
       const when = daysAgoText(agg.lastAt)
       lines.push(`- ${labelFor(kind)}: ${parts.join(', ')}${when ? ` (laatst: ${when})` : ''}`)
     }
